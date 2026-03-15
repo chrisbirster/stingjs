@@ -1,7 +1,9 @@
 import { addComponent, addEntity } from 'bitecs';
 import { Position } from 'engine/ecs/components/Position';
 import { Sprite } from 'engine/ecs/components/Sprite';
+import { SpriteAsset } from 'engine/ecs/components/SpriteAsset';
 import { Velocity } from 'engine/ecs/components/Velocity';
+import { DemoImageAsset } from 'game/constants/assets';
 import { LOGO_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH } from 'game/constants/game';
 import type { DemoWorld } from 'game/world';
 
@@ -26,11 +28,18 @@ function getRenderSize(image: HTMLImageElement): { width: number; height: number
 
 export function spawnLogo(world: DemoWorld, x: number, y: number): number {
 	const entityId = addEntity(world);
-	const { width, height } = getRenderSize(world.assets.logo);
+	const image = world.assets.images[DemoImageAsset.LOGO];
+
+	if (!(image instanceof HTMLImageElement)) {
+		throw new Error('Unable to find logo image asset');
+	}
+
+	const { width, height } = getRenderSize(image);
 
 	addComponent(world, entityId, Position);
 	addComponent(world, entityId, Velocity);
 	addComponent(world, entityId, Sprite);
+	addComponent(world, entityId, SpriteAsset);
 
 	Position.x[entityId] = x - width / 2;
 	Position.y[entityId] = y - height / 2;
@@ -38,6 +47,7 @@ export function spawnLogo(world: DemoWorld, x: number, y: number): number {
 	Velocity.y[entityId] = LOGO_SPEED;
 	Sprite.width[entityId] = width;
 	Sprite.height[entityId] = height;
+	SpriteAsset.image[entityId] = DemoImageAsset.LOGO;
 
 	return entityId;
 }

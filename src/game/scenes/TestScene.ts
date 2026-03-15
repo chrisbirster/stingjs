@@ -1,21 +1,22 @@
-import type { Camera } from 'engine/Camera';
 import { pipeSystems } from 'engine/ecs/pipeline';
 import { movementSystem } from 'engine/ecs/systems/movementSystem';
-import { Scene } from 'engine/core/Scene';
+import { renderSpriteSystem } from 'engine/ecs/systems/renderSpriteSystem';
+import {
+	EcsScene,
+	type CreateEcsSceneWorldOptions,
+} from 'engine/core/EcsScene';
 import { playSound } from 'engine/soundHandler';
-import type { GameTime } from 'engine/types';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from 'game/constants/game';
 import { spawnLogo } from 'game/prefabs/spawnLogo';
 import { logoBounceSystem } from 'game/systems/logoBounceSystem';
-import { renderLogoSystem } from 'game/systems/renderLogoSystem';
 import { createDemoWorld, type DemoWorld } from 'game/world';
 
-export class TestScene extends Scene {
+export class TestScene extends EcsScene<DemoWorld> {
 	music: HTMLAudioElement;
 	logoImage: HTMLImageElement;
 	lightness = 22;
-	world: DemoWorld | null = null;
-	updateWorld = pipeSystems<DemoWorld>(movementSystem, logoBounceSystem);
+	updateSystems = pipeSystems<DemoWorld>(movementSystem, logoBounceSystem);
+	drawSystems = pipeSystems<DemoWorld>(renderSpriteSystem);
 
 	constructor() {
 		super();
@@ -40,28 +41,32 @@ export class TestScene extends Scene {
 		this.lightness = 100;
 	};
 
-	getOrCreateWorld(
-		time: GameTime,
-		context: CanvasRenderingContext2D,
-		camera: Camera,
-	): DemoWorld {
-		if (!this.world) {
-			this.world = createDemoWorld({
-				time,
-				context,
-				camera,
-				logo: this.logoImage,
-				flashBorder: this.handleBorderFlash,
-			});
+	protected createWorld({ time, context, camera }: CreateEcsSceneWorldOptions): DemoWorld {
+		const world = createDemoWorld({
+			time,
+			context,
+			camera,
+			logo: this.logoImage,
+			flashBorder: this.handleBorderFlash,
+		});
 
-			spawnLogo(this.world, SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.75);
+		spawnLogo(world, SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.75);
+
+		return world;
+	}
+
+	protected beforeUpdate(world: DemoWorld): void {
+		world.camera.update();
+	}
+
+	protected updatePipeline(world: DemoWorld): DemoWorld {
+		return this.updateSystems(world);
+	}
+
+	protected afterUpdate(world: DemoWorld): void {
+		if (this.lightness > 22) {
+			this.lightness = Math.max(22, this.lightness - 200 * world.time.secondsPassed);
 		}
-
-		this.world.time = time;
-		this.world.context = context;
-		this.world.camera = camera;
-
-		return this.world;
 	}
 
 	drawBorder(context: CanvasRenderingContext2D): void {
@@ -84,25 +89,16 @@ export class TestScene extends Scene {
 		context.fillText('Game Development Template', SCREEN_WIDTH / 2, 15 + SCREEN_HEIGHT / 2);
 	}
 
-	update(time: GameTime, context: CanvasRenderingContext2D, camera: Camera): void {
-		const world = this.getOrCreateWorld(time, context, camera);
-
-		camera.update();
-		this.updateWorld(world);
-
-		if (this.lightness > 22) this.lightness -= 200 * time.secondsPassed;
+	protected beforeDraw(world: DemoWorld): void {
+		world.context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	}
 
-	draw(context: CanvasRenderingContext2D, camera: Camera): void {
-		context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+	protected drawPipeline(world: DemoWorld): DemoWorld {
+		return this.drawSystems(world);
+	}
 
-		if (this.world) {
-			this.world.context = context;
-			this.world.camera = camera;
-			renderLogoSystem(this.world);
-		}
-
-		this.drawBorder(context);
-		this.drawMessage(context);
+	protected afterDraw(world: DemoWorld): void {
+		this.drawBorder(world.context);
+		this.drawMessage(world.context);
 	}
 }

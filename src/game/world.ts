@@ -1,10 +1,8 @@
 import { createStingWorld, type StingWorld } from 'engine/ecs/world';
 import type { Camera } from 'engine/Camera';
-import type { GameTime } from 'engine/types';
+import type { GameTime, ImageAssets } from 'engine/types';
 
-type DemoAssets = {
-	logo: HTMLImageElement;
-};
+type DemoAssets = ImageAssets;
 
 type DemoEffects = {
 	flashBorder: () => void;
@@ -32,7 +30,7 @@ export function createDemoWorld({
 		time,
 		camera,
 		assets: {
-			logo,
+			images: [logo],
 		},
 		effects: {
 			flashBorder,

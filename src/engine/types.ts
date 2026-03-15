@@ -51,3 +51,7 @@ export type ControlConfig = {
 };
 
 export type GamePadState = Pick<Gamepad, 'axes' | 'buttons'>;
+
+export type ImageAssets = {
+	images: HTMLImageElement[];
+};
