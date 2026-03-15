@@ -55,3 +55,9 @@ export type GamePadState = Pick<Gamepad, 'axes' | 'buttons'>;
 export type ImageAssets = {
 	images: HTMLImageElement[];
 };
+
+export type AudioAssets = {
+	audio: HTMLAudioElement[];
+};
+
+export type AssetCollections = ImageAssets & AudioAssets;

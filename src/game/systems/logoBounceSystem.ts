@@ -7,13 +7,10 @@ import { LOGO_SPEED } from 'game/constants/game';
 import type { DemoWorld } from 'game/world';
 
 export const logoBounceSystem: StingWorldSystem<DemoWorld> = (world) => {
-	const screenWidth = world.context.canvas.width;
-	const screenHeight = world.context.canvas.height;
-
 	for (const entityId of query(world, [Position, Velocity, Sprite])) {
 		let didBounce = false;
-		const maxX = screenWidth - Sprite.width[entityId];
-		const maxY = screenHeight - Sprite.height[entityId];
+		const maxX = world.bounds.width - Sprite.width[entityId];
+		const maxY = world.bounds.height - Sprite.height[entityId];
 
 		if (Position.x[entityId] < 0) {
 			Position.x[entityId] = 0;

@@ -1,12 +1,20 @@
 import type { Camera } from '../Camera';
-import type { GameTime } from '../types';
+import type { InputManager } from '../input/InputManager';
+import type { AssetCollections, GameTime } from '../types';
 
 export abstract class Scene {
 	abstract update(
 		time: GameTime,
 		context: CanvasRenderingContext2D,
 		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
 	): void;
 
-	abstract draw(context: CanvasRenderingContext2D, camera: Camera): void;
+	abstract draw(
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
+	): void;
 }

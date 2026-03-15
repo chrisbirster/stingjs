@@ -1,3 +1,5 @@
+import { cameraClampSystem } from 'engine/ecs/systems/cameraClampSystem';
+import { cameraFollowSystem } from 'engine/ecs/systems/cameraFollowSystem';
 import { pipeSystems } from 'engine/ecs/pipeline';
 import { movementSystem } from 'engine/ecs/systems/movementSystem';
 import { renderSpriteSystem } from 'engine/ecs/systems/renderSpriteSystem';
@@ -6,57 +8,60 @@ import {
 	type CreateEcsSceneWorldOptions,
 } from 'engine/core/EcsScene';
 import { playSound } from 'engine/soundHandler';
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from 'game/constants/game';
+import { DemoAudioAsset } from 'game/constants/assets';
+import { SCREEN_HEIGHT, SCREEN_WIDTH, WORLD_HEIGHT, WORLD_WIDTH } from 'game/constants/game';
 import { spawnLogo } from 'game/prefabs/spawnLogo';
+import { logoInputSystem } from 'game/systems/logoInputSystem';
 import { logoBounceSystem } from 'game/systems/logoBounceSystem';
 import { createDemoWorld, type DemoWorld } from 'game/world';
 
 export class TestScene extends EcsScene<DemoWorld> {
-	music: HTMLAudioElement;
-	logoImage: HTMLImageElement;
 	lightness = 22;
-	updateSystems = pipeSystems<DemoWorld>(movementSystem, logoBounceSystem);
+	hasStartedMusic = false;
+	updateSystems = pipeSystems<DemoWorld>(
+		logoInputSystem,
+		movementSystem,
+		logoBounceSystem,
+		cameraFollowSystem,
+		cameraClampSystem,
+	);
 	drawSystems = pipeSystems<DemoWorld>(renderSpriteSystem);
 
 	constructor() {
 		super();
-
-		const music = document.getElementById('bgm');
-		if (!(music instanceof HTMLAudioElement)) {
-			throw new Error('Unable to find background music element');
-		}
-
-		const logoImage = document.querySelector<HTMLImageElement>('img#logo');
-		if (!logoImage) {
-			throw new Error('Unable to find logo image element');
-		}
-
-		this.music = music;
-		this.logoImage = logoImage;
-
-		playSound(this.music);
 	}
 
 	handleBorderFlash = (): void => {
 		this.lightness = 100;
 	};
 
-	protected createWorld({ time, context, camera }: CreateEcsSceneWorldOptions): DemoWorld {
+	protected createWorld({ time, context, camera, input, assets }: CreateEcsSceneWorldOptions): DemoWorld {
 		const world = createDemoWorld({
 			time,
 			context,
 			camera,
-			logo: this.logoImage,
+			input,
+			assets,
+			bounds: {
+				width: WORLD_WIDTH,
+				height: WORLD_HEIGHT,
+			},
 			flashBorder: this.handleBorderFlash,
 		});
 
-		spawnLogo(world, SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.75);
+		spawnLogo(world, WORLD_WIDTH / 2, WORLD_HEIGHT * 0.75);
 
 		return world;
 	}
 
 	protected beforeUpdate(world: DemoWorld): void {
-		world.camera.update();
+		if (!this.hasStartedMusic) {
+			const music = world.assets.audio[DemoAudioAsset.BGM];
+			if (music) {
+				playSound(music);
+				this.hasStartedMusic = true;
+			}
+		}
 	}
 
 	protected updatePipeline(world: DemoWorld): DemoWorld {

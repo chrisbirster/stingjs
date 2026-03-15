@@ -1,12 +1,15 @@
 import type { World } from 'bitecs';
 import type { Camera } from '../Camera';
-import type { GameTime } from '../types';
+import type { InputManager } from '../input/InputManager';
+import type { AssetCollections, GameTime } from '../types';
 import { Scene } from './Scene';
 
 export type EcsSceneWorldResources = {
 	context: CanvasRenderingContext2D;
 	time: GameTime;
 	camera: Camera;
+	input: InputManager;
+	assets: AssetCollections;
 };
 
 export type CreateEcsSceneWorldOptions = EcsSceneWorldResources;
@@ -44,6 +47,8 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		world.time = options.time;
 		world.context = options.context;
 		world.camera = options.camera;
+		world.input = options.input;
+		world.assets = options.assets;
 
 		return world;
 	}
@@ -56,11 +61,19 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		return this.syncWorld(this.world, options);
 	}
 
-	update(time: GameTime, context: CanvasRenderingContext2D, camera: Camera): void {
+	update(
+		time: GameTime,
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
+	): void {
 		const world = this.getOrCreateWorld({
 			time,
 			context,
 			camera,
+			input,
+			assets,
 		});
 
 		this.beforeUpdate(world);
@@ -68,13 +81,20 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		this.afterUpdate(world);
 	}
 
-	draw(context: CanvasRenderingContext2D, camera: Camera): void {
+	draw(
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
+	): void {
 		if (!this.world) return;
 
 		const world = this.syncWorld(this.world, {
 			time: this.world.time,
 			context,
 			camera,
+			input,
+			assets,
 		});
 
 		this.beforeDraw(world);

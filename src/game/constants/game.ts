@@ -8,3 +8,5 @@ export const LOGO_SPEED = FPS * 2;
 
 export const SCREEN_WIDTH = 640;
 export const SCREEN_HEIGHT = 360;
+export const WORLD_WIDTH = SCREEN_WIDTH * 2.5;
+export const WORLD_HEIGHT = SCREEN_HEIGHT * 2;

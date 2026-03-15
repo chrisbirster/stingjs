@@ -1,20 +1,26 @@
 import { createStingWorld, type StingWorld } from 'engine/ecs/world';
 import type { Camera } from 'engine/Camera';
-import type { GameTime, ImageAssets } from 'engine/types';
+import type { InputManager } from 'engine/input/InputManager';
+import type { AssetCollections, Dimensions, GameTime } from 'engine/types';
 
-type DemoAssets = ImageAssets;
+type DemoAssets = AssetCollections;
 
 type DemoEffects = {
 	flashBorder: () => void;
 };
 
-export type DemoWorld = StingWorld<DemoAssets, DemoEffects>;
+export type DemoWorldBounds = Dimensions;
+export type DemoWorld = StingWorld<DemoAssets, DemoEffects> & {
+	bounds: DemoWorldBounds;
+};
 
 type CreateDemoWorldOptions = {
 	context: CanvasRenderingContext2D;
 	time: GameTime;
 	camera: Camera;
-	logo: HTMLImageElement;
+	input: InputManager;
+	assets: DemoAssets;
+	bounds: DemoWorldBounds;
 	flashBorder: () => void;
 };
 
@@ -22,18 +28,23 @@ export function createDemoWorld({
 	context,
 	time,
 	camera,
-	logo,
+	input,
+	assets,
+	bounds,
 	flashBorder,
 }: CreateDemoWorldOptions): DemoWorld {
-	return createStingWorld({
+	const world = createStingWorld({
 		context,
 		time,
 		camera,
-		assets: {
-			images: [logo],
-		},
+		input,
+		assets,
 		effects: {
 			flashBorder,
 		},
+	});
+
+	return Object.assign(world, {
+		bounds,
 	});
 }

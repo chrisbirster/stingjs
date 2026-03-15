@@ -3,10 +3,12 @@ import type { ImageAssets } from '../../types';
 import { Position } from '../components/Position';
 import { Sprite } from '../components/Sprite';
 import { SpriteAsset } from '../components/SpriteAsset';
+import type { Camera } from '../../Camera';
 
 type SpriteRenderWorld = World<{
 	context: CanvasRenderingContext2D;
 	assets: ImageAssets;
+	camera: Camera;
 }>;
 
 export function renderSpriteSystem<TWorld extends SpriteRenderWorld>(world: TWorld): TWorld {
@@ -17,8 +19,8 @@ export function renderSpriteSystem<TWorld extends SpriteRenderWorld>(world: TWor
 
 		world.context.drawImage(
 			image,
-			Math.floor(Position.x[entityId]),
-			Math.floor(Position.y[entityId]),
+			Math.floor(Position.x[entityId] - world.camera.position.x),
+			Math.floor(Position.y[entityId] - world.camera.position.y),
 			Sprite.width[entityId],
 			Sprite.height[entityId],
 		);

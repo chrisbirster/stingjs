@@ -1,4 +1,7 @@
 import { addComponent, addEntity } from 'bitecs';
+import { CameraTarget } from 'engine/ecs/components/CameraTarget';
+import { MoveSpeed } from 'engine/ecs/components/MoveSpeed';
+import { PlayerInput } from 'engine/ecs/components/PlayerInput';
 import { Position } from 'engine/ecs/components/Position';
 import { Sprite } from 'engine/ecs/components/Sprite';
 import { SpriteAsset } from 'engine/ecs/components/SpriteAsset';
@@ -37,12 +40,18 @@ export function spawnLogo(world: DemoWorld, x: number, y: number): number {
 	const { width, height } = getRenderSize(image);
 
 	addComponent(world, entityId, Position);
+	addComponent(world, entityId, CameraTarget);
+	addComponent(world, entityId, PlayerInput);
+	addComponent(world, entityId, MoveSpeed);
 	addComponent(world, entityId, Velocity);
 	addComponent(world, entityId, Sprite);
 	addComponent(world, entityId, SpriteAsset);
 
 	Position.x[entityId] = x - width / 2;
 	Position.y[entityId] = y - height / 2;
+	CameraTarget.active[entityId] = 1;
+	PlayerInput.playerId[entityId] = 0;
+	MoveSpeed.value[entityId] = LOGO_SPEED;
 	Velocity.x[entityId] = LOGO_SPEED;
 	Velocity.y[entityId] = LOGO_SPEED;
 	Sprite.width[entityId] = width;

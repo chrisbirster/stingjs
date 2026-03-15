@@ -1,18 +1,21 @@
 import { createWorld, type World } from 'bitecs';
 import type { Camera } from '../Camera';
-import type { GameTime } from '../types';
+import type { InputManager } from '../input/InputManager';
+import type { AssetCollections, GameTime } from '../types';
 
 type StingWorldResources = {
 	context: CanvasRenderingContext2D;
 	time: GameTime;
 	camera: Camera;
+	input: InputManager;
+	assets: AssetCollections;
 };
 
 export type StingWorld<
 	TAssets extends object = Record<string, never>,
 	TEffects extends object = Record<string, never>,
-> = World & StingWorldResources & {
-	assets: TAssets;
+> = World & Omit<StingWorldResources, 'assets'> & {
+	assets: TAssets & AssetCollections;
 	effects: TEffects;
 };
 
