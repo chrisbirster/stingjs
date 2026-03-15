@@ -1,8 +1,14 @@
 export { createDomAssetCollections } from './assets/createDomAssetCollections';
+export { loadAssetCollections } from './assets/loadAssetCollections';
 export { Camera } from './Camera';
 export { Entity } from './Entity';
+export { getBodyRect, bodiesOverlap } from './ecs/collision';
+export { pipeSystems } from './ecs/pipeline';
 export { EcsScene } from './core/EcsScene';
 export { Game } from './core/Game';
+export { createStingWorld } from './ecs/world';
 export { InputManager } from './input/InputManager';
 export { Scene } from './core/Scene';
 export { mountDebugOverlay } from './solid/mountDebugOverlay';
+export type { StingWorld, StingWorldSystem } from './ecs/world';
+export type { SceneController } from './core/Scene';

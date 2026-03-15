@@ -19,6 +19,10 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 
 	protected abstract createWorld(options: CreateEcsSceneWorldOptions): TWorld;
 
+	protected onEnterWorld(world: TWorld): void {
+		void world;
+	}
+
 	protected beforeUpdate(world: TWorld): void {
 		void world;
 	}
@@ -43,6 +47,10 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		void world;
 	}
 
+	protected onExitWorld(world: TWorld): void {
+		void world;
+	}
+
 	private syncWorld(world: TWorld, options: CreateEcsSceneWorldOptions): TWorld {
 		world.time = options.time;
 		world.context = options.context;
@@ -59,6 +67,26 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		}
 
 		return this.syncWorld(this.world, options);
+	}
+
+	async enter(
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
+	): Promise<void> {
+		const world = this.getOrCreateWorld({
+			time: {
+				previous: 0,
+				secondsPassed: 0,
+			},
+			context,
+			camera,
+			input,
+			assets,
+		});
+
+		this.onEnterWorld(world);
 	}
 
 	update(
@@ -100,5 +128,25 @@ export abstract class EcsScene<TWorld extends World<EcsSceneWorldResources>> ext
 		this.beforeDraw(world);
 		this.drawPipeline(world);
 		this.afterDraw(world);
+	}
+
+	async exit(
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+		input: InputManager,
+		assets: AssetCollections,
+	): Promise<void> {
+		if (!this.world) return;
+
+		const world = this.syncWorld(this.world, {
+			time: this.world.time,
+			context,
+			camera,
+			input,
+			assets,
+		});
+
+		this.onExitWorld(world);
+		this.world = null;
 	}
 }

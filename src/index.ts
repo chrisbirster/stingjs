@@ -3,5 +3,5 @@ import { TemplateExample } from 'game/TemplateExample';
 
 window.addEventListener('load', () => {
 	mountDebugOverlay();
-	new TemplateExample().start();
+	void new TemplateExample().start();
 });

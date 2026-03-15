@@ -82,6 +82,47 @@ export function DebugOverlay() {
 									</div>
 								)}
 							</Show>
+							<Show when={selectedEntity().body}>
+								{(body) => (
+									<div>
+										body: {Math.round(body().width)} x {Math.round(body().height)}
+									</div>
+								)}
+							</Show>
+								<Show when={selectedEntity().touching}>
+									{(touching) => (
+										<div>
+											touching:
+										{' '}
+										{[
+											touching().left ? 'left' : null,
+											touching().right ? 'right' : null,
+											touching().top ? 'top' : null,
+											touching().bottom ? 'bottom' : null,
+										].filter(Boolean).join(', ') || 'none'}
+										</div>
+									)}
+								</Show>
+								<Show when={selectedEntity().overlap}>
+									{(overlap) => (
+										<div>
+											overlap:
+											{' '}
+											{overlap().active ? `active x${overlap().count}` : 'idle'}
+											{' '}
+											{overlap().entered ? 'entered' : ''}
+											{' '}
+											{overlap().exited ? 'exited' : ''}
+										</div>
+									)}
+								</Show>
+								<Show when={selectedEntity().animation}>
+									{(animation) => (
+										<div>
+											anim: frame {animation().frame} {animation().playing ? 'playing' : 'stopped'}
+										</div>
+									)}
+								</Show>
 						</div>
 					)}
 				</Show>

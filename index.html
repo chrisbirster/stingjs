@@ -36,6 +36,16 @@
 				image-rendering: pixelated;
 			}
 
+			#stingjs-debug-root {
+				position: fixed;
+				inset: 0;
+				pointer-events: none;
+			}
+
+			#stingjs-debug-root * {
+				pointer-events: auto;
+			}
+
 			img,
 			audio {
 				display: none;
@@ -43,8 +53,5 @@
 		</style>
 		<script type="module" src="./src/index.ts"></script>
 	</head>
-	<body>
-		<img id="logo" src="./images/logo.svg" />
-	<audio id="bgm" src="./sound/area12.ogg" preload loop></audio>
-	</body>
+	<body></body>
 </html>

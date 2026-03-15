@@ -62,11 +62,48 @@ export type AudioAssets = {
 
 export type AssetCollections = ImageAssets & AudioAssets;
 
+export type SpriteAnimationStep = {
+	frame: FrameDimensions;
+	duration: number;
+};
+
+export type SpriteAnimation = {
+	image: number;
+	loop?: boolean;
+	steps: SpriteAnimationStep[];
+};
+
+export type AnimationAssets = {
+	animations: SpriteAnimation[];
+};
+
+export type AssetManifest = {
+	images?: string[];
+	audio?: string[];
+};
+
 export type SelectedEntityDebugSnapshot = {
 	id: number;
 	label?: string;
 	position?: Position;
 	velocity?: Position;
+	body?: Dimensions;
+	touching?: {
+		left: boolean;
+		right: boolean;
+		top: boolean;
+		bottom: boolean;
+	};
+	overlap?: {
+		active: boolean;
+		entered: boolean;
+		exited: boolean;
+		count: number;
+	};
+	animation?: {
+		frame: number;
+		playing: boolean;
+	};
 };
 
 export type SceneDebugSnapshot = {

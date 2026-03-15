@@ -1,9 +1,9 @@
 import { createStingWorld, type StingWorld } from 'engine/ecs/world';
 import type { Camera } from 'engine/Camera';
 import type { InputManager } from 'engine/input/InputManager';
-import type { AssetCollections, Dimensions, GameTime } from 'engine/types';
+import type { AnimationAssets, AssetCollections, Dimensions, GameTime } from 'engine/types';
 
-type DemoAssets = AssetCollections;
+type DemoAssets = AssetCollections & AnimationAssets;
 
 type DemoEffects = {
 	flashBorder: () => void;

@@ -1,65 +1,46 @@
 # stingjs
 
-`stingjs` is a lightweight browser game starter built around the HTML canvas,
-native ES modules, Vite, and TypeScript. It gives you a small runtime for the
-game loop, scene management, camera handling, input, audio helpers, and a
-working sample scene without forcing a heavy framework on top of the browser.
+`stingjs` is a `v0.1` browser game engine baseline built with Vite,
+TypeScript, and a `bitECS` simulation core. The runtime stays imperative in the
+hot loop while Solid powers the debug overlay and other reactive tooling at the
+boundary.
 
-## What you get
+## Features in v0.1
 
-- A Vite-powered development workflow with fast local iteration
-- A small `Game -> Scene -> Entity` structure under `src/engine/`
-- Example game code under `src/game/`
-- TypeScript-first source files and shared engine types
-- Keyboard and gamepad input helpers
-- A sample scene that animates a bouncing sword logo
+- ECS-first engine structure under `src/engine/core` and `src/engine/ecs`
+- Canvas rendering, camera follow/clamp, keyboard and gamepad input
+- Asset manifest loading for images and audio
+- Sprite animation, world-bounds collision, and trigger overlap systems
+- Deferred scene transitions with async `enter` / `exit` hooks
+- Solid-powered debug overlay with entity, camera, asset, body, and overlap state
+- Co-located Vitest coverage for key ECS systems and scene lifecycle behavior
 
-## Getting started
-
-Install dependencies:
+## Commands
 
 ```bash
 npm install
-```
-
-Start the development server:
-
-```bash
 npm run dev
-```
-
-Build for production:
-
-```bash
-npm run build
-```
-
-Preview the production build locally:
-
-```bash
-npm run preview
-```
-
-Type-check and lint the project:
-
-```bash
+npm run test
 npm run typecheck
 npm run lint
+npm run build
+npm run preview
 ```
 
 ## Project layout
 
-- `src/index.ts`: browser entrypoint
-- `src/engine/`: reusable runtime pieces such as `Game`, `Scene`, `Entity`, input, camera, and utilities
-- `src/game/`: example game-specific code, constants, config, scenes, and entities
-- `images/` and `sound/`: static assets used by the example
+- `src/engine/core/`: `Game`, `Scene`, `EcsScene`, lifecycle, transitions
+- `src/engine/ecs/`: components, systems, collision helpers, world utilities
+- `src/engine/solid/`: debug state and overlay mounting
+- `src/game/`: sample scenes, prefabs, controls, constants, and world setup
+- `images/` and `sound/`: example assets loaded through the manifest path
 
-Vite aliases `engine/*` to `src/engine/*` and `game/*` to `src/game/*` so the
-imports stay short and readable.
+Vite aliases `engine/*` and `game/*` to `src/engine/*` and `src/game/*`.
 
-## Example flow
+## Sample flow
 
-The sample app starts in `src/index.ts`, constructs `TemplateExample`, and then
-boots `TestScene`, which renders the bouncing sword logo and plays the sample
-music. Use it as a reference point, then replace the example scene and assets
-with your own game code.
+`src/index.ts` mounts the debug overlay and starts `TemplateExample`. The demo
+scene animates the sword logo, follows it with the camera, resolves world
+bounds, detects a portal trigger, and transitions into a second scene to
+exercise the runtime API. Use that sample as the reference path for new engine
+features and game code.

@@ -78,6 +78,7 @@ export class InputManager {
 		window.removeEventListener('blur', this.handleBlur);
 		window.removeEventListener('gamepadconnected', this.handleGamepadConnected);
 		window.removeEventListener('gamepaddisconnected', this.handleGamepadDisconnected);
+		this.handleBlur();
 	}
 
 	pollGamepads(): void {

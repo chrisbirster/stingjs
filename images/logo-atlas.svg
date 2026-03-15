@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="128" viewBox="0 0 512 128">
+  <rect width="512" height="128" fill="transparent" />
+  <g font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" font-size="92" text-anchor="middle">
+    <text x="64" y="82">⚔️</text>
+    <text x="192" y="82" transform="rotate(8 192 64)">⚔️</text>
+    <text x="320" y="82" transform="rotate(-8 320 64)">⚔️</text>
+    <text x="448" y="82" transform="translate(0 -6)">⚔️</text>
+  </g>
+</svg>
