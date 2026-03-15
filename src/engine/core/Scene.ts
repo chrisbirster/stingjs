@@ -1,6 +1,6 @@
 import type { Camera } from '../Camera';
 import type { InputManager } from '../input/InputManager';
-import type { AssetCollections, GameTime } from '../types';
+import type { AssetCollections, GameTime, SceneDebugSnapshot } from '../types';
 
 export abstract class Scene {
 	abstract update(
@@ -17,4 +17,8 @@ export abstract class Scene {
 		input: InputManager,
 		assets: AssetCollections,
 	): void;
+
+	getDebugSnapshot(): SceneDebugSnapshot | null {
+		return null;
+	}
 }

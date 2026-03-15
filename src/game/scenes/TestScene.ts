@@ -7,6 +7,8 @@ import {
 	EcsScene,
 	type CreateEcsSceneWorldOptions,
 } from 'engine/core/EcsScene';
+import { Position } from 'engine/ecs/components/Position';
+import { Velocity } from 'engine/ecs/components/Velocity';
 import { playSound } from 'engine/soundHandler';
 import { DemoAudioAsset } from 'game/constants/assets';
 import { SCREEN_HEIGHT, SCREEN_WIDTH, WORLD_HEIGHT, WORLD_WIDTH } from 'game/constants/game';
@@ -18,6 +20,7 @@ import { createDemoWorld, type DemoWorld } from 'game/world';
 export class TestScene extends EcsScene<DemoWorld> {
 	lightness = 22;
 	hasStartedMusic = false;
+	logoEntityId: number | null = null;
 	updateSystems = pipeSystems<DemoWorld>(
 		logoInputSystem,
 		movementSystem,
@@ -49,7 +52,7 @@ export class TestScene extends EcsScene<DemoWorld> {
 			flashBorder: this.handleBorderFlash,
 		});
 
-		spawnLogo(world, WORLD_WIDTH / 2, WORLD_HEIGHT * 0.75);
+		this.logoEntityId = spawnLogo(world, WORLD_WIDTH / 2, WORLD_HEIGHT * 0.75);
 
 		return world;
 	}
@@ -105,5 +108,26 @@ export class TestScene extends EcsScene<DemoWorld> {
 	protected afterDraw(world: DemoWorld): void {
 		this.drawBorder(world.context);
 		this.drawMessage(world.context);
+	}
+
+	getDebugSnapshot() {
+		if (!this.world || this.logoEntityId === null) {
+			return null;
+		}
+
+		return {
+			selectedEntity: {
+				id: this.logoEntityId,
+				label: 'sword-logo',
+				position: {
+					x: Position.x[this.logoEntityId],
+					y: Position.y[this.logoEntityId],
+				},
+				velocity: {
+					x: Velocity.x[this.logoEntityId],
+					y: Velocity.y[this.logoEntityId],
+				},
+			},
+		};
 	}
 }

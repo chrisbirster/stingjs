@@ -61,3 +61,32 @@ export type AudioAssets = {
 };
 
 export type AssetCollections = ImageAssets & AudioAssets;
+
+export type SelectedEntityDebugSnapshot = {
+	id: number;
+	label?: string;
+	position?: Position;
+	velocity?: Position;
+};
+
+export type SceneDebugSnapshot = {
+	selectedEntity?: SelectedEntityDebugSnapshot | null;
+};
+
+export type GameDebugSnapshot = {
+	scene: string;
+	fps: number;
+	frameMs: number;
+	camera: Position;
+	assets: {
+		images: {
+			loaded: number;
+			total: number;
+		};
+		audio: {
+			loaded: number;
+			total: number;
+		};
+	};
+	selectedEntity?: SelectedEntityDebugSnapshot | null;
+};
