@@ -1,14 +1,21 @@
 import type { Camera } from 'engine/Camera';
-import { Scene } from 'engine/Scene';
+import { pipeSystems } from 'engine/ecs/pipeline';
+import { movementSystem } from 'engine/ecs/systems/movementSystem';
+import { Scene } from 'engine/core/Scene';
 import { playSound } from 'engine/soundHandler';
 import type { GameTime } from 'engine/types';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from 'game/constants/game';
-import { Logo } from 'game/entities/Logo';
+import { spawnLogo } from 'game/prefabs/spawnLogo';
+import { logoBounceSystem } from 'game/systems/logoBounceSystem';
+import { renderLogoSystem } from 'game/systems/renderLogoSystem';
+import { createDemoWorld, type DemoWorld } from 'game/world';
 
 export class TestScene extends Scene {
 	music: HTMLAudioElement;
-	logo: Logo;
+	logoImage: HTMLImageElement;
 	lightness = 22;
+	world: DemoWorld | null = null;
+	updateWorld = pipeSystems<DemoWorld>(movementSystem, logoBounceSystem);
 
 	constructor() {
 		super();
@@ -18,11 +25,13 @@ export class TestScene extends Scene {
 			throw new Error('Unable to find background music element');
 		}
 
+		const logoImage = document.querySelector<HTMLImageElement>('img#logo');
+		if (!logoImage) {
+			throw new Error('Unable to find logo image element');
+		}
+
 		this.music = music;
-		this.logo = new Logo(
-			{ x: SCREEN_WIDTH / 2, y: SCREEN_HEIGHT * 0.75 },
-			this.handleBorderFlash,
-		);
+		this.logoImage = logoImage;
 
 		playSound(this.music);
 	}
@@ -30,6 +39,30 @@ export class TestScene extends Scene {
 	handleBorderFlash = (): void => {
 		this.lightness = 100;
 	};
+
+	getOrCreateWorld(
+		time: GameTime,
+		context: CanvasRenderingContext2D,
+		camera: Camera,
+	): DemoWorld {
+		if (!this.world) {
+			this.world = createDemoWorld({
+				time,
+				context,
+				camera,
+				logo: this.logoImage,
+				flashBorder: this.handleBorderFlash,
+			});
+
+			spawnLogo(this.world, SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.75);
+		}
+
+		this.world.time = time;
+		this.world.context = context;
+		this.world.camera = camera;
+
+		return this.world;
+	}
 
 	drawBorder(context: CanvasRenderingContext2D): void {
 		context.lineWidth = 4;
@@ -51,18 +84,24 @@ export class TestScene extends Scene {
 		context.fillText('Game Development Template', SCREEN_WIDTH / 2, 15 + SCREEN_HEIGHT / 2);
 	}
 
-	update(time: GameTime, _context: CanvasRenderingContext2D, camera: Camera): void {
+	update(time: GameTime, context: CanvasRenderingContext2D, camera: Camera): void {
+		const world = this.getOrCreateWorld(time, context, camera);
+
 		camera.update();
-		this.logo.update(time);
+		this.updateWorld(world);
 
 		if (this.lightness > 22) this.lightness -= 200 * time.secondsPassed;
 	}
 
 	draw(context: CanvasRenderingContext2D, camera: Camera): void {
-		void camera;
 		context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-		this.logo.draw(context);
+		if (this.world) {
+			this.world.context = context;
+			this.world.camera = camera;
+			renderLogoSystem(this.world);
+		}
+
 		this.drawBorder(context);
 		this.drawMessage(context);
 	}

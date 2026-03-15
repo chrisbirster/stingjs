@@ -1,4 +1,4 @@
-import { Game } from 'engine/Game';
+import { Game } from 'engine/core/Game';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from 'game/constants/game';
 import { TestScene } from 'game/scenes/TestScene';
 
