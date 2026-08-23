@@ -61,8 +61,22 @@ export const {
   ref,
 } = renderer;
 
-export function renderApp(code: () => HostNode): () => void {
-  return render(code, getHost().root);
+function requireHostNode(value: unknown): HostNode {
+  if (
+    value == null ||
+    typeof value !== 'object' ||
+    typeof (value as Partial<HostNode>).id !== 'number' ||
+    typeof (value as Partial<HostNode>).type !== 'string' ||
+    !Array.isArray((value as Partial<HostNode>).children)
+  ) {
+    throw new TypeError('A StingJS application must render a native host node at its root');
+  }
+
+  return value as HostNode;
+}
+
+export function renderApp(code: () => unknown): () => void {
+  return render(() => requireHostNode(code()), getHost().root);
 }
 
 // Solid 2 control-flow names. These are intentionally forwarded from the
