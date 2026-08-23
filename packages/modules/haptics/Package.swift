@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "StingHaptics", targets: ["StingHaptics"])
     ],
     dependencies: [
-        .package(path: "../../../../native/ios")
+        .package(path: "../../../native/ios")
     ],
     targets: [
         .target(
@@ -19,8 +19,7 @@ let package = Package(
             dependencies: [
                 .product(name: "StingRuntime", package: "ios")
             ],
-            path: ".",
-            exclude: ["Package.swift"]
+            path: "ios"
         )
     ],
     swiftLanguageVersions: [.v5]
