@@ -61,7 +61,7 @@ export const {
   ref,
 } = renderer;
 
-export function renderApp(code: () => unknown): () => void {
+export function renderApp(code: () => HostNode): () => void {
   return render(code, getHost().root);
 }
 
