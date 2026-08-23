@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 describe('StingJS hello-world native loop', () => {
-  it('round-trips a native press through Solid reactivity and Haptics', () => {
+  it('round-trips a native press through Solid reactivity and Haptics', async () => {
     const bridge = new RecordingBridge();
     installNativeBridge(bridge);
     const dispose = renderApp(() => <App />);
@@ -86,6 +86,11 @@ describe('StingJS hello-world native loop', () => {
 
       const replacementsBeforePress = bridge.textReplacements.length;
       globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+
+      // Solid 2 batches graph updates at the microtask boundary. Waiting for
+      // that boundary matches normal runtime behavior without forcing a
+      // synchronous production flush.
+      await Promise.resolve();
 
       const reactiveReplacements = bridge.textReplacements.slice(replacementsBeforePress);
       expect(
