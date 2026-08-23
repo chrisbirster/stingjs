@@ -1,3 +1,4 @@
+import { flush } from 'solid-js';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   STING_PROTOCOL_VERSION,
@@ -68,12 +69,18 @@ afterEach(() => {
 });
 
 describe('StingJS hello-world native loop', () => {
-  it('round-trips a native press through Solid reactivity and Haptics', async () => {
+  it('round-trips a native press through Solid reactivity and Haptics', () => {
     const bridge = new RecordingBridge();
     installNativeBridge(bridge);
     const dispose = renderApp(() => <App />);
 
     try {
+      // Synthetic input should model a real native event, which cannot happen
+      // until the mounted view is ready. Solid 2 exposes flush() for tests and
+      // other explicit "settle now" boundaries; production event handling does
+      // not call it.
+      flush();
+
       const button = bridge.elements.find(({ type }) => type === 'button');
       expect(button, 'Solid should create a native button').toBeDefined();
       if (!button) return;
@@ -86,11 +93,7 @@ describe('StingJS hello-world native loop', () => {
 
       const replacementsBeforePress = bridge.textReplacements.length;
       globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
-
-      // Solid 2 batches graph updates at the microtask boundary. Waiting for
-      // that boundary matches normal runtime behavior without forcing a
-      // synchronous production flush.
-      await Promise.resolve();
+      flush();
 
       const reactiveReplacements = bridge.textReplacements.slice(replacementsBeforePress);
       expect(
