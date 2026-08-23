@@ -59,6 +59,19 @@ describe('StingHost', () => {
     expect(onPress).toHaveBeenCalledWith({ source: 'native' });
   });
 
+  it('rejects an incompatible native bridge before rendering begins', () => {
+    const bridge = makeBridge();
+    bridge.getRuntimeInfo = vi.fn(() => JSON.stringify({
+      protocolVersion: STING_PROTOCOL_VERSION + 1,
+      platform: 'ios',
+      modules: {},
+    }));
+
+    expect(() => installNativeBridge(bridge)).toThrow(
+      `Incompatible Sting native runtime protocol ${STING_PROTOCOL_VERSION + 1}`,
+    );
+  });
+
   it('serializes ordinary properties instead of leaking JavaScript objects to native', () => {
     const bridge = makeBridge();
     const host = new StingHost(bridge);

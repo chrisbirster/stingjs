@@ -1,5 +1,6 @@
 import { decodeNativeValue, type StingNativeBridge } from './bridge.js';
 import { StingHost } from './host.js';
+import { STING_PROTOCOL_VERSION } from './types.js';
 
 let activeHost: StingHost | undefined;
 
@@ -13,6 +14,15 @@ declare global {
 
 export function installNativeBridge(bridge: StingNativeBridge): StingHost {
   const host = new StingHost(bridge);
+  const runtimeInfo = host.getRuntimeInfo();
+
+  if (runtimeInfo.protocolVersion !== STING_PROTOCOL_VERSION) {
+    throw new Error(
+      `Incompatible Sting native runtime protocol ${runtimeInfo.protocolVersion}; ` +
+        `JavaScript expects protocol ${STING_PROTOCOL_VERSION}.`,
+    );
+  }
+
   activeHost = host;
   globalThis.__stingDispatchEvent = (nodeId, event, payloadJSON) => {
     host.dispatchEvent(nodeId, event, decodeNativeValue(payloadJSON));
