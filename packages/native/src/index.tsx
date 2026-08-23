@@ -1,4 +1,5 @@
-import { splitProps } from 'solid-js';
+import { createElement, spread } from '@stingjs/solid';
+import type { HostNode } from '@stingjs/core';
 
 export type FlexDirection = 'row' | 'column';
 
@@ -33,17 +34,23 @@ export interface ButtonProps {
   onPress?: () => void;
 }
 
-export function View(props: ViewProps) {
-  const [local, rest] = splitProps(props, ['children']);
-  return <view {...rest}>{local.children}</view>;
+function createNativePrimitive(type: string, props: object): HostNode {
+  const node = createElement(type);
+  spread(node, props);
+  return node;
 }
 
-export function Text(props: TextProps) {
-  const [local, rest] = splitProps(props, ['children']);
-  return <text {...rest}>{local.children}</text>;
+/** Native container backed by UIView/UIStackView on iOS and View/ViewGroup on Android. */
+export function View(props: ViewProps): HostNode {
+  return createNativePrimitive('view', props);
 }
 
-export function Button(props: ButtonProps) {
-  const [local, rest] = splitProps(props, ['children']);
-  return <button {...rest}>{local.children}</button>;
+/** Native text backed by UILabel on iOS and TextView on Android. */
+export function Text(props: TextProps): HostNode {
+  return createNativePrimitive('text', props);
+}
+
+/** Native pressable button backed by UIButton on iOS and Button on Android. */
+export function Button(props: ButtonProps): HostNode {
+  return createNativePrimitive('button', props);
 }

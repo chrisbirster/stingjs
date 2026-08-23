@@ -5,9 +5,9 @@ const renderer = createRenderer<HostNode>({
   createElement(type: string, staticProperties?: Record<string, unknown>) {
     const node = getHost().createElement(type);
 
-    // Solid 2's universal renderer is still evolving around construction-time
-    // static properties. Supporting them here keeps that upstream detail inside
-    // this adapter instead of leaking it into @stingjs/core or applications.
+    // Solid 2's universal renderer is evolving around construction-time static
+    // properties. Keeping the optional second argument here contains that
+    // upstream contract entirely inside @stingjs/solid.
     if (staticProperties) {
       for (const [name, value] of Object.entries(staticProperties)) {
         getHost().setProperty(node, name, value);
@@ -57,20 +57,14 @@ export const {
   spread,
   setProp,
   mergeProps,
-  use,
+  applyRef,
+  ref,
 } = renderer;
 
 export function renderApp(code: () => unknown): () => void {
   return render(code, getHost().root);
 }
 
-export {
-  ErrorBoundary,
-  For,
-  Index,
-  Match,
-  Show,
-  Suspense,
-  SuspenseList,
-  Switch,
-} from 'solid-js';
+// Solid 2 control-flow names. These are intentionally forwarded from the
+// current public runtime rather than preserving Solid 1 aliases.
+export { Errored, For, Loading, Match, Repeat, Reveal, Show, Switch } from 'solid-js';
