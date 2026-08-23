@@ -1,12 +1,8 @@
-# CHANGELOG
+# Changelog
 
-## 0.1.0
+## Unreleased
 
-- Move the sample runtime to a `bitECS`-driven engine core.
-- Add manifest-based asset loading, ECS scene lifecycle hooks, and deferred scene transitions.
-- Add sprite animation, world-bounds collision, and trigger overlap systems.
-- Add a Solid-powered debug overlay and a Vitest-based automated test suite.
+- Reframe StingJS as a native application platform for SolidJS 2.
+- Preserve the original browser game-engine implementation on `archive/game-engine-v0.1`.
 
-## 0.0.1
-
-- Initial set up and release.
+Historical browser-engine release notes remain available on the archive branch.
