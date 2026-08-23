@@ -104,8 +104,8 @@
 			);
 			mainGroup = 0EE7C1ECACAA5BDD86C09B73;
 			packageReferences = (
-				C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../../native/ios" */,
-				E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../../packages/modules/haptics" */,
+				C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */,
+				E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */,
 			);
 			productRefGroup = AC876CFCF861F50461261C2E /* Products */;
 			projectDirPath = "";
@@ -239,25 +239,25 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../../native/ios" */ = {
+		C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../../native/ios;
+			relativePath = ../../../native/ios;
 		};
-		E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../../packages/modules/haptics" */ = {
+		E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../../packages/modules/haptics;
+			relativePath = ../../../packages/modules/haptics;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		E2D8B8A10A86EBA7B5677B48 /* StingRuntime */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../../native/ios" */;
+			package = C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */;
 			productName = StingRuntime;
 		};
 		6BC3D47E47F41246F27D871C /* StingHaptics */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../../packages/modules/haptics" */;
+			package = E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */;
 			productName = StingHaptics;
 		};
 /* End XCSwiftPackageProductDependency section */
