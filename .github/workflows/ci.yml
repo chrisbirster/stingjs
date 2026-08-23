@@ -15,6 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
       - run: npm install
       - run: npm run typecheck
       - run: npm test
