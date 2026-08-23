@@ -19,3 +19,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build StingRuntime for iOS Simulator
+        working-directory: native/ios
+        run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' build
+      - name: Build StingHaptics for iOS Simulator
+        working-directory: packages/modules/haptics/ios
+        run: xcodebuild -scheme StingHaptics -destination 'generic/platform=iOS Simulator' build

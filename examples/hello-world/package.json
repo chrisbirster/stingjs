@@ -8,9 +8,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@stingjs/haptics": "*",
-    "@stingjs/native": "*",
-    "@stingjs/solid": "*",
+    "@stingjs/haptics": "0.1.0",
+    "@stingjs/native": "0.1.0",
+    "@stingjs/solid": "0.1.0",
     "solid-js": "2.0.0-rc.1"
   },
   "devDependencies": {

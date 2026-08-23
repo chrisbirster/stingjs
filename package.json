@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*",
+    "packages/core",
+    "packages/solid",
+    "packages/native",
     "packages/modules/*",
     "examples/*"
   ],
