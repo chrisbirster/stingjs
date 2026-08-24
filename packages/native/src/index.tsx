@@ -93,7 +93,7 @@ export function Text(props: TextProps): HostNode {
 
   effect(() => {
     replaceHostText(textNode, stringifyTextChild(props.children));
-  });
+  }, undefined);
 
   return node;
 }
