@@ -13,6 +13,7 @@ readonly STAGED_SOURCE_DIR="${BUILD_DIR}/sting-host-src"
 readonly ENGINE_OUTPUT="${BUILD_DIR}/sting-quickjs-ng-engine-bench"
 readonly STING_OUTPUT="${BUILD_DIR}/sting-quickjs-ng-sting-smoke"
 readonly APP_BUNDLE="${REPO_ROOT}/examples/hello-world/dist/sting-app.js"
+readonly BENCHMARK_BUNDLE="${REPO_ROOT}/benchmarks/sting-benchmark/dist/sting-benchmark.js"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "error: Zig 0.16.0 is required for this prototype" >&2
@@ -30,6 +31,11 @@ for tool in git cmake; do
     exit 1
   fi
 done
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "error: npm is required to build the real Sting application bundles" >&2
+  exit 1
+fi
 
 mkdir -p "${CACHE_ROOT}"
 
@@ -61,20 +67,16 @@ cmake \
 
 cmake --build "${BUILD_DIR}" --target qjs --parallel
 
-if [[ ! -f "${APP_BUNDLE}" ]]; then
-  if ! command -v npm >/dev/null 2>&1; then
-    echo "error: npm is required to build the real Sting hello-world bundle" >&2
-    exit 1
-  fi
-  cd "${REPO_ROOT}"
-  npm run build --workspace @stingjs/example-hello-world
-fi
+cd "${REPO_ROOT}"
+npm run build --workspace @stingjs/example-hello-world
+npm run build --workspace @stingjs/benchmark-native
 
 mkdir -p "${STAGED_SOURCE_DIR}"
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
 cp "${PROTOTYPE_DIR}/src/sting_smoke.zig" "${STAGED_SOURCE_DIR}/sting_smoke.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
 cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
+cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
 
 link_args=(
   -lc
