@@ -43,6 +43,10 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(label.text, "Count: 0")
         XCTAssertEqual(button.title(for: .normal), "Add")
 
+        // Ignore initial mount work. From this point forward we want the exact
+        // hot-path mutations caused by one native press.
+        runtime.resetMutationCounts()
+
         // Swift-package XCTest runs without UIApplicationMain, so UIKit cannot
         // dispatch sendActions(for:) in this process. Verify the real UIKit
         // target/action wiring exists, then invoke the exact native event sink
@@ -62,6 +66,15 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(haptics.calls.count, 1)
         XCTAssertEqual(haptics.calls.first?.method, "impact")
         XCTAssertEqual(haptics.calls.first?.arguments.first as? String, "medium")
+
+        let mutations = runtime.mutationCounts
+        XCTAssertEqual(mutations.replaceText, 1, "One signal update should produce one native text mutation")
+        XCTAssertEqual(mutations.createElement, 0, "Fine-grained updates must not recreate native elements")
+        XCTAssertEqual(mutations.createTextNode, 0, "Fine-grained updates must not recreate text nodes")
+        XCTAssertEqual(mutations.setProperty, 0, "Unrelated native properties must not be replayed")
+        XCTAssertEqual(mutations.insertNode, 0, "Fine-grained text updates must not reinsert native nodes")
+        XCTAssertEqual(mutations.removeNode, 0, "Fine-grained text updates must not remove native nodes")
+        XCTAssertEqual(mutations.setEventEnabled, 0, "Existing event subscriptions must not be rebound")
     }
 
     private func firstSubview<View: UIView>(of type: View.Type, in root: UIView) -> View? {
