@@ -15,15 +15,7 @@ final class StingRuntimeIntegrationTests: XCTestCase {
     }
 
     func testHelloWorldRoundTripsNativePressThroughSolidAndHaptics() throws {
-        guard let bundleURL = Bundle.module.url(
-            forResource: "sting-app",
-            withExtension: "js",
-            subdirectory: "Fixtures"
-        ) else {
-            XCTFail("Missing generated Fixtures/sting-app.js. Run scripts/test-ios-runtime.sh.")
-            return
-        }
-
+        let bundleURL = try requireBundle(named: "sting-app")
         let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
         let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let haptics = RecordingHapticsModule()
@@ -67,23 +59,102 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(haptics.calls.first?.method, "impact")
         XCTAssertEqual(haptics.calls.first?.arguments.first as? String, "medium")
 
-        let mutations = runtime.mutationCounts
-        XCTAssertEqual(mutations.replaceText, 1, "One signal update should produce one native text mutation")
-        XCTAssertEqual(mutations.createElement, 0, "Fine-grained updates must not recreate native elements")
-        XCTAssertEqual(mutations.createTextNode, 0, "Fine-grained updates must not recreate text nodes")
-        XCTAssertEqual(mutations.setProperty, 0, "Unrelated native properties must not be replayed")
-        XCTAssertEqual(mutations.insertNode, 0, "Fine-grained text updates must not reinsert native nodes")
-        XCTAssertEqual(mutations.removeNode, 0, "Fine-grained text updates must not remove native nodes")
-        XCTAssertEqual(mutations.setEventEnabled, 0, "Existing event subscriptions must not be rebound")
+        assertSingleTextMutation(runtime.mutationCounts)
     }
 
-    private func firstSubview<View: UIView>(of type: View.Type, in root: UIView) -> View? {
-        if let match = root as? View {
+    func testSparseTenThousandRowUpdateMutatesOnlyTargetNativeText() throws {
+        let bundleURL = try requireBundle(named: "sting-benchmark")
+        let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let runtime = try StingJavaScriptRuntime(rootView: rootView)
+
+        try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
+
+        guard let mountButton = firstButton(titled: "Mount 10k rows", in: rootView) else {
+            XCTFail("Benchmark should expose the 10k-row mount action")
+            return
+        }
+
+        mountButton.onPress?(mountButton.nodeId)
+
+        guard let targetLabel = firstSubview(
+            of: UILabel.self,
+            in: rootView,
+            where: { $0.accessibilityLabel == "benchmark-row-4281" }
+        ) else {
+            XCTFail("Benchmark should mount native row 4,281")
+            return
+        }
+        guard let sparseButton = firstButton(titled: "Update row 4,281", in: rootView) else {
+            XCTFail("Benchmark should expose the sparse row update action")
+            return
+        }
+
+        XCTAssertEqual(targetLabel.text, "Row 4281: 0")
+
+        // Mounting 10,000 rows is intentionally expensive and is measured
+        // separately. The sparse-update invariant starts only after the full
+        // native tree exists.
+        runtime.resetMutationCounts()
+        sparseButton.onPress?(sparseButton.nodeId)
+
+        XCTAssertEqual(
+            targetLabel.text,
+            "Row 4281: 1",
+            "Updating one logical row must update the corresponding mounted native UILabel"
+        )
+        assertSingleTextMutation(runtime.mutationCounts)
+    }
+
+    private func requireBundle(named name: String) throws -> URL {
+        guard let bundleURL = Bundle.module.url(
+            forResource: name,
+            withExtension: "js",
+            subdirectory: "Fixtures"
+        ) else {
+            XCTFail("Missing generated Fixtures/\(name).js. Run scripts/test-ios-runtime.sh.")
+            throw StingRuntimeError("Missing generated benchmark bundle: \(name).js")
+        }
+        return bundleURL
+    }
+
+    private func assertSingleTextMutation(
+        _ mutations: StingBridgeMutationCounts,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            mutations.replaceText,
+            1,
+            "One signal update should produce one native text mutation",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(mutations.createElement, 0, file: file, line: line)
+        XCTAssertEqual(mutations.createTextNode, 0, file: file, line: line)
+        XCTAssertEqual(mutations.setProperty, 0, file: file, line: line)
+        XCTAssertEqual(mutations.insertNode, 0, file: file, line: line)
+        XCTAssertEqual(mutations.removeNode, 0, file: file, line: line)
+        XCTAssertEqual(mutations.setEventEnabled, 0, file: file, line: line)
+    }
+
+    private func firstButton(titled title: String, in root: UIView) -> StingButton? {
+        firstSubview(of: StingButton.self, in: root) { button in
+            button.title(for: .normal) == title
+        }
+    }
+
+    private func firstSubview<View: UIView>(
+        of type: View.Type,
+        in root: UIView,
+        where predicate: (View) -> Bool = { _ in true }
+    ) -> View? {
+        if let match = root as? View, predicate(match) {
             return match
         }
 
         for child in root.subviews {
-            if let match = firstSubview(of: type, in: child) {
+            if let match = firstSubview(of: type, in: child, where: predicate) {
                 return match
             }
         }
