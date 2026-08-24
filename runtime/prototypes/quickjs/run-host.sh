@@ -73,6 +73,15 @@ cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/eng
 cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
 cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
 
+# Zig 0.16's Darwin libc translation exposes stderr as an inline accessor,
+# while glibc exposes it as a FILE pointer. Normalize only the staged prototype
+# sources so the repository source remains compatible with the Linux CI form.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  sed -i '' 's/c\.stderr/c.stderr()/g' \
+    "${STAGED_SOURCE_DIR}/main.zig" \
+    "${STAGED_SOURCE_DIR}/sting_smoke.zig"
+fi
+
 link_args=(
   -lc
   -lm
