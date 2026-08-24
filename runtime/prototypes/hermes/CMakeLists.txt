@@ -23,7 +23,13 @@ target_include_directories(sting_hermes_adapter
   PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
-target_link_libraries(sting_hermes_adapter PRIVATE hermesapi)
+
+# hermesapi contains the public runtime entry points but intentionally does not
+# carry the complete VM object closure. Hermes' own shared-runtime consumers
+# link against hermesvm, whose target force-loads hermesvm_a so RTTI and VM
+# implementation symbols (for example HostObjectProxy) are retained. Link JSI
+# explicitly because the adapter directly uses the JSI surface.
+target_link_libraries(sting_hermes_adapter PRIVATE hermesvm jsi)
 
 set_target_properties(sting_hermes_adapter PROPERTIES
   OUTPUT_NAME "sting_hermes_adapter"
