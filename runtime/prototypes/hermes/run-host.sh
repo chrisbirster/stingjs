@@ -25,7 +25,7 @@ if [[ "$(zig version)" != "0.16.0" ]]; then
   exit 1
 fi
 
-for tool in git cmake ninja python3; do
+for tool in git cmake python3; do
   if ! command -v "${tool}" >/dev/null 2>&1; then
     echo "error: ${tool} is required for this prototype" >&2
     exit 1
@@ -56,10 +56,20 @@ if [[ "${actual_commit}" != "${HERMES_COMMIT}" ]]; then
   exit 1
 fi
 
+# Prefer Ninja when it is already installed, but do not require it. CMake's
+# default Unix Makefiles generator works with the standard macOS command-line
+# tools and is sufficient for this evaluation prototype.
+generator_args=()
+if command -v ninja >/dev/null 2>&1; then
+  generator_args=(-G Ninja)
+elif [[ -f "${BUILD_DIR}/CMakeCache.txt" ]] && grep -q '^CMAKE_GENERATOR:INTERNAL=Ninja$' "${BUILD_DIR}/CMakeCache.txt"; then
+  rm -rf "${BUILD_DIR}"
+fi
+
 cmake \
   -S "${PROTOTYPE_DIR}" \
   -B "${BUILD_DIR}" \
-  -G Ninja \
+  "${generator_args[@]}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DHERMES_SOURCE_DIR="${SOURCE_DIR}"
 
@@ -82,6 +92,15 @@ cp "${PROTOTYPE_DIR}/src/sting_smoke.zig" "${STAGED_SOURCE_DIR}/sting_smoke.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
 cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
 cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
+
+# Zig 0.16's Darwin libc translation exposes stderr as an inline accessor,
+# while glibc exposes it as a FILE pointer. Normalize only the staged prototype
+# sources so Linux CI and macOS local testing use the same checked-in sources.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  sed -i '' 's/c\.stderr/c.stderr()/g' \
+    "${STAGED_SOURCE_DIR}/main.zig" \
+    "${STAGED_SOURCE_DIR}/sting_smoke.zig"
+fi
 
 zig build-exe \
   "${STAGED_SOURCE_DIR}/main.zig" \
