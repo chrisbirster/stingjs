@@ -59,7 +59,14 @@ std::string hostArgument(jsi::Runtime &runtime, const jsi::Value &value) {
 
 extern "C" StingHermesRuntime *sting_hermes_runtime_create(void) {
   try {
-    auto runtime = facebook::hermes::makeHermesRuntimeNoThrow();
+    // Hermes' Promise implementation uses the engine queue only when the
+    // runtime enables its microtask queue. Without this, it falls back to the
+    // host-provided setImmediate path used by legacy embeddings. Sting owns the
+    // runtime loop and explicitly drains Hermes microtasks after evaluation, so
+    // enable the native queue just as Hermes' own hvm CLI does by default.
+    const auto runtime_config =
+        ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).build();
+    auto runtime = facebook::hermes::makeHermesRuntimeNoThrow(runtime_config);
     if (!runtime) {
       return nullptr;
     }
