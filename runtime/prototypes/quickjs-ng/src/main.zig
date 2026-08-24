@@ -61,7 +61,7 @@ fn installHostFunctions(ctx: *c.JSContext) void {
 }
 
 fn runPendingJobs(runtime: *c.JSRuntime, fallback_ctx: *c.JSContext) QuickJSNGError!void {
-    while (c.JS_IsJobPending(runtime) != 0) {
+    while (c.JS_IsJobPending(runtime)) {
         var job_ctx: ?*c.JSContext = null;
         const result = c.JS_ExecutePendingJob(runtime, &job_ctx);
         if (result < 0) {
