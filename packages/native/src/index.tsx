@@ -1,11 +1,4 @@
-import {
-  createElement,
-  createTextNode,
-  effect,
-  insertNode,
-  replaceHostText,
-  spread,
-} from '@stingjs/solid';
+import { createElement, insert, spread } from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
 
 export type FlexDirection = 'row' | 'column';
@@ -69,31 +62,18 @@ export function View(props: ViewProps): HostNode {
 /**
  * Native text backed by UILabel on iOS and TextView on Android.
  *
- * A Text primitive owns exactly one host text node. Reading props.children
- * inside this Solid effect subscribes directly to the signals that produced
- * the text, so a fine-grained update maps to one replaceText bridge command
- * instead of reconciling a mixed array such as ["Count: ", count()].
+ * Text deliberately collapses its children to one scalar accessor. Solid's
+ * universal insert primitive therefore creates one stable host text node and
+ * uses replaceText for subsequent reactive changes instead of reconciling a
+ * mixed child array such as ["Count: ", count()].
  */
 export function Text(props: TextProps): HostNode {
   const node = createElement('text');
 
-  // Keep element-level properties on the native UILabel/TextView while
-  // deliberately excluding children from the universal spread reconciler.
-  spread(node, {
-    get style() {
-      return props.style;
-    },
-    get accessibilityLabel() {
-      return props.accessibilityLabel;
-    },
-  });
-
-  const textNode = createTextNode('');
-  insertNode(node, textNode);
-
-  effect(() => {
-    replaceHostText(textNode, stringifyTextChild(props.children));
-  }, undefined);
+  // `skipChildren` keeps the generic spread reconciler away from Text's
+  // content while still applying style/accessibility properties reactively.
+  spread(node, props, true);
+  insert(node, () => stringifyTextChild(props.children));
 
   return node;
 }
