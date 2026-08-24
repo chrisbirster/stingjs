@@ -24,7 +24,7 @@ jobs:
       - name: Smoke test portable JavaScript engine probes
         run: node benchmarks/js-engine/engine-bench.js
 
-  runtime-quickjs-smoke:
+  runtime-engine-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +40,8 @@ jobs:
           echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
       - name: Build and run official QuickJS through Zig
         run: bash runtime/prototypes/quickjs/run-host.sh
+      - name: Build and run QuickJS-NG through Zig
+        run: bash runtime/prototypes/quickjs-ng/run-host.sh
 
   ios:
     runs-on: macos-latest
