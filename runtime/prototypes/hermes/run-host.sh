@@ -57,6 +57,13 @@ cmake \
 
 cmake --build "${BUILD_DIR}" --target sting_hermes_adapter --parallel 2
 
+hermes_library="$(find "${BUILD_DIR}/hermes" -type f -name 'libhermesvm.so' -print -quit)"
+if [[ -z "${hermes_library}" ]]; then
+  echo "error: Hermes shared VM library was not produced" >&2
+  exit 1
+fi
+readonly HERMES_LIB_DIR="$(dirname "${hermes_library}")"
+
 mkdir -p "${STAGED_SOURCE_DIR}"
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
@@ -65,15 +72,16 @@ zig build-exe \
   "${STAGED_SOURCE_DIR}/main.zig" \
   -I"${PROTOTYPE_DIR}/include" \
   -L"${BUILD_DIR}" \
+  -L"${HERMES_LIB_DIR}" \
   -lsting_hermes_adapter \
   -lc \
   -OReleaseFast \
   -femit-bin="${OUTPUT}"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  export DYLD_LIBRARY_PATH="${BUILD_DIR}:${DYLD_LIBRARY_PATH:-}"
+  export DYLD_LIBRARY_PATH="${BUILD_DIR}:${HERMES_LIB_DIR}:${DYLD_LIBRARY_PATH:-}"
 else
-  export LD_LIBRARY_PATH="${BUILD_DIR}:${LD_LIBRARY_PATH:-}"
+  export LD_LIBRARY_PATH="${BUILD_DIR}:${HERMES_LIB_DIR}:${LD_LIBRARY_PATH:-}"
 fi
 
 exec "${OUTPUT}"
