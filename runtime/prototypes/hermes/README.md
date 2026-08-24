@@ -26,25 +26,17 @@ shared JavaScript workload / real Solid+Sting bundle
         -> Hermes / JSI
 ```
 
-The C++ adapter owns only engine-specific concerns:
-
-- Hermes runtime lifetime,
-- JavaScript evaluation,
-- microtask draining,
-- output/error capture,
-- primitive host-call conversion across the C ABI.
-
-It must not own Sting renderer, module, event, lifecycle, or platform-neutral runtime semantics.
+The C++ adapter owns only engine-specific concerns: runtime lifetime, JavaScript evaluation, microtask draining, output/error capture, and primitive host-call conversion. It must not own Sting renderer, module, event, lifecycle, or platform-neutral runtime semantics.
 
 ## Current semantic gate
 
-The runner builds and executes three layers of evidence:
+The runner requires all of:
 
 1. the shared dependency-free JavaScript CPU benchmark,
-2. the real Solid/Sting hello-world bundle, requiring one press to produce exactly one `replaceText` plus one `Haptics.impact("medium")` call,
-3. the real 10,000-row Solid/Sting benchmark, requiring the sparse row-4,281 update to produce exactly one `replaceText` and the deterministic dense update to produce exactly 100 `replaceText` calls, with zero unrelated structural/property/event mutation replay.
+2. the real Solid/Sting hello-world bundle with one press -> exactly one `replaceText` plus one `Haptics.impact("medium")`,
+3. the real 10,000-row Solid/Sting benchmark with sparse = exactly one `replaceText`, dense = exactly 100 `replaceText`, and zero unrelated mutation replay.
 
-This is the required semantic gate for Hermes, not a statement that the newest Hermes runner head has already passed it. Official QuickJS and QuickJS-NG have been locally confirmed through the equivalent gate on macOS; Hermes still requires a successful run after the latest runner portability fixes.
+Official QuickJS and QuickJS-NG have been locally confirmed through the equivalent gate on macOS. Hermes still requires a successful run after the latest runner portability fixes.
 
 Passing this gate still does **not** select Hermes as the production engine or replace physical-device native-runtime measurements.
 
@@ -56,6 +48,6 @@ Requires Zig `0.16.0`, Git, CMake, Python, npm, and a C/C++ toolchain:
 bash runtime/prototypes/hermes/run-host.sh
 ```
 
-Ninja is optional. The runner prefers Ninja when it is already installed and otherwise uses CMake's Unix Makefiles generator so stock macOS development environments can run the prototype without another required build tool. The script prints the selected generator before configuration to make local failures easier to diagnose.
+Ninja is optional. The runner prefers Ninja when installed and otherwise uses CMake's Unix Makefiles generator so stock macOS development environments need no extra build tool. The selected generator is printed before configuration.
 
 The source and build directories live outside the repository under `${STING_RUNTIME_CACHE:-$TMPDIR/stingjs-runtime}`.
