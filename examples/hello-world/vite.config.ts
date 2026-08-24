@@ -10,12 +10,16 @@ export default defineConfig({
       },
     }),
   ],
-  // Vitest's default Node environment resolves conditional exports through
-  // Vite's SSR resolver. Solid's `node` condition points at its server runtime,
-  // where render effects intentionally do not model persistent client-side
-  // reactivity. Sting's renderer is a long-lived native client renderer, so its
-  // integration tests must exercise Solid's browser/client runtime instead.
+  // Vitest runs in a Node/SSR environment by default. Vite externalizes
+  // node_modules dependencies in that environment, which means Node resolves
+  // Solid's conditional exports itself and selects solid-js/dist/server.js.
+  //
+  // Sting is a long-lived native *client* renderer. Keep Solid and its
+  // universal renderer inside Vite's transform pipeline so the browser/client
+  // condition is used consistently for both packages, without requiring a DOM
+  // shim such as jsdom.
   ssr: {
+    noExternal: ['solid-js', '@solidjs/universal'],
     resolve: {
       conditions: ['browser', 'development', 'import', 'default'],
     },
