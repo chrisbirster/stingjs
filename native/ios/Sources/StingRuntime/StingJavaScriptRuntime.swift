@@ -23,6 +23,11 @@ public final class StingJavaScriptRuntime {
             self?.lastException = exception?.toString() ?? "Unknown JavaScript exception"
         }
 
+        installHostGlobals(in: context)
+        if let lastException {
+            throw StingRuntimeError(lastException)
+        }
+
         let bridge = StingJavaScriptBridge(
             nodes: nodes,
             modules: modules,
@@ -51,5 +56,25 @@ public final class StingJavaScriptRuntime {
         if let lastException {
             throw StingRuntimeError(lastException)
         }
+    }
+
+    private func installHostGlobals(in context: JSContext) {
+        // JavaScriptCore embeds the ECMAScript runtime but does not provide every
+        // browser/Node host API. Solid 2 schedules batched reactive work with
+        // queueMicrotask, so Sting supplies the standard host primitive before
+        // evaluating application code. Promise jobs use JavaScriptCore's native
+        // microtask queue and preserve queueMicrotask ordering semantics.
+        context.evaluateScript(
+            """
+            if (typeof globalThis.queueMicrotask !== "function") {
+              globalThis.queueMicrotask = function queueMicrotask(callback) {
+                if (typeof callback !== "function") {
+                  throw new TypeError("queueMicrotask callback must be a function");
+                }
+                Promise.resolve().then(callback);
+              };
+            }
+            """
+        )
     }
 }
