@@ -136,9 +136,6 @@ fn jsHostCall(
             if (element_type != null) {
                 defer c.JS_FreeCString(ctx, element_type);
                 if (id != null and c.strcmp(element_type, "button") == 0) {
-                    // Hello world currently contains one Button. Keeping this
-                    // selection explicit makes the proof fail if that fixture
-                    // changes instead of silently dispatching to an arbitrary id.
                     smoke_state.button_id = id.?;
                 }
             }
@@ -181,17 +178,18 @@ fn jsHostCall(
     if (c.strcmp(operation, "callModuleSync") == 0) {
         if (argc >= 4) {
             const module_name = c.JS_ToCString(ctx, argv[1]);
+            if (module_name == null) return c.JS_NewString(ctx, module_success_json);
+            defer c.JS_FreeCString(ctx, module_name);
+
             const method_name = c.JS_ToCString(ctx, argv[2]);
+            if (method_name == null) return c.JS_NewString(ctx, module_success_json);
+            defer c.JS_FreeCString(ctx, method_name);
+
             const args_json = c.JS_ToCString(ctx, argv[3]);
+            if (args_json == null) return c.JS_NewString(ctx, module_success_json);
+            defer c.JS_FreeCString(ctx, args_json);
 
-            if (module_name != null) defer c.JS_FreeCString(ctx, module_name);
-            if (method_name != null) defer c.JS_FreeCString(ctx, method_name);
-            if (args_json != null) defer c.JS_FreeCString(ctx, args_json);
-
-            if (module_name != null and
-                method_name != null and
-                args_json != null and
-                c.strcmp(module_name, "Haptics") == 0 and
+            if (c.strcmp(module_name, "Haptics") == 0 and
                 c.strcmp(method_name, "impact") == 0)
             {
                 smoke_state.haptics_calls += 1;
@@ -219,7 +217,6 @@ fn installHostCall(ctx: *c.JSContext) void {
         0,
     );
 
-    // JS_SetPropertyStr consumes host_call regardless of success.
     _ = c.JS_SetPropertyStr(ctx, global, "__stingHostCall", host_call);
 }
 
