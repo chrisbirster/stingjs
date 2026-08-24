@@ -1,46 +1,49 @@
-# stingjs
+# StingJS
 
-`stingjs` is a `v0.1` browser game engine baseline built with Vite,
-TypeScript, and a `bitECS` simulation core. The runtime stays imperative in the
-hot loop while Solid powers the debug overlay and other reactive tooling at the
-boundary.
+StingJS is an Expo-like native application platform for SolidJS.
 
-## Features in v0.1
+The project is being rebuilt around one goal: SolidJS components should render real native iOS and Android views and call native functionality from TypeScript without requiring application authors to write Swift or Kotlin for ordinary apps.
 
-- ECS-first engine structure under `src/engine/core` and `src/engine/ecs`
-- Canvas rendering, camera follow/clamp, keyboard and gamepad input
-- Asset manifest loading for images and audio
-- Sprite animation, world-bounds collision, and trigger overlap systems
-- Deferred scene transitions with async `enter` / `exit` hooks
-- Solid-powered debug overlay with entity, camera, asset, body, and overlap state
-- Co-located Vitest coverage for key ECS systems and scene lifecycle behavior
-
-## Commands
-
-```bash
-npm install
-npm run dev
-npm run test
-npm run typecheck
-npm run lint
-npm run build
-npm run preview
+```text
+SolidJS JSX
+    ↓
+@stingjs/solid
+    ↓
+Sting renderer contract
+    ↓
+Swift / Kotlin native runtime
+    ↓
+UIKit / Android Views
 ```
 
-## Project layout
+StingJS is **not** React Native, does not depend on Expo, and is not a WebView wrapper.
 
-- `src/engine/core/`: `Game`, `Scene`, `EcsScene`, lifecycle, transitions
-- `src/engine/ecs/`: components, systems, collision helpers, world utilities
-- `src/engine/solid/`: debug state and overlay mounting
-- `src/game/`: sample scenes, prefabs, controls, constants, and world setup
-- `images/` and `sound/`: example assets loaded through the manifest path
+## Status
 
-Vite aliases `engine/*` and `game/*` to `src/engine/*` and `src/game/*`.
+The repository previously contained a browser game-engine experiment. That implementation is preserved on the `archive/game-engine-v0.1` branch. Active native-platform work flows through `feature/*` branches into `dev`, then from `dev` into `main` at reviewed milestones.
 
-## Sample flow
+The first proof is intentionally small:
 
-`src/index.ts` mounts the debug overlay and starts `TemplateExample`. The demo
-scene animates the sword logo, follows it with the camera, resolves world
-bounds, detects a portal trigger, and transitions into a second scene to
-exercise the runtime API. Use that sample as the reference path for new engine
-features and game code.
+1. render a Solid component into a native view,
+2. tap a native button,
+3. update a Solid signal,
+4. update native text,
+5. invoke one native module (`Haptics`).
+
+See [`docs/architecture.md`](docs/architecture.md), [`docs/renderer.md`](docs/renderer.md), [`docs/native-modules.md`](docs/native-modules.md), and [`docs/roadmap.md`](docs/roadmap.md).
+
+## Planned packages
+
+- `@stingjs/core` — renderer/runtime contracts that do not depend on Solid.
+- `@stingjs/solid` — the only layer coupled to Solid's universal renderer API.
+- `@stingjs/native` — native UI primitives such as `View`, `Text`, and `Button`.
+- `@stingjs/cli` — local developer tooling.
+- `@stingjs/*` modules — platform capabilities such as haptics, filesystem, and secure storage.
+
+## Current dependency policy
+
+StingJS targets the SolidJS 2 architecture. Solid's universal renderer is treated as an implementation detail behind `@stingjs/solid`; application code must never import it directly.
+
+## License
+
+MIT

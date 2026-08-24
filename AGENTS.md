@@ -1,25 +1,28 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-`index.html` boots the app through Vite and loads `src/index.ts`. Engine runtime code lives in `src/engine/`: `core/` for `Game`, `Scene`, and lifecycle, `ecs/` for components/systems/collision, `solid/` for debug UI, and `assets/` / `input/` for resource helpers. The sample game layer lives in `src/game/` with `scenes/`, `prefabs/`, `constants/`, and `config/`. Static assets stay in `images/` and `sound/`. Keep reusable behavior in `engine` and sample-specific behavior in `game`.
+## Product direction
+StingJS is an Expo-like native application platform for SolidJS. Native UI means UIKit views on iOS and Android Views on Android. Do not introduce React, React Native, Expo as a dependency, or a WebView-based core architecture. SolidJS remains the application reactive model.
 
-## Build, Test, and Development Commands
-Install dependencies with `npm install`, then use:
+The former browser game engine is historical work preserved on `archive/game-engine-v0.1`; do not copy its browser/canvas architecture into the native runtime.
 
-- `npm run dev` to start the Vite development server.
-- `npm test` to run the Vitest suite.
-- `npm run build` to create a production bundle in `dist/`.
-- `npm run preview` to serve the production bundle locally.
-- `npm run lint` to lint JavaScript and TypeScript-facing files.
-- `npm run typecheck` to validate types using `tsconfig.json`.
+## Branch and release flow
+Work on focused `feature/*` branches. Merge reviewed feature PRs into `dev`. Promote `dev` to `main` for milestone releases and tag milestone releases from `main`. Avoid giant direct changes to `main`.
 
-Direct `file://` loading is not part of the supported workflow.
+## Architecture boundaries
+- `packages/core`: Sting-owned renderer, host-node, bridge, module, and lifecycle contracts. No Solid imports.
+- `packages/solid`: adapter around the current Solid 2 universal/custom-renderer API. This is the only package allowed to depend directly on Solid renderer internals.
+- `packages/native`: developer-facing native UI primitives.
+- `packages/cli`: local create/dev/run tooling.
+- `packages/modules/*`: first-party native modules.
+- `native/ios` and `native/android`: platform runtime implementations.
+- `examples/*`: executable proof applications.
+- `docs/*`: architecture, contracts, ADRs, and milestone plans.
 
-## Coding Style & Naming Conventions
-Follow `.editorconfig`: tabs, tab width 2, CRLF line endings, final newline. ESLint enforces semicolons, single quotes, and trailing commas in multiline literals. Use PascalCase for classes and scene/prefab files (`TestScene.ts`, `ShrineScene.ts`), camelCase for functions and variables, and UPPER_SNAKE_CASE for exported constants. Prefer the Vite aliases (`engine/...`, `game/...`) over long relative paths. New ECS components should be singular nouns (`Body`, `TriggerBody`); systems should end in `System`.
+## Native bridge rules
+Keep the JS/native contract small, explicit, versioned, and testable. Do not send executable code through serialized messages. Function/event handlers remain in the JS runtime and are referenced by node/event identity. Native module errors must have stable machine-readable codes. Platform-specific behavior must be documented when parity is impossible.
 
-## Testing Guidelines
-Use `npm test`, `npm run typecheck`, and `npm run lint` as the minimum gate for every change. Keep tests close to the modules they cover, for example `src/engine/ecs/systems/animationSystem.test.ts`. Favor focused unit tests for ECS systems, collision helpers, and scene lifecycle hooks, then do a browser smoke test through `npm run dev` for rendering, input, audio, and transitions.
+## Testing
+Testing is a first-class requirement. At minimum, add unit coverage for renderer-host behavior and native-module contracts. Platform work should have Swift/Kotlin tests where practical and a hello-world smoke path that proves event round-tripping. CI should run TypeScript checks/tests on Linux and native compilation checks on macOS/Android runners as those hosts land.
 
-## Commit & Pull Request Guidelines
-Recent history uses short, imperative commit subjects such as `Fix typo on Camera class` and `Update utils and add lerp function`. Keep commits focused and descriptive. For pull requests, include a concise summary, automated/manual verification steps, linked issues when relevant, and screenshots or short clips for visible canvas/UI changes such as the sample scenes or debug overlay.
+## v0.1 scope discipline
+Optimize for the smallest end-to-end native proof. Do not add cloud builds, app-store automation, authentication, billing, OTA updates, a large module catalog, or speculative abstractions before the native renderer/event/module path works.

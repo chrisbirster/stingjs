@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "Haptics",
+  "package": "@stingjs/haptics",
+  "version": "0.1.0",
+  "ios": {
+    "module": "HapticsModule"
+  },
+  "android": {
+    "module": "com.stingjs.haptics.HapticsModule"
+  }
+}
