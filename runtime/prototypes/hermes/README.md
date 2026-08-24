@@ -48,6 +48,6 @@ Requires Zig `0.16.0`, Git, CMake, Python, npm, and a C/C++ toolchain:
 bash runtime/prototypes/hermes/run-host.sh
 ```
 
-Ninja is optional. The runner prefers Ninja when installed and otherwise uses CMake's Unix Makefiles generator so stock macOS development environments need no extra build tool. The selected generator is printed before configuration.
+Ninja is optional. The runner prefers Ninja when installed and otherwise uses CMake's Unix Makefiles generator so stock macOS development environments need no extra build tool. The selected generator is printed before configuration. Generator selection intentionally avoids empty Bash arrays so the runner works with stock macOS Bash 3.2 under `set -u`.
 
 The source and build directories live outside the repository under `${STING_RUNTIME_CACHE:-$TMPDIR/stingjs-runtime}`.
