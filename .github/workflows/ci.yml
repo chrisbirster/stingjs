@@ -56,6 +56,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install Sting workspace dependencies
+        run: npm install
       - name: Install pinned Zig 0.16.0
         shell: bash
         run: |
