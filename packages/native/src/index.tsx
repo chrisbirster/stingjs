@@ -1,5 +1,10 @@
-import { children } from 'solid-js';
-import { createElement, insert, spread } from '@stingjs/solid';
+import {
+  bindHostText,
+  createElement,
+  createTextNode,
+  insertNode,
+  spread,
+} from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
 
 export type FlexDirection = 'row' | 'column';
@@ -63,20 +68,20 @@ export function View(props: ViewProps): HostNode {
 /**
  * Native text backed by UILabel on iOS and TextView on Android.
  *
- * Solid's `children` helper resolves nested JSX child accessors while keeping
- * their signal dependencies tracked. Sting then collapses that resolved value
- * into one scalar insertion so updates reuse a single host text node and emit
- * replaceText rather than structural child reconciliation.
+ * A Text owns exactly one persistent host text node. Solid tracks the
+ * component's children inside bindHostText and every subsequent signal change
+ * mutates that node through replaceText. This keeps text updates on Sting's
+ * fine-grained hot path and completely avoids child reconciliation.
  */
 export function Text(props: TextProps): HostNode {
   const node = createElement('text');
+  const textNode = createTextNode('');
 
-  // `skipChildren` keeps the generic spread reconciler away from Text's
-  // content while still applying style/accessibility properties reactively.
+  // Text content is owned by the explicit binding below; generic spread still
+  // handles styles and accessibility properties but never reconciles children.
   spread(node, props, true);
-
-  const resolvedChildren = children(() => props.children);
-  insert(node, () => stringifyTextChild(resolvedChildren()));
+  insertNode(node, textNode);
+  bindHostText(textNode, () => stringifyTextChild(props.children));
 
   return node;
 }
