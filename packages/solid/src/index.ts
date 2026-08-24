@@ -1,4 +1,5 @@
 import { createRenderer } from '@solidjs/universal';
+import { createRenderEffect } from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
@@ -62,13 +63,16 @@ export const {
 } = renderer;
 
 /**
- * Replace the contents of one Sting text node without exposing the host
- * implementation to developer-facing packages. Native primitives use this
- * narrow adapter so Solid's fine-grained computations map directly to one
- * native text mutation instead of generic child reconciliation.
+ * Bind one existing Sting host text node to a Solid computation.
+ *
+ * Native Text primitives intentionally own a single persistent host text node.
+ * Every reactive change therefore maps directly to replaceText instead of
+ * entering generic child reconciliation.
  */
-export function replaceHostText(node: HostNode, value: string): void {
-  getHost().replaceText(node, value);
+export function bindHostText(node: HostNode, readValue: () => string): void {
+  createRenderEffect(() => {
+    getHost().replaceText(node, readValue());
+  });
 }
 
 function requireHostNode(value: unknown): HostNode {
