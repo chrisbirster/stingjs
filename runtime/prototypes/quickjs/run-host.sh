@@ -11,7 +11,8 @@ readonly ARCHIVE="${CACHE_ROOT}/quickjs-${QUICKJS_VERSION}.tar.xz"
 readonly SOURCE_DIR="${CACHE_ROOT}/quickjs-${QUICKJS_VERSION}"
 readonly OUTPUT_DIR="${CACHE_ROOT}/build/official-quickjs"
 readonly STAGED_SOURCE_DIR="${OUTPUT_DIR}/src"
-readonly OUTPUT="${OUTPUT_DIR}/sting-quickjs-engine-bench"
+readonly ENGINE_OUTPUT="${OUTPUT_DIR}/sting-quickjs-engine-bench"
+readonly STING_OUTPUT="${OUTPUT_DIR}/sting-quickjs-sting-smoke"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "error: Zig 0.16.0 is required for this prototype" >&2
@@ -20,6 +21,11 @@ fi
 
 if [[ "$(zig version)" != "0.16.0" ]]; then
   echo "error: expected Zig 0.16.0, found $(zig version)" >&2
+  exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "error: npm is required to build the real Sting hello-world bundle" >&2
   exit 1
 fi
 
@@ -46,16 +52,22 @@ if [[ ! -d "${SOURCE_DIR}" ]]; then
   tar -xJf "${ARCHIVE}" -C "${CACHE_ROOT}"
 fi
 
-# Keep QuickJS's own build rules for this first host-only evaluation probe.
-# The permanent mobile integration will be owned by Sting's Zig build once the
-# engine decision has evidence behind it.
+# Keep QuickJS's own build rules for this evaluation probe. The permanent
+# mobile integration remains intentionally undecided until the engine matrix is
+# backed by application-level physical-device evidence.
 make -C "${SOURCE_DIR}" libquickjs.a
 
+# Build the same universal Solid/Sting bundle used by the native iOS semantic
+# proof. Vite is only the compiler/bundler here; QuickJS is the runtime.
+cd "${REPO_ROOT}"
+npm run build --workspace @stingjs/example-hello-world
+
 # Zig 0.16 does not allow @embedFile() to escape a module package root. Stage
-# the Zig host and the one canonical shared benchmark together in the external
-# build cache rather than committing a duplicate benchmark source.
+# each Zig host with the canonical source it embeds in the external build cache.
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
+cp "${PROTOTYPE_DIR}/src/sting_smoke.zig" "${STAGED_SOURCE_DIR}/sting_smoke.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
+cp "${REPO_ROOT}/examples/hello-world/dist/sting-app.js" "${STAGED_SOURCE_DIR}/sting-app.js"
 
 link_args=(
   -lc
@@ -74,6 +86,16 @@ zig build-exe \
   -lquickjs \
   "${link_args[@]}" \
   -OReleaseFast \
-  -femit-bin="${OUTPUT}"
+  -femit-bin="${ENGINE_OUTPUT}"
 
-exec "${OUTPUT}"
+zig build-exe \
+  "${STAGED_SOURCE_DIR}/sting_smoke.zig" \
+  -I"${SOURCE_DIR}" \
+  -L"${SOURCE_DIR}" \
+  -lquickjs \
+  "${link_args[@]}" \
+  -OReleaseFast \
+  -femit-bin="${STING_OUTPUT}"
+
+"${ENGINE_OUTPUT}"
+exec "${STING_OUTPUT}"
