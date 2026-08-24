@@ -2,7 +2,7 @@
 
 This directory is an **engine evaluation prototype**, not a StingJS engine decision.
 
-It exists beside the official QuickJS prototype so both candidates can run the same portable JavaScript workload through a Zig-owned host boundary.
+It exists beside the official QuickJS prototype so both candidates can run the same portable JavaScript workload and the same real Solid/Sting semantic workloads through a Zig-owned host boundary.
 
 ## Pin
 
@@ -14,18 +14,26 @@ The runner fetches the release tag and verifies that it resolves to the pinned c
 
 ## Current proof
 
+The prototype runs three comparable gates:
+
+1. the shared dependency-free JavaScript CPU benchmark,
+2. the real hello-world Solid/Sting bundle, including press -> `Count: 1`, exactly one `replaceText`, and one `Haptics.impact("medium")`,
+3. the real 10,000-row Solid/Sting bundle, requiring sparse = exactly one `replaceText` and dense = exactly 100 `replaceText` calls with zero unrelated mutation replay.
+
 ```text
-shared JavaScript workload
+Solid + Sting bundle
         -> QuickJS-NG
         -> QuickJS-NG C API
-        -> Zig host
+        -> Zig semantic host
 ```
 
-Like the official QuickJS prototype, this does not yet claim that the full Solid/native renderer loop works under QuickJS-NG.
+QuickJS-NG's embedding API differs slightly from official QuickJS in places such as boolean helper return types. Those differences stay inside this prototype and must not leak into Sting's public runtime contract.
+
+Passing these gates proves the portable Sting renderer/event/module semantics can execute under the pinned QuickJS-NG candidate. It does **not** select QuickJS-NG or replace physical-device release measurements.
 
 ## Run
 
-Requires Zig `0.16.0`, Git, CMake, and a host C toolchain:
+Requires Zig `0.16.0`, Node/npm, Git, CMake, and a host C toolchain:
 
 ```sh
 bash runtime/prototypes/quickjs-ng/run-host.sh
