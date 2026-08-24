@@ -7,6 +7,7 @@ const c = @cImport({
 });
 
 const app_source = @embedFile("sting-app.js");
+const benchmark_source = @embedFile("sting-benchmark.js");
 
 const runtime_info_json =
     "{\"protocolVersion\":1,\"platform\":\"ios\",\"modules\":{\"Haptics\":\"0.1.0\"}}";
@@ -60,6 +61,10 @@ const dispatch_press =
     \\);
 ;
 
+const benchmark_mount = "globalThis.__stingBenchmark.mountRows();";
+const benchmark_sparse = "globalThis.__stingBenchmark.updateSparse();";
+const benchmark_dense = "globalThis.__stingBenchmark.updateDense();";
+
 const SmokeError = error{
     RuntimeCreationFailed,
     ContextCreationFailed,
@@ -67,20 +72,27 @@ const SmokeError = error{
     PendingJobFailed,
     InitialMountFailed,
     EventDispatchFailed,
+    BenchmarkFailed,
 };
 
 const SmokeState = struct {
     button_id: i32 = -1,
     count_text_id: i32 = -1,
+    benchmark_target_text_id: i32 = -1,
     saw_initial_count: bool = false,
     saw_updated_count: bool = false,
+    saw_benchmark_initial: bool = false,
+    saw_benchmark_sparse: bool = false,
+    saw_benchmark_dense: bool = false,
     replace_text_count: u32 = 0,
     unrelated_mutation_count: u32 = 0,
     haptics_calls: u32 = 0,
     saw_medium_haptics: bool = false,
 
-    fn resetEventMeasurements(self: *SmokeState) void {
+    fn resetHotPathMeasurements(self: *SmokeState) void {
         self.saw_updated_count = false;
+        self.saw_benchmark_sparse = false;
+        self.saw_benchmark_dense = false;
         self.replace_text_count = 0;
         self.unrelated_mutation_count = 0;
         self.haptics_calls = 0;
@@ -169,6 +181,19 @@ fn jsHostCall(
                     c.strcmp(value, "Count: 1") == 0)
                 {
                     smoke_state.saw_updated_count = true;
+                } else if (id != null and c.strcmp(value, "Row 4281: 0") == 0) {
+                    smoke_state.benchmark_target_text_id = id.?;
+                    smoke_state.saw_benchmark_initial = true;
+                } else if (id != null and
+                    id.? == smoke_state.benchmark_target_text_id and
+                    c.strcmp(value, "Row 4281: 1") == 0)
+                {
+                    smoke_state.saw_benchmark_sparse = true;
+                } else if (id != null and
+                    id.? == smoke_state.benchmark_target_text_id and
+                    c.strcmp(value, "Row 4281: 2") == 0)
+                {
+                    smoke_state.saw_benchmark_dense = true;
                 }
             }
         }
@@ -258,9 +283,14 @@ fn runPendingJobs(runtime: *c.JSRuntime, fallback_ctx: *c.JSContext) SmokeError!
     }
 }
 
-fn fail(message: []const u8) SmokeError {
+fn failEvent(message: []const u8) SmokeError {
     std.debug.print("QuickJS-NG Sting smoke failed: {s}\n", .{message});
     return SmokeError.EventDispatchFailed;
+}
+
+fn failBenchmark(message: []const u8) SmokeError {
+    std.debug.print("QuickJS-NG 10k benchmark smoke failed: {s}\n", .{message});
+    return SmokeError.BenchmarkFailed;
 }
 
 pub fn main() !void {
@@ -288,20 +318,45 @@ pub fn main() !void {
         return SmokeError.InitialMountFailed;
     }
 
-    smoke_state.resetEventMeasurements();
+    smoke_state.resetHotPathMeasurements();
     exposeButtonId(ctx, smoke_state.button_id);
 
     try evaluate(ctx, dispatch_press, "sting-quickjs-ng-dispatch.js");
     try runPendingJobs(runtime, ctx);
 
-    if (!smoke_state.saw_updated_count) return fail("press did not produce Count: 1");
-    if (smoke_state.replace_text_count != 1) return fail("press did not produce exactly one replaceText mutation");
-    if (smoke_state.unrelated_mutation_count != 0) return fail("press replayed unrelated native mutations");
-    if (smoke_state.haptics_calls != 1) return fail("press did not call Haptics exactly once");
-    if (!smoke_state.saw_medium_haptics) return fail("Haptics impact did not receive medium");
+    if (!smoke_state.saw_updated_count) return failEvent("press did not produce Count: 1");
+    if (smoke_state.replace_text_count != 1) return failEvent("press did not produce exactly one replaceText mutation");
+    if (smoke_state.unrelated_mutation_count != 0) return failEvent("press replayed unrelated native mutations");
+    if (smoke_state.haptics_calls != 1) return failEvent("press did not call Haptics exactly once");
+    if (!smoke_state.saw_medium_haptics) return failEvent("Haptics impact did not receive medium");
+
+    try evaluate(ctx, benchmark_source, "sting-benchmark.js");
+    try runPendingJobs(runtime, ctx);
+    try evaluate(ctx, benchmark_mount, "sting-benchmark-mount.js");
+    try runPendingJobs(runtime, ctx);
+
+    if (!smoke_state.saw_benchmark_initial or smoke_state.benchmark_target_text_id < 0) {
+        return failBenchmark("row 4,281 was not mounted with revision 0");
+    }
+
+    smoke_state.resetHotPathMeasurements();
+    try evaluate(ctx, benchmark_sparse, "sting-benchmark-sparse.js");
+    try runPendingJobs(runtime, ctx);
+
+    if (!smoke_state.saw_benchmark_sparse) return failBenchmark("sparse update did not produce Row 4281: 1");
+    if (smoke_state.replace_text_count != 1) return failBenchmark("sparse update did not produce exactly one replaceText mutation");
+    if (smoke_state.unrelated_mutation_count != 0) return failBenchmark("sparse update replayed unrelated native mutations");
+
+    smoke_state.resetHotPathMeasurements();
+    try evaluate(ctx, benchmark_dense, "sting-benchmark-dense.js");
+    try runPendingJobs(runtime, ctx);
+
+    if (!smoke_state.saw_benchmark_dense) return failBenchmark("dense update did not produce Row 4281: 2");
+    if (smoke_state.replace_text_count != 100) return failBenchmark("dense update did not produce exactly 100 replaceText mutations");
+    if (smoke_state.unrelated_mutation_count != 0) return failBenchmark("dense update replayed unrelated native mutations");
 
     std.debug.print(
-        "QuickJS-NG Sting smoke passed: button={d} text={d} replaceText=1 haptics=medium\n",
-        .{ smoke_state.button_id, smoke_state.count_text_id },
+        "QuickJS-NG Sting smoke passed: counter replaceText=1 haptics=medium; 10k sparse=1 dense=100\n",
+        .{},
     );
 }
