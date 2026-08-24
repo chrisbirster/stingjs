@@ -47,6 +47,14 @@ function createNativePrimitive(type: string, props: object): HostNode {
 }
 
 function stringifyTextChild(value: unknown): string {
+  // Solid's universal JSX transform may preserve dynamic children as accessors.
+  // Text calls this function from bindHostText's createRenderEffect, so invoking
+  // the accessor here both resolves its current value and subscribes the effect
+  // to every signal read by that accessor.
+  if (typeof value === 'function') {
+    return stringifyTextChild((value as () => unknown)());
+  }
+
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
