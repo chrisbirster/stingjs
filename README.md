@@ -18,6 +18,25 @@ UIKit / Android Views
 
 StingJS is **not** React Native, does not depend on Expo, and is not a WebView wrapper.
 
+## Start here: how does this actually run?
+
+If the jump from a SolidJS/Vite project to a native iOS app is confusing, read [`docs/how-sting-runs.md`](docs/how-sting-runs.md) first.
+
+It explains, at both an ELI5 and technical level, how:
+
+```text
+App.tsx
+  → Solid compiler + Vite
+  → sting-app.js
+  → Xcode packages the bundle
+  → a JavaScript engine evaluates it inside the native app
+  → the Sting bridge emits native mutations
+  → Swift creates real UIKit views
+  → UIKit events travel back into Solid
+```
+
+Vite is the compiler/bundler in that pipeline. The iOS application does not render HTML, use the DOM, or display a WebView.
+
 ## Status
 
 The repository previously contained a browser game-engine experiment. That implementation is preserved on the `archive/game-engine-v0.1` branch. Active native-platform work flows through `feature/*` branches into `dev`, then from `dev` into `main` at reviewed milestones.
@@ -30,7 +49,7 @@ The first proof is intentionally small:
 4. update native text,
 5. invoke one native module (`Haptics`).
 
-See [`docs/architecture.md`](docs/architecture.md), [`docs/renderer.md`](docs/renderer.md), [`docs/native-modules.md`](docs/native-modules.md), and [`docs/roadmap.md`](docs/roadmap.md).
+See [`docs/how-sting-runs.md`](docs/how-sting-runs.md), [`docs/architecture.md`](docs/architecture.md), [`docs/renderer.md`](docs/renderer.md), [`docs/native-modules.md`](docs/native-modules.md), and [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Planned packages
 
