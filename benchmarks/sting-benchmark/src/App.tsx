@@ -30,13 +30,21 @@ export default function App() {
     return { id, revision, setRevision };
   });
 
+  const rowAt = (index: number) => {
+    const row = rows[index];
+    if (!row) {
+      throw new RangeError(`benchmark row index out of bounds: ${index}`);
+    }
+    return row;
+  };
+
   const updateSparse = () => {
-    rows[SPARSE_TARGET].setRevision(value => value + 1);
+    rowAt(SPARSE_TARGET).setRevision(value => value + 1);
   };
 
   const updateDense = () => {
     for (const index of DENSE_TARGETS) {
-      rows[index].setRevision(value => value + 1);
+      rowAt(index).setRevision(value => value + 1);
     }
   };
 
