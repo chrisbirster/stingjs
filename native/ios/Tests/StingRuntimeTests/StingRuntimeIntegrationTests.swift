@@ -59,10 +59,10 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(haptics.calls.first?.method, "impact")
         XCTAssertEqual(haptics.calls.first?.arguments.first as? String, "medium")
 
-        assertSingleTextMutation(runtime.mutationCounts)
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
     }
 
-    func testSparseTenThousandRowUpdateMutatesOnlyTargetNativeText() throws {
+    func testTenThousandRowSparseAndDenseUpdatesPreserveFineGrainedNativeMutations() throws {
         let bundleURL = try requireBundle(named: "sting-benchmark")
         let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
         let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -89,12 +89,16 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             XCTFail("Benchmark should expose the sparse row update action")
             return
         }
+        guard let denseButton = firstButton(titled: "Update 100 rows", in: rootView) else {
+            XCTFail("Benchmark should expose the dense row update action")
+            return
+        }
 
         XCTAssertEqual(targetLabel.text, "Row 4281: 0")
 
         // Mounting 10,000 rows is intentionally expensive and is measured
-        // separately. The sparse-update invariant starts only after the full
-        // native tree exists.
+        // separately. Sparse/dense mutation invariants start only after the
+        // complete native tree exists.
         runtime.resetMutationCounts()
         sparseButton.onPress?(sparseButton.nodeId)
 
@@ -103,7 +107,16 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             "Row 4281: 1",
             "Updating one logical row must update the corresponding mounted native UILabel"
         )
-        assertSingleTextMutation(runtime.mutationCounts)
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
+
+        // The deterministic dense fixture includes row 4,281 and 99 other
+        // unique rows. Solid should therefore schedule exactly 100 bound text
+        // computations and Sting should emit exactly 100 native text mutations.
+        runtime.resetMutationCounts()
+        denseButton.onPress?(denseButton.nodeId)
+
+        XCTAssertEqual(targetLabel.text, "Row 4281: 2")
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 100)
     }
 
     private func requireBundle(named name: String) throws -> URL {
@@ -118,15 +131,16 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         return bundleURL
     }
 
-    private func assertSingleTextMutation(
+    private func assertOnlyTextMutations(
         _ mutations: StingBridgeMutationCounts,
+        expected: Int,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         XCTAssertEqual(
             mutations.replaceText,
-            1,
-            "One signal update should produce one native text mutation",
+            expected,
+            "Reactive updates should emit only the expected native text mutations",
             file: file,
             line: line
         )
