@@ -90,7 +90,7 @@ pub fn main() !void {
     );
     defer c.JS_FreeValue(ctx, result);
 
-    if (c.JS_IsException(result) != 0) {
+    if (c.JS_IsException(result)) {
         dumpException(ctx);
         return QuickJSNGError.EvaluationFailed;
     }
