@@ -65,6 +65,8 @@ else
   desired_generator="Unix Makefiles"
 fi
 
+echo "Hermes CMake generator: ${desired_generator}"
+
 if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   cached_generator="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" | head -n 1)"
   if [[ -n "${cached_generator}" && "${cached_generator}" != "${desired_generator}" ]]; then
