@@ -18,6 +18,14 @@ let package = Package(
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("UIKit")
             ]
+        ),
+        .testTarget(
+            name: "StingRuntimeTests",
+            dependencies: ["StingRuntime"],
+            path: "Tests/StingRuntimeTests",
+            resources: [
+                .copy("Fixtures")
+            ]
         )
     ],
     swiftLanguageVersions: [.v5]
