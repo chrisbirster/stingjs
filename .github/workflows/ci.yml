@@ -32,6 +32,8 @@ jobs:
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - run: npm install
+      - name: Prove Solid-to-native loop in JavaScriptCore
+        run: npm run test:ios-runtime
       - name: Build StingRuntime for iOS Simulator
         working-directory: native/ios
         run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' build
