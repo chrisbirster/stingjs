@@ -1,5 +1,5 @@
 import solidPlugin from '@solidjs/vite-plugin';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [
@@ -10,18 +10,21 @@ export default defineConfig({
       },
     }),
   ],
-  // Vitest runs in a Node/SSR environment by default. Vite externalizes
-  // node_modules dependencies in that environment, which means Node resolves
-  // Solid's conditional exports itself and selects solid-js/dist/server.js.
-  //
-  // Sting is a long-lived native *client* renderer. Keep Solid and its
-  // universal renderer inside Vite's transform pipeline so the browser/client
-  // condition is used consistently for both packages, without requiring a DOM
-  // shim such as jsdom.
+  // Sting is a long-lived native client renderer, but Vitest's default Node
+  // environment uses the SSR module runner. Solid exposes a `node` condition
+  // that resolves to dist/server.js, so these packages must stay inside
+  // Vitest/Vite's module graph and resolve with the browser condition instead
+  // of being imported natively by Node.
   ssr: {
-    noExternal: ['solid-js', '@solidjs/universal'],
     resolve: {
       conditions: ['browser', 'development', 'import', 'default'],
+    },
+  },
+  test: {
+    server: {
+      deps: {
+        inline: ['solid-js', '@solidjs/universal'],
+      },
     },
   },
   build: {
