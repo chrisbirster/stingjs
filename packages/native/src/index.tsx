@@ -1,4 +1,11 @@
-import { createElement, spread } from '@stingjs/solid';
+import {
+  createElement,
+  createTextNode,
+  effect,
+  insertNode,
+  replaceHostText,
+  spread,
+} from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
 
 export type FlexDirection = 'row' | 'column';
@@ -40,14 +47,55 @@ function createNativePrimitive(type: string, props: object): HostNode {
   return node;
 }
 
+function stringifyTextChild(value: unknown): string {
+  if (value == null || typeof value === 'boolean') return '';
+  if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
+
+  switch (typeof value) {
+    case 'string':
+    case 'number':
+    case 'bigint':
+      return String(value);
+    default:
+      throw new TypeError('@stingjs/native <Text> only accepts textual children');
+  }
+}
+
 /** Native container backed by UIView/UIStackView on iOS and View/ViewGroup on Android. */
 export function View(props: ViewProps): HostNode {
   return createNativePrimitive('view', props);
 }
 
-/** Native text backed by UILabel on iOS and TextView on Android. */
+/**
+ * Native text backed by UILabel on iOS and TextView on Android.
+ *
+ * A Text primitive owns exactly one host text node. Reading props.children
+ * inside this Solid effect subscribes directly to the signals that produced
+ * the text, so a fine-grained update maps to one replaceText bridge command
+ * instead of reconciling a mixed array such as ["Count: ", count()].
+ */
 export function Text(props: TextProps): HostNode {
-  return createNativePrimitive('text', props);
+  const node = createElement('text');
+
+  // Keep element-level properties on the native UILabel/TextView while
+  // deliberately excluding children from the universal spread reconciler.
+  spread(node, {
+    get style() {
+      return props.style;
+    },
+    get accessibilityLabel() {
+      return props.accessibilityLabel;
+    },
+  });
+
+  const textNode = createTextNode('');
+  insertNode(node, textNode);
+
+  effect(() => {
+    replaceHostText(textNode, stringifyTextChild(props.children));
+  });
+
+  return node;
 }
 
 /** Native pressable button backed by UIButton on iOS and Button on Android. */
