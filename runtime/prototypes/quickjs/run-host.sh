@@ -13,6 +13,8 @@ readonly OUTPUT_DIR="${CACHE_ROOT}/build/official-quickjs"
 readonly STAGED_SOURCE_DIR="${OUTPUT_DIR}/src"
 readonly ENGINE_OUTPUT="${OUTPUT_DIR}/sting-quickjs-engine-bench"
 readonly STING_OUTPUT="${OUTPUT_DIR}/sting-quickjs-sting-smoke"
+readonly APP_BUNDLE="${REPO_ROOT}/examples/hello-world/dist/sting-app.js"
+readonly BENCHMARK_BUNDLE="${REPO_ROOT}/benchmarks/sting-benchmark/dist/sting-benchmark.js"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "error: Zig 0.16.0 is required for this prototype" >&2
@@ -25,7 +27,7 @@ if [[ "$(zig version)" != "0.16.0" ]]; then
 fi
 
 if ! command -v npm >/dev/null 2>&1; then
-  echo "error: npm is required to build the real Sting hello-world bundle" >&2
+  echo "error: npm is required to build the real Sting application bundles" >&2
   exit 1
 fi
 
@@ -57,17 +59,19 @@ fi
 # backed by application-level physical-device evidence.
 make -C "${SOURCE_DIR}" libquickjs.a
 
-# Build the same universal Solid/Sting bundle used by the native iOS semantic
-# proof. Vite is only the compiler/bundler here; QuickJS is the runtime.
+# Build the same universal Solid/Sting bundles used by the native iOS semantic
+# proofs. Vite is only the compiler/bundler here; QuickJS is the runtime.
 cd "${REPO_ROOT}"
 npm run build --workspace @stingjs/example-hello-world
+npm run build --workspace @stingjs/benchmark-native
 
 # Zig 0.16 does not allow @embedFile() to escape a module package root. Stage
 # each Zig host with the canonical source it embeds in the external build cache.
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
 cp "${PROTOTYPE_DIR}/src/sting_smoke.zig" "${STAGED_SOURCE_DIR}/sting_smoke.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
-cp "${REPO_ROOT}/examples/hello-world/dist/sting-app.js" "${STAGED_SOURCE_DIR}/sting-app.js"
+cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
+cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
 
 link_args=(
   -lc
