@@ -61,6 +61,16 @@ export const {
   ref,
 } = renderer;
 
+/**
+ * Replace the contents of one Sting text node without exposing the host
+ * implementation to developer-facing packages. Native primitives use this
+ * narrow adapter so Solid's fine-grained computations map directly to one
+ * native text mutation instead of generic child reconciliation.
+ */
+export function replaceHostText(node: HostNode, value: string): void {
+  getHost().replaceText(node, value);
+}
+
 function requireHostNode(value: unknown): HostNode {
   if (
     value == null ||
