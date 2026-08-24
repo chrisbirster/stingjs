@@ -44,7 +44,9 @@ The runner builds and executes three layers of evidence:
 2. the real Solid/Sting hello-world bundle, requiring one press to produce exactly one `replaceText` plus one `Haptics.impact("medium")` call,
 3. the real 10,000-row Solid/Sting benchmark, requiring the sparse row-4,281 update to produce exactly one `replaceText` and the deterministic dense update to produce exactly 100 `replaceText` calls, with zero unrelated structural/property/event mutation replay.
 
-This proves engine compatibility with the current portable Sting semantics. It still does **not** select Hermes as the production engine or replace physical-device native-runtime measurements.
+This is the required semantic gate for Hermes, not a statement that the newest Hermes runner head has already passed it. Official QuickJS and QuickJS-NG have been locally confirmed through the equivalent gate on macOS; Hermes still requires a successful run after the latest runner portability fixes.
+
+Passing this gate still does **not** select Hermes as the production engine or replace physical-device native-runtime measurements.
 
 ## Run
 
