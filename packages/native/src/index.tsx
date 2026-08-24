@@ -41,6 +41,14 @@ function createNativePrimitive(type: string, props: object): HostNode {
 }
 
 function stringifyTextChild(value: unknown): string {
+  // Solid may preserve dynamic JSX children as accessors inside a mixed child
+  // array (for example ["Count: ", count]). Evaluate them while this function
+  // is running inside `insert`'s reactive computation so Solid tracks exactly
+  // the signals that contribute to this Text node.
+  if (typeof value === 'function') {
+    return stringifyTextChild((value as () => unknown)());
+  }
+
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
