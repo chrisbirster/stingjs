@@ -1,5 +1,5 @@
 import { createRenderer } from '@solidjs/universal';
-import { createRenderEffect } from 'solid-js';
+import { createRenderEffect, flush } from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
@@ -65,14 +65,14 @@ export const {
 /**
  * Bind one existing Sting host text node to a Solid computation.
  *
- * Native Text primitives intentionally own a single persistent host text node.
- * Every reactive change therefore maps directly to replaceText instead of
- * entering generic child reconciliation.
+ * Solid 2 effects separate dependency tracking (compute) from the side effect
+ * (apply). Native Text owns one persistent host text node, so every update maps
+ * directly to replaceText instead of entering generic child reconciliation.
  */
 export function bindHostText(node: HostNode, readValue: () => string): void {
-  createRenderEffect(() => {
-    getHost().replaceText(node, readValue());
-  }, undefined);
+  createRenderEffect(readValue, value => {
+    getHost().replaceText(node, value);
+  });
 }
 
 function requireHostNode(value: unknown): HostNode {
@@ -90,7 +90,26 @@ function requireHostNode(value: unknown): HostNode {
 }
 
 export function renderApp(code: () => unknown): () => void {
-  return render(() => requireHostNode(code()), getHost().root);
+  const host = getHost();
+  const dispatchWithoutFlush = globalThis.__stingDispatchEvent;
+
+  if (!dispatchWithoutFlush) {
+    throw new Error('Sting native event dispatcher was not installed with the native bridge');
+  }
+
+  // Solid 2 batches signal writes. Browser renderers establish a flush boundary
+  // around native events; Sting must do the equivalent for UIKit/Android events
+  // so signal changes become native mutations before the event returns.
+  globalThis.__stingDispatchEvent = (nodeId, event, payloadJSON) => {
+    dispatchWithoutFlush(nodeId, event, payloadJSON);
+    flush();
+  };
+
+  const dispose = render(() => requireHostNode(code()), host.root);
+  return () => {
+    globalThis.__stingDispatchEvent = dispatchWithoutFlush;
+    dispose();
+  };
 }
 
 // Solid 2 control-flow names. These are intentionally forwarded from the
