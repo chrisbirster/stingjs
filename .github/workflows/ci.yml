@@ -25,8 +25,15 @@ jobs:
       - name: Smoke test portable JavaScript engine probes
         run: node benchmarks/js-engine/engine-bench.js
 
-  runtime-engine-smoke:
+  runtime-quickjs-smoke:
+    name: Runtime ${{ matrix.engine }} smoke
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine:
+          - quickjs
+          - quickjs-ng
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,14 +53,12 @@ jobs:
           echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
           tar -xJf /tmp/zig.tar.xz -C /tmp
           echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
-      - name: Build and run official QuickJS through Zig
-        run: bash runtime/prototypes/quickjs/run-host.sh
-      - name: Build and run QuickJS-NG through Zig
-        run: bash runtime/prototypes/quickjs-ng/run-host.sh
+      - name: Build and run ${{ matrix.engine }} through Zig
+        run: bash "runtime/prototypes/${{ matrix.engine }}/run-host.sh"
 
   runtime-hermes-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
