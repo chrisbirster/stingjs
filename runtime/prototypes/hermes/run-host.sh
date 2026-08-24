@@ -56,22 +56,37 @@ if [[ "${actual_commit}" != "${HERMES_COMMIT}" ]]; then
   exit 1
 fi
 
-# Prefer Ninja when it is already installed, but do not require it. CMake's
-# default Unix Makefiles generator works with the standard macOS command-line
-# tools and is sufficient for this evaluation prototype.
-generator_args=()
+# Prefer Ninja when it is already installed, but do not require it. Use an
+# explicit generator branch instead of an optionally empty Bash array because
+# stock macOS Bash 3.2 treats an empty array expansion as unbound under `set -u`.
 if command -v ninja >/dev/null 2>&1; then
-  generator_args=(-G Ninja)
-elif [[ -f "${BUILD_DIR}/CMakeCache.txt" ]] && grep -q '^CMAKE_GENERATOR:INTERNAL=Ninja$' "${BUILD_DIR}/CMakeCache.txt"; then
-  rm -rf "${BUILD_DIR}"
+  desired_generator="Ninja"
+else
+  desired_generator="Unix Makefiles"
 fi
 
-cmake \
-  -S "${PROTOTYPE_DIR}" \
-  -B "${BUILD_DIR}" \
-  "${generator_args[@]}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DHERMES_SOURCE_DIR="${SOURCE_DIR}"
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+  cached_generator="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" | head -n 1)"
+  if [[ -n "${cached_generator}" && "${cached_generator}" != "${desired_generator}" ]]; then
+    rm -rf "${BUILD_DIR}"
+  fi
+fi
+
+if [[ "${desired_generator}" == "Ninja" ]]; then
+  cmake \
+    -S "${PROTOTYPE_DIR}" \
+    -B "${BUILD_DIR}" \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHERMES_SOURCE_DIR="${SOURCE_DIR}"
+else
+  cmake \
+    -S "${PROTOTYPE_DIR}" \
+    -B "${BUILD_DIR}" \
+    -G "Unix Makefiles" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHERMES_SOURCE_DIR="${SOURCE_DIR}"
+fi
 
 cmake --build "${BUILD_DIR}" --target sting_hermes_adapter --parallel 2
 
