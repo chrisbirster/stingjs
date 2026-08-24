@@ -72,7 +72,7 @@ export const {
 export function bindHostText(node: HostNode, readValue: () => string): void {
   createRenderEffect(() => {
     getHost().replaceText(node, readValue());
-  });
+  }, undefined);
 }
 
 function requireHostNode(value: unknown): HostNode {
