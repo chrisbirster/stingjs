@@ -1,3 +1,4 @@
+import { children } from 'solid-js';
 import { createElement, insert, spread } from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
 
@@ -41,14 +42,6 @@ function createNativePrimitive(type: string, props: object): HostNode {
 }
 
 function stringifyTextChild(value: unknown): string {
-  // Solid may preserve dynamic JSX children as accessors inside a mixed child
-  // array (for example ["Count: ", count]). Evaluate them while this function
-  // is running inside `insert`'s reactive computation so Solid tracks exactly
-  // the signals that contribute to this Text node.
-  if (typeof value === 'function') {
-    return stringifyTextChild((value as () => unknown)());
-  }
-
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
@@ -70,10 +63,10 @@ export function View(props: ViewProps): HostNode {
 /**
  * Native text backed by UILabel on iOS and TextView on Android.
  *
- * Text deliberately collapses its children to one scalar accessor. Solid's
- * universal insert primitive therefore creates one stable host text node and
- * uses replaceText for subsequent reactive changes instead of reconciling a
- * mixed child array such as ["Count: ", count()].
+ * Solid's `children` helper resolves nested JSX child accessors while keeping
+ * their signal dependencies tracked. Sting then collapses that resolved value
+ * into one scalar insertion so updates reuse a single host text node and emit
+ * replaceText rather than structural child reconciliation.
  */
 export function Text(props: TextProps): HostNode {
   const node = createElement('text');
@@ -81,7 +74,9 @@ export function Text(props: TextProps): HostNode {
   // `skipChildren` keeps the generic spread reconciler away from Text's
   // content while still applying style/accessibility properties reactively.
   spread(node, props, true);
-  insert(node, () => stringifyTextChild(props.children));
+
+  const resolvedChildren = children(() => props.children);
+  insert(node, () => stringifyTextChild(resolvedChildren()));
 
   return node;
 }
