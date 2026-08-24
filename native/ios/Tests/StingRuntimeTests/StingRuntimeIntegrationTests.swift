@@ -35,15 +35,24 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             XCTFail("Solid/Sting should mount a native UILabel")
             return
         }
-        guard let button = firstSubview(of: UIButton.self, in: rootView) else {
-            XCTFail("Solid/Sting should mount a native UIButton")
+        guard let button = firstSubview(of: StingButton.self, in: rootView) else {
+            XCTFail("Solid/Sting should mount a native StingButton")
             return
         }
 
         XCTAssertEqual(label.text, "Count: 0")
         XCTAssertEqual(button.title(for: .normal), "Add")
 
-        button.sendActions(for: .touchUpInside)
+        // Swift-package XCTest runs without UIApplicationMain, so UIKit cannot
+        // dispatch sendActions(for:) in this process. Verify the real UIKit
+        // target/action wiring exists, then invoke the exact native event sink
+        // installed on StingButton. Everything after UIKit dispatch remains the
+        // production path: native event -> JS handler -> Solid flush -> native
+        // text mutation + native module call.
+        let pressActions = button.actions(forTarget: button, forControlEvent: .touchUpInside) ?? []
+        XCTAssertTrue(pressActions.contains("handlePress"))
+        XCTAssertNotNil(button.onPress)
+        button.onPress?(button.nodeId)
 
         XCTAssertEqual(
             label.text,
