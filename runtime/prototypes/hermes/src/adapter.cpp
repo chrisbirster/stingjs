@@ -3,6 +3,8 @@
 #include <hermes/hermes.h>
 #include <jsi/jsi.h>
 
+#include <cmath>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -27,6 +29,32 @@ void evaluate(
   state->runtime->evaluateJavaScript(stringBuffer(std::move(source)), source_url);
 }
 
+std::string hostArgument(jsi::Runtime &runtime, const jsi::Value &value) {
+  if (value.isUndefined()) {
+    return "";
+  }
+  if (value.isNull()) {
+    return "null";
+  }
+  if (value.isBool()) {
+    return value.getBool() ? "true" : "false";
+  }
+  if (value.isNumber()) {
+    const double number = value.asNumber();
+    if (std::isfinite(number) && std::floor(number) == number) {
+      return std::to_string(static_cast<int64_t>(number));
+    }
+    return std::to_string(number);
+  }
+  if (value.isString()) {
+    return value.asString(runtime).utf8(runtime);
+  }
+
+  // The current Sting bridge contract passes only primitive values to this
+  // host entry point; structured module values are already JSON strings.
+  return "";
+}
+
 } // namespace
 
 extern "C" StingHermesRuntime *sting_hermes_runtime_create(void) {
@@ -46,6 +74,64 @@ extern "C" StingHermesRuntime *sting_hermes_runtime_create(void) {
 
 extern "C" void sting_hermes_runtime_destroy(StingHermesRuntime *runtime) {
   delete runtime;
+}
+
+extern "C" int sting_hermes_runtime_install_host_call(
+    StingHermesRuntime *state,
+    StingHermesHostCall host_call,
+    void *user_data) {
+  if (state == nullptr || state->runtime == nullptr || host_call == nullptr) {
+    return 1;
+  }
+
+  state->error.clear();
+
+  try {
+    auto &runtime = *state->runtime;
+    auto function = jsi::Function::createFromHostFunction(
+        runtime,
+        jsi::PropNameID::forAscii(runtime, "__stingHostCall"),
+        4,
+        [host_call, user_data](
+            jsi::Runtime &js_runtime,
+            const jsi::Value &,
+            const jsi::Value *args,
+            size_t count) -> jsi::Value {
+          if (count == 0 || !args[0].isString()) {
+            return jsi::Value::undefined();
+          }
+
+          const std::string operation = args[0].asString(js_runtime).utf8(js_runtime);
+          const std::string arg1 = count > 1 ? hostArgument(js_runtime, args[1]) : "";
+          const std::string arg2 = count > 2 ? hostArgument(js_runtime, args[2]) : "";
+          const std::string arg3 = count > 3 ? hostArgument(js_runtime, args[3]) : "";
+
+          const char *result = host_call(
+              user_data,
+              operation.c_str(),
+              arg1.c_str(),
+              arg2.c_str(),
+              arg3.c_str());
+
+          if (result == nullptr) {
+            return jsi::Value::undefined();
+          }
+
+          return jsi::String::createFromUtf8(js_runtime, std::string(result));
+        });
+
+    runtime.global().setProperty(
+        runtime,
+        "__stingHostCall",
+        std::move(function));
+    return 0;
+  } catch (const std::exception &exception) {
+    state->error = exception.what();
+    return 2;
+  } catch (...) {
+    state->error = "unknown Hermes exception while installing host callback";
+    return 3;
+  }
 }
 
 extern "C" int sting_hermes_runtime_run(
@@ -84,7 +170,7 @@ extern "C" int sting_hermes_runtime_run(
         "sting-hermes-output.js");
 
     if (!output_value.isString()) {
-      state->error = "Hermes benchmark did not produce string output";
+      state->error = "Hermes evaluation did not produce string output state";
       return 2;
     }
 
