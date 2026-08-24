@@ -9,7 +9,7 @@ It exists to answer two questions independently:
 
 ## Pin
 
-The first prototype uses official QuickJS `2026-06-04` from Fabrice Bellard's release archive:
+The prototype uses official QuickJS `2026-06-04` from Fabrice Bellard's release archive:
 
 ```text
 https://bellard.org/quickjs/quickjs-2026-06-04.tar.xz
@@ -22,37 +22,37 @@ Do not silently move this prototype to QuickJS master. Changing the tested relea
 
 `src/main.zig` embeds the shared `benchmarks/js-engine/engine-bench.js` source and talks to QuickJS through the public C embedding API. The host provides only the `print()` function needed by the portable benchmark and explicitly drains QuickJS's pending-job queue so Promise/async probes complete.
 
-The path is intentionally small:
+`src/sting_smoke.zig` goes further and evaluates the actual bundled Solid/Sting applications behind a Zig-owned host bridge. It currently requires all of the following:
 
-```text
-shared JavaScript workload
-        -> official QuickJS
-        -> QuickJS C API
-        -> Zig host
-```
+- hello-world mounts `Count: 0` and a native button,
+- dispatching the Sting press event produces `Count: 1`,
+- that press emits exactly one `replaceText` and no structural/property/event replay,
+- `Haptics.impact("medium")` is called exactly once,
+- the 10,000-row benchmark mounts row 4,281,
+- the sparse update emits exactly one `replaceText`,
+- the dense 100-row fixture emits exactly 100 `replaceText` calls,
+- both row hot paths emit zero unrelated mutations.
 
-This is the first step toward the real application path:
+The path under test is:
 
 ```text
 Solid + Sting bundle
         -> official QuickJS
         -> QuickJS C API
-        -> Zig Sting runtime
-        -> Swift / Kotlin adapter
-        -> native UI
+        -> Zig semantic host
 ```
 
-The current runner does **not** yet claim that the full Solid/native event loop works under QuickJS.
+This proves the portable Sting renderer/event/module semantics can execute under official QuickJS. It does **not** yet prove release-build device performance or select QuickJS as the production engine.
 
 ## Run
 
-Requires Zig `0.16.0`, `curl`, `make`, a host C toolchain, and `xz`/`tar` support:
+Requires Zig `0.16.0`, Node/npm, `curl`, `make`, a host C toolchain, and `xz`/`tar` support:
 
 ```sh
 bash runtime/prototypes/quickjs/run-host.sh
 ```
 
-The script verifies the upstream archive checksum, builds the pinned QuickJS static library using upstream's Makefile, links the Zig host in `ReleaseFast`, and executes the same dependency-free JavaScript CPU probes used by the other engine candidates.
+The script verifies the upstream archive checksum, builds the pinned QuickJS static library using upstream's Makefile, builds the real Sting application bundles, links the Zig hosts in `ReleaseFast`, and runs both the portable CPU probes and Sting semantic gates.
 
 The source archive and build output are kept outside the repository under `${STING_RUNTIME_CACHE:-$TMPDIR/stingjs-runtime}`.
 
@@ -64,4 +64,4 @@ The source archive and build output are kept outside the repository under `${STI
 - a reason to keep the current JavaScriptCore JSON proof transport,
 - a substitute for physical-device application benchmarks.
 
-Before official QuickJS can win the engine decision, it still must prove the real renderer/event/module workloads and satisfy `docs/performance.md` on the same physical devices as QuickJS-NG, Sting/Hermes, and the React Native/Hermes baseline.
+Before official QuickJS can win the engine decision, it still must satisfy the full measurement matrix in `docs/performance.md` on the same physical devices as QuickJS-NG, Sting/Hermes, and the React Native/Hermes baseline.
