@@ -84,8 +84,6 @@ jobs:
   react-native-baseline-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      STING_RN_BASELINE_DIR: ${{ runner.temp }}/StingRNBenchmark
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -98,6 +96,8 @@ jobs:
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - name: Generate pinned bare React Native 0.87 baseline
+        env:
+          STING_RN_BASELINE_DIR: ${{ runner.temp }}/StingRNBenchmark
         run: bash benchmarks/react-native-benchmark/scripts/generate.sh
       - name: Typecheck baseline workload
         working-directory: ${{ runner.temp }}/StingRNBenchmark
