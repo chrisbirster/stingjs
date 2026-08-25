@@ -20,9 +20,18 @@ type Operation =
   | { kind: 'setEventEnabled'; id: number; event: string; enabled: boolean };
 
 type OperationKind = Operation['kind'];
-
 type NativeComponent = () => HostNode;
 type DynamicSelection = NativeComponent | 'view' | undefined;
+
+const OPERATION_KINDS: readonly OperationKind[] = [
+  'createElement',
+  'createTextNode',
+  'replaceText',
+  'setProperty',
+  'insertNode',
+  'removeNode',
+  'setEventEnabled',
+];
 
 class RecordingBridge implements StingNativeBridge {
   private operations: Operation[] = [];
@@ -102,11 +111,7 @@ function createPortableFallbackBridge(): StingNativeBridge {
 }
 
 function count(operations: readonly Operation[], kind: OperationKind): number {
-  let total = 0;
-  for (const operation of operations) {
-    if (operation.kind === kind) total++;
-  }
-  return total;
+  return operations.reduce((total, operation) => total + (operation.kind === kind ? 1 : 0), 0);
 }
 
 function trace(operations: readonly Operation[]): string {
@@ -132,18 +137,25 @@ function trace(operations: readonly Operation[]): string {
     .join(' > ');
 }
 
-function assertCount(
+function assertCounts(
   context: ScenarioContext,
-  name: string,
+  label: string,
   operations: readonly Operation[],
-  kind: OperationKind,
-  expected: number,
+  expected: Partial<Record<OperationKind, number>>,
 ): void {
-  const actual = count(operations, kind);
-  context.assert(name, actual === expected, `expected ${expected}, got ${actual}: ${trace(operations)}`);
+  for (const kind of OPERATION_KINDS) {
+    const expectedCount = expected[kind];
+    if (expectedCount === undefined) continue;
+    const actual = count(operations, kind);
+    context.assert(
+      `${label}: ${kind}`,
+      actual === expectedCount,
+      `expected ${expectedCount}, got ${actual}: ${trace(operations)}`,
+    );
+  }
 }
 
-function assertReplacementOrder(
+function assertNodeReplacementOrder(
   context: ScenarioContext,
   name: string,
   operations: readonly Operation[],
@@ -168,7 +180,39 @@ function assertReplacementOrder(
   context.assert(
     name,
     insertIndex >= 0 && removeIndex > insertIndex,
-    `replacement must insert before remove: ${trace(operations)}`,
+    `node replacement must anchor-insert before remove: ${trace(operations)}`,
+  );
+}
+
+function assertTextReplacementOrder(
+  context: ScenarioContext,
+  name: string,
+  operations: readonly Operation[],
+  parentId: number,
+  oldNodeId: number,
+  newTextNodeId: number,
+): void {
+  const createIndex = operations.findIndex(
+    operation => operation.kind === 'createTextNode' && operation.id === newTextNodeId,
+  );
+  const removeIndex = operations.findIndex(
+    operation =>
+      operation.kind === 'removeNode' &&
+      operation.parentId === parentId &&
+      operation.nodeId === oldNodeId,
+  );
+  const insertIndex = operations.findIndex(
+    operation =>
+      operation.kind === 'insertNode' &&
+      operation.parentId === parentId &&
+      operation.nodeId === newTextNodeId &&
+      operation.anchorId === -1,
+  );
+
+  context.assert(
+    name,
+    createIndex >= 0 && removeIndex > createIndex && insertIndex > removeIndex,
+    `Solid universal raw-text replacement must create, remove, then insert: ${trace(operations)}`,
   );
 }
 
@@ -203,7 +247,7 @@ function collectSubtreeIds(node: HostNode, target = new Set<number>()): Set<numb
   return target;
 }
 
-function addRetiredSubtree(retired: Set<number>, node: HostNode): void {
+function retire(retired: Set<number>, node: HostNode): void {
   for (const id of collectSubtreeIds(node)) retired.add(id);
 }
 
@@ -213,24 +257,22 @@ function dispatchPress(nodeId: number): void {
   dispatch(nodeId, 'press', 'null');
 }
 
-function percentile(sortedSamples: readonly number[], percentileValue: number): number {
-  if (sortedSamples.length === 0) return 0;
-  const index = Math.min(
-    sortedSamples.length - 1,
-    Math.max(0, Math.ceil(sortedSamples.length * percentileValue) - 1),
-  );
-  return sortedSamples[index] ?? 0;
+function percentile(sorted: readonly number[], fraction: number): number {
+  if (sorted.length === 0) return 0;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1));
+  return sorted[index] ?? 0;
 }
 
 function recordLatencyMetrics(context: ScenarioContext, samples: readonly number[]): void {
   const sorted = [...samples].sort((left, right) => left - right);
-  const total = sorted.reduce((sum, value) => sum + value, 0);
-  const mean = sorted.length === 0 ? 0 : total / sorted.length;
+  const mean = sorted.length
+    ? sorted.reduce((total, sample) => total + sample, 0) / sorted.length
+    : 0;
 
   context.metric('rapid-branch.samples', sorted.length, 'samples');
   context.metric('rapid-branch.min', sorted[0] ?? 0, 'ms/toggle');
   context.metric('rapid-branch.mean', mean, 'ms/toggle');
-  context.metric('rapid-branch.p50', percentile(sorted, 0.5), 'ms/toggle');
+  context.metric('rapid-branch.p50', percentile(sorted, 0.50), 'ms/toggle');
   context.metric('rapid-branch.p95', percentile(sorted, 0.95), 'ms/toggle');
   context.metric('rapid-branch.p99', percentile(sorted, 0.99), 'ms/toggle');
   context.metric('rapid-branch.max', sorted[sorted.length - 1] ?? 0, 'ms/toggle');
@@ -249,8 +291,7 @@ export const scenario: ScenarioDefinition = {
 
   run(context) {
     const nativeBridge = globalThis.__stingNativeBridge;
-    const targetBridge = nativeBridge ?? createPortableFallbackBridge();
-    const recording = new RecordingBridge(targetBridge);
+    const recording = new RecordingBridge(nativeBridge ?? createPortableFallbackBridge());
 
     resetNativeBridgeForTests();
     const host = installNativeBridge(recording);
@@ -272,50 +313,35 @@ export const scenario: ScenarioDefinition = {
     let dynamicBHits = 0;
     let stressHits = 0;
 
-    const DynamicA: NativeComponent = () => (
-      <Button onPress={() => dynamicAHits++} />
-    );
-    const DynamicB: NativeComponent = () => (
-      <Button onPress={() => dynamicBHits++} />
-    );
+    const DynamicA: NativeComponent = () => <Button onPress={() => dynamicAHits++} />;
+    const DynamicB: NativeComponent = () => <Button onPress={() => dynamicBHits++} />;
     const [dynamicSelection, setDynamicSelection] = createSignal<DynamicSelection>(DynamicA);
 
     const NestedLive: NativeComponent = () => (
-      <View>
-        <Button onPress={() => nestedHits++} />
-      </View>
+      <View><Button onPress={() => nestedHits++} /></View>
     );
     const NestedInnerFallback: NativeComponent = () => (
-      <View>
-        <Button onPress={() => nestedHits++} />
-      </View>
+      <View><Button onPress={() => nestedHits++} /></View>
     );
     const NestedOuterFallback: NativeComponent = () => (
-      <View>
-        <Button onPress={() => nestedHits++} />
-      </View>
+      <View><Button onPress={() => nestedHits++} /></View>
     );
-
     const StressOn: NativeComponent = () => <Button onPress={() => stressHits++} />;
     const StressOff: NativeComponent = () => <Button onPress={() => stressHits++} />;
 
     const dispose = renderApp(() => (
       <View>
         <View />
-
         <View>
           <Show when={showValue()} fallback={<Button />}>
             {value => (
-              <Button
-                onPress={() => {
-                  showHits++;
-                  showObserved = value();
-                }}
-              />
+              <Button onPress={() => {
+                showHits++;
+                showObserved = value();
+              }} />
             )}
           </Show>
         </View>
-
         <View>
           <Show when={outerVisible()} fallback={<NestedOuterFallback />}>
             <Show when={innerVisible()} fallback={<NestedInnerFallback />}>
@@ -323,17 +349,14 @@ export const scenario: ScenarioDefinition = {
             </Show>
           </Show>
         </View>
-
         <View>
           <Switch fallback={<Button />}>
             <Match when={route() === 'one' ? matchPayload() : false}>
               {value => (
-                <Button
-                  onPress={() => {
-                    switchHits++;
-                    switchObserved = value();
-                  }}
-                />
+                <Button onPress={() => {
+                  switchHits++;
+                  switchObserved = value();
+                }} />
               )}
             </Match>
             <Match when={route() === 'two'}>
@@ -341,23 +364,19 @@ export const scenario: ScenarioDefinition = {
             </Match>
           </Switch>
         </View>
-
         <View>
           <Dynamic component={dynamicSelection() as never} />
         </View>
-
         <View>
           <Show when={textAsComponent()} fallback="plain-text">
             <Button />
           </Show>
         </View>
-
         <View>
           <Show when={stressOn()} fallback={<StressOff />}>
             <StressOn />
           </Show>
         </View>
-
         <View />
       </View>
     ));
@@ -374,9 +393,8 @@ export const scenario: ScenarioDefinition = {
       const appRoot = host.root.children[0];
       context.assert('root app mounted as one native view', appRoot?.type === 'view');
       if (!appRoot) return;
-
       context.assert(
-        'all control-flow sections mounted under the stable root',
+        'all eight stable control-flow sections mounted',
         appRoot.children.length === 8,
         `children=${appRoot.children.length}`,
       );
@@ -394,89 +412,95 @@ export const scenario: ScenarioDefinition = {
 
       recording.take();
 
-      // <Show>: truthy -> truthy keeps native identity while the narrowed accessor
-      // observes the newest condition value.
-      const initialShowNode = showSection.children[0]!;
-      dispatchPress(initialShowNode.id);
-      context.assert('Show child event is live before transition', showHits === 1);
+      // <Show>: truthy payload changes keep the same native branch and accessor.
+      const initialShow = showSection.children[0]!;
+      dispatchPress(initialShow.id);
+      context.assert('Show initial event handler is live', showHits === 1);
       context.assert('Show narrowed accessor starts at alpha', showObserved === 'alpha');
 
       update(() => setShowValue('beta'));
       let operations = capture();
-      context.assert(
-        'Show preserves native identity across truthy value changes',
-        showSection.children[0] === initialShowNode,
-      );
-      context.assert(
-        'Show truthy-to-truthy causes zero native replay',
-        operations.length === 0,
-        trace(operations),
-      );
-      dispatchPress(initialShowNode.id);
-      context.assert('Show narrowed accessor observes current truthy value', showObserved === 'beta');
+      context.assert('Show truthy change preserves native identity', showSection.children[0] === initialShow);
+      context.assert('Show truthy change emits zero native mutations', operations.length === 0, trace(operations));
+      dispatchPress(initialShow.id);
+      context.assert('Show narrowed accessor observes beta without remount', showObserved === 'beta');
 
-      addRetiredSubtree(retiredIds, initialShowNode);
+      retire(retiredIds, initialShow);
       const showHitsBeforeRemoval = showHits;
       update(() => setShowValue(null));
       operations = capture();
       const showFallback = showSection.children[0]!;
-      assertCount(context, 'Show off creates exactly one replacement element', operations, 'createElement', 1);
-      assertCount(context, 'Show off inserts exactly one replacement', operations, 'insertNode', 1);
-      assertCount(context, 'Show off removes exactly one old branch', operations, 'removeNode', 1);
-      assertCount(context, 'Show off does not create text nodes', operations, 'createTextNode', 0);
-      assertCount(context, 'Show off does not replay ordinary properties', operations, 'setProperty', 0);
-      assertReplacementOrder(
+      assertCounts(context, 'Show truthy-to-fallback', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 1,
+      });
+      assertNodeReplacementOrder(
         context,
-        'Show replacement inserts before removal',
+        'Show inserts fallback before removing old branch',
         operations,
         showSection.id,
-        initialShowNode.id,
+        initialShow.id,
         showFallback.id,
       );
       assertEventDisabledBeforeRemoval(
         context,
-        'Show removed branch tears down its event before removal',
+        'Show disables removed event before native removal',
         operations,
-        initialShowNode.id,
-        initialShowNode.id,
+        initialShow.id,
+        initialShow.id,
       );
-      dispatchPress(initialShowNode.id);
+      dispatchPress(initialShow.id);
       context.assert('Show removed branch cannot receive stale events', showHits === showHitsBeforeRemoval);
 
-      addRetiredSubtree(retiredIds, showFallback);
+      retire(retiredIds, showFallback);
       update(() => setShowValue('gamma'));
       operations = capture();
       const remountedShow = showSection.children[0]!;
-      context.assert('Show remount receives a new native identity', remountedShow.id !== initialShowNode.id);
-      assertCount(context, 'Show remount creates exactly one element', operations, 'createElement', 1);
-      assertCount(context, 'Show remount inserts exactly once', operations, 'insertNode', 1);
-      assertCount(context, 'Show remount removes fallback exactly once', operations, 'removeNode', 1);
-      assertReplacementOrder(
+      assertCounts(context, 'Show fallback-to-truthy', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 1,
+      });
+      context.assert('Show remount receives fresh identity', remountedShow.id !== initialShow.id);
+      assertNodeReplacementOrder(
         context,
-        'Show remount replacement ordering is stable',
+        'Show remount anchors before fallback removal',
         operations,
         showSection.id,
         showFallback.id,
         remountedShow.id,
       );
 
-      // Nested <Show>: replace a two-node subtree and prove descendant event
-      // handlers are torn down even though native removal only targets its root.
+      // Nested <Show>: native removal is rooted at the subtree, but descendant
+      // handlers must be disabled before that native root disappears.
       const initialNestedRoot = nestedSection.children[0]!;
       const initialNestedButton = initialNestedRoot.children[0]!;
-      addRetiredSubtree(retiredIds, initialNestedRoot);
+      retire(retiredIds, initialNestedRoot);
       const nestedHitsBeforeRemoval = nestedHits;
       update(() => setInnerVisible(false));
       operations = capture();
       const innerFallbackRoot = nestedSection.children[0]!;
-      assertCount(context, 'nested Show creates exactly two native elements', operations, 'createElement', 2);
-      assertCount(context, 'nested Show inserts child and subtree root exactly once each', operations, 'insertNode', 2);
-      assertCount(context, 'nested Show removes only the old subtree root', operations, 'removeNode', 1);
-      assertCount(context, 'nested Show creates no text nodes', operations, 'createTextNode', 0);
-      assertCount(context, 'nested Show replays no ordinary properties', operations, 'setProperty', 0);
-      assertReplacementOrder(
+      assertCounts(context, 'nested inner replacement', operations, {
+        createElement: 2,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 2,
+        removeNode: 1,
+        setEventEnabled: 2,
+      });
+      assertNodeReplacementOrder(
         context,
-        'nested Show inserts replacement subtree before removing old root',
+        'nested replacement inserts new root before removing old root',
         operations,
         nestedSection.id,
         initialNestedRoot.id,
@@ -484,170 +508,220 @@ export const scenario: ScenarioDefinition = {
       );
       assertEventDisabledBeforeRemoval(
         context,
-        'nested Show disables descendant event before parent subtree removal',
+        'nested descendant event is disabled before parent subtree removal',
         operations,
         initialNestedButton.id,
         initialNestedRoot.id,
       );
       dispatchPress(initialNestedButton.id);
-      context.assert('nested removed descendant cannot receive stale events', nestedHits === nestedHitsBeforeRemoval);
+      context.assert('nested removed descendant cannot receive stale event', nestedHits === nestedHitsBeforeRemoval);
 
       const innerFallbackButton = innerFallbackRoot.children[0]!;
-      addRetiredSubtree(retiredIds, innerFallbackRoot);
+      retire(retiredIds, innerFallbackRoot);
       update(() => setOuterVisible(false));
       operations = capture();
       const outerFallbackRoot = nestedSection.children[0]!;
-      assertCount(context, 'outer Show replacement creates exactly two elements', operations, 'createElement', 2);
-      assertCount(context, 'outer Show replacement inserts exactly twice', operations, 'insertNode', 2);
-      assertCount(context, 'outer Show replacement removes one subtree root', operations, 'removeNode', 1);
+      assertCounts(context, 'nested outer replacement', operations, {
+        createElement: 2,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 2,
+        removeNode: 1,
+        setEventEnabled: 2,
+      });
       assertEventDisabledBeforeRemoval(
         context,
-        'outer Show tears down nested descendant event before parent removal',
+        'outer replacement disables nested event before parent removal',
         operations,
         innerFallbackButton.id,
         innerFallbackRoot.id,
       );
 
-      addRetiredSubtree(retiredIds, outerFallbackRoot);
+      retire(retiredIds, outerFallbackRoot);
       update(() => setOuterVisible(true));
       capture();
       update(() => setInnerVisible(true));
       capture();
-      context.assert('nested conditional subtree returns to exactly one live root', nestedSection.children.length === 1);
+      context.assert('nested conditionals finish with exactly one subtree root', nestedSection.children.length === 1);
 
-      // <Switch>/<Match>: selected Match stays mounted while its truthy payload
-      // changes, then is replaced atomically when another Match wins.
-      const firstMatchNode = switchSection.children[0]!;
+      // <Switch>/<Match>: selected truthy Match preserves identity and exposes
+      // current payload through the RC's guarded narrowed accessor.
+      const firstMatch = switchSection.children[0]!;
       update(() => setMatchPayload('match-b'));
       operations = capture();
-      context.assert('Match preserves native identity while it remains selected', switchSection.children[0] === firstMatchNode);
-      context.assert('Match payload-only change causes zero native replay', operations.length === 0, trace(operations));
-      dispatchPress(firstMatchNode.id);
-      context.assert('Match narrowed accessor observes current payload', switchObserved === 'match-b');
+      context.assert('Match payload update preserves selected native identity', switchSection.children[0] === firstMatch);
+      context.assert('Match payload-only update emits zero native mutations', operations.length === 0, trace(operations));
+      dispatchPress(firstMatch.id);
+      context.assert('Match narrowed accessor observes match-b', switchObserved === 'match-b');
 
-      addRetiredSubtree(retiredIds, firstMatchNode);
+      retire(retiredIds, firstMatch);
       const switchHitsBeforeRemoval = switchHits;
       update(() => setRoute('two'));
       operations = capture();
-      const secondMatchNode = switchSection.children[0]!;
-      assertCount(context, 'Switch Match replacement creates one element', operations, 'createElement', 1);
-      assertCount(context, 'Switch Match replacement inserts once', operations, 'insertNode', 1);
-      assertCount(context, 'Switch Match replacement removes once', operations, 'removeNode', 1);
-      assertReplacementOrder(
+      const secondMatch = switchSection.children[0]!;
+      assertCounts(context, 'Switch first-to-second Match', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 2,
+      });
+      assertNodeReplacementOrder(
         context,
-        'Switch Match replacement inserts before removal',
+        'Switch inserts winning Match before old Match removal',
         operations,
         switchSection.id,
-        firstMatchNode.id,
-        secondMatchNode.id,
+        firstMatch.id,
+        secondMatch.id,
       );
       assertEventDisabledBeforeRemoval(
         context,
-        'Switch Match removed handler is disabled before removal',
+        'Switch disables losing Match handler before removal',
         operations,
-        firstMatchNode.id,
-        firstMatchNode.id,
+        firstMatch.id,
+        firstMatch.id,
       );
-      dispatchPress(firstMatchNode.id);
-      context.assert('removed Match cannot receive stale events', switchHits === switchHitsBeforeRemoval);
+      dispatchPress(firstMatch.id);
+      context.assert('losing Match cannot receive stale events', switchHits === switchHitsBeforeRemoval);
 
-      addRetiredSubtree(retiredIds, secondMatchNode);
+      retire(retiredIds, secondMatch);
       update(() => setRoute('none'));
-      capture();
+      operations = capture();
+      assertCounts(context, 'Switch second Match-to-fallback', operations, {
+        createElement: 1,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 1,
+      });
       context.assert('Switch fallback leaves exactly one native branch', switchSection.children.length === 1);
 
-      // <Dynamic>: native component -> component -> intrinsic -> null -> component.
+      // Native <Dynamic>: component -> component -> intrinsic -> null -> component.
       const dynamicA = dynamicSection.children[0]!;
-      addRetiredSubtree(retiredIds, dynamicA);
+      retire(retiredIds, dynamicA);
       const dynamicAHitsBeforeRemoval = dynamicAHits;
       update(() => setDynamicSelection(() => DynamicB));
       operations = capture();
       const dynamicB = dynamicSection.children[0]!;
-      assertCount(context, 'Dynamic component replacement creates one element', operations, 'createElement', 1);
-      assertCount(context, 'Dynamic component replacement inserts once', operations, 'insertNode', 1);
-      assertCount(context, 'Dynamic component replacement removes once', operations, 'removeNode', 1);
-      assertReplacementOrder(
+      assertCounts(context, 'Dynamic component-to-component', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 2,
+      });
+      assertNodeReplacementOrder(
         context,
-        'Dynamic component replacement inserts before removal',
+        'Dynamic component replacement anchors before removal',
         operations,
         dynamicSection.id,
         dynamicA.id,
         dynamicB.id,
       );
       dispatchPress(dynamicA.id);
-      context.assert('Dynamic removed component handler is stale-safe', dynamicAHits === dynamicAHitsBeforeRemoval);
+      context.assert('Dynamic old component handler is stale-safe', dynamicAHits === dynamicAHitsBeforeRemoval);
 
-      addRetiredSubtree(retiredIds, dynamicB);
+      retire(retiredIds, dynamicB);
       const dynamicBHitsBeforeRemoval = dynamicBHits;
       update(() => setDynamicSelection('view'));
       operations = capture();
       const dynamicIntrinsic = dynamicSection.children[0]!;
-      context.assert('Dynamic supports Sting native intrinsic selection without DOM', dynamicIntrinsic.type === 'view');
-      assertCount(context, 'Dynamic intrinsic transition creates one native element', operations, 'createElement', 1);
-      assertCount(context, 'Dynamic intrinsic transition inserts once', operations, 'insertNode', 1);
-      assertCount(context, 'Dynamic intrinsic transition removes once', operations, 'removeNode', 1);
+      context.assert('Dynamic intrinsic uses Sting native view, not DOM', dynamicIntrinsic.type === 'view');
+      assertCounts(context, 'Dynamic component-to-intrinsic', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 1,
+      });
       dispatchPress(dynamicB.id);
       context.assert('Dynamic replaced component handler is removed', dynamicBHits === dynamicBHitsBeforeRemoval);
 
-      addRetiredSubtree(retiredIds, dynamicIntrinsic);
+      retire(retiredIds, dynamicIntrinsic);
       update(() => setDynamicSelection(undefined));
       operations = capture();
-      context.assert('Dynamic component-to-null leaves no ghost node', dynamicSection.children.length === 0);
-      assertCount(context, 'Dynamic component-to-null creates no nodes', operations, 'createElement', 0);
-      assertCount(context, 'Dynamic component-to-null inserts no nodes', operations, 'insertNode', 0);
-      assertCount(context, 'Dynamic component-to-null removes exactly one node', operations, 'removeNode', 1);
+      assertCounts(context, 'Dynamic intrinsic-to-null', operations, {
+        createElement: 0,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 0,
+        removeNode: 1,
+        setEventEnabled: 0,
+      });
+      context.assert('Dynamic component-to-null leaves no native child', dynamicSection.children.length === 0);
 
       update(() => setDynamicSelection(() => DynamicA));
       operations = capture();
       const remountedDynamicA = dynamicSection.children[0]!;
-      context.assert('Dynamic null-to-component mounts one native node', dynamicSection.children.length === 1);
-      assertCount(context, 'Dynamic null-to-component creates exactly one element', operations, 'createElement', 1);
-      assertCount(context, 'Dynamic null-to-component inserts exactly once', operations, 'insertNode', 1);
-      assertCount(context, 'Dynamic null-to-component removes nothing', operations, 'removeNode', 0);
+      assertCounts(context, 'Dynamic null-to-component', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 0,
+        setEventEnabled: 1,
+      });
       context.assert('Dynamic null-to-component receives fresh identity', remountedDynamicA.id !== dynamicA.id);
 
-      // Raw text <-> component replacement exercises universal insertExpression
-      // without routing text through Sting's Text component special case.
-      const initialTextNode = textSection.children[0]!;
-      context.assert('text/component lane starts as a raw native text node', initialTextNode.type === '#text');
-      addRetiredSubtree(retiredIds, initialTextNode);
+      // Raw text <-> component exercises both universal replacement paths. Node
+      // replacement anchors before remove; raw-text cleanChildren removes first.
+      const initialText = textSection.children[0]!;
+      context.assert('text/component lane begins with a raw native text node', initialText.type === '#text');
+      retire(retiredIds, initialText);
       update(() => setTextAsComponent(true));
       operations = capture();
       const textBranchButton = textSection.children[0]!;
-      assertCount(context, 'text-to-component creates one element', operations, 'createElement', 1);
-      assertCount(context, 'text-to-component creates no extra text', operations, 'createTextNode', 0);
-      assertCount(context, 'text-to-component inserts once', operations, 'insertNode', 1);
-      assertCount(context, 'text-to-component removes once', operations, 'removeNode', 1);
-      assertReplacementOrder(
+      assertCounts(context, 'text-to-component', operations, {
+        createElement: 1,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 0,
+      });
+      assertNodeReplacementOrder(
         context,
-        'text-to-component inserts before removing text',
+        'text-to-component anchors component before text removal',
         operations,
         textSection.id,
-        initialTextNode.id,
+        initialText.id,
         textBranchButton.id,
       );
 
-      addRetiredSubtree(retiredIds, textBranchButton);
+      retire(retiredIds, textBranchButton);
       update(() => setTextAsComponent(false));
       operations = capture();
-      const replacementTextNode = textSection.children[0]!;
-      context.assert('component-to-text restores raw native text', replacementTextNode.type === '#text');
-      assertCount(context, 'component-to-text creates exactly one text node', operations, 'createTextNode', 1);
-      assertCount(context, 'component-to-text creates no element', operations, 'createElement', 0);
-      assertCount(context, 'component-to-text inserts once', operations, 'insertNode', 1);
-      assertCount(context, 'component-to-text removes once', operations, 'removeNode', 1);
-      assertCount(context, 'component-to-text does not use replaceText for branch replacement', operations, 'replaceText', 0);
-      assertReplacementOrder(
+      const replacementText = textSection.children[0]!;
+      context.assert('component-to-text restores raw native text', replacementText.type === '#text');
+      assertCounts(context, 'component-to-text', operations, {
+        createElement: 0,
+        createTextNode: 1,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: 1,
+        removeNode: 1,
+        setEventEnabled: 0,
+      });
+      assertTextReplacementOrder(
         context,
-        'component-to-text inserts before removing component',
+        'component-to-text follows Solid universal cleanChildren ordering',
         operations,
         textSection.id,
         textBranchButton.id,
-        replacementTextNode.id,
+        replacementText.id,
       );
 
-      // Rapid changes: measure per-toggle latency in deterministic synchronous
-      // batches and require exactly one create/insert/remove pair per branch swap.
+      // Deterministic stress: no timers or network. Portable hosts call the same
+      // scenario API and get stable mutation totals plus latency distributions.
       const sampleCount = 20;
       const togglesPerSample = 50;
       const totalToggles = sampleCount * togglesPerSample;
@@ -669,74 +743,48 @@ export const scenario: ScenarioDefinition = {
 
       const stressOperations = capture();
       recordLatencyMetrics(context, latencySamples);
-      context.metric('rapid-branch.native.createElement', count(stressOperations, 'createElement'), 'mutations');
-      context.metric('rapid-branch.native.createTextNode', count(stressOperations, 'createTextNode'), 'mutations');
-      context.metric('rapid-branch.native.replaceText', count(stressOperations, 'replaceText'), 'mutations');
-      context.metric('rapid-branch.native.setProperty', count(stressOperations, 'setProperty'), 'mutations');
-      context.metric('rapid-branch.native.insertNode', count(stressOperations, 'insertNode'), 'mutations');
-      context.metric('rapid-branch.native.removeNode', count(stressOperations, 'removeNode'), 'mutations');
-      context.metric('rapid-branch.native.setEventEnabled', count(stressOperations, 'setEventEnabled'), 'mutations');
+      for (const kind of OPERATION_KINDS) {
+        context.metric(`rapid-branch.native.${kind}`, count(stressOperations, kind), 'mutations');
+      }
       context.metric('native-bridge-forwarded', nativeBridge ? 1 : 0, 'boolean');
 
-      assertCount(context, 'rapid swaps create exactly one element per toggle', stressOperations, 'createElement', totalToggles);
-      assertCount(context, 'rapid swaps create zero text nodes', stressOperations, 'createTextNode', 0);
-      assertCount(context, 'rapid swaps perform zero replaceText calls', stressOperations, 'replaceText', 0);
-      assertCount(context, 'rapid swaps replay zero ordinary properties', stressOperations, 'setProperty', 0);
-      assertCount(context, 'rapid swaps insert exactly once per toggle', stressOperations, 'insertNode', totalToggles);
-      assertCount(context, 'rapid swaps remove exactly once per toggle', stressOperations, 'removeNode', totalToggles);
-      assertCount(
-        context,
-        'rapid swaps enable new and disable old handler exactly once per toggle',
-        stressOperations,
-        'setEventEnabled',
-        totalToggles * 2,
-      );
+      assertCounts(context, '1,000 rapid branch swaps', stressOperations, {
+        createElement: totalToggles,
+        createTextNode: 0,
+        replaceText: 0,
+        setProperty: 0,
+        insertNode: totalToggles,
+        removeNode: totalToggles,
+        setEventEnabled: totalToggles * 2,
+      });
       context.assert('rapid swaps leave exactly one live branch', stressSection.children.length === 1);
 
-      const eventTotalBeforeStaleDispatch =
+      const eventsBeforeStaleDispatch =
         showHits + nestedHits + switchHits + dynamicAHits + dynamicBHits + stressHits;
       for (const nodeId of retiredStressIds) dispatchPress(nodeId);
-      const eventTotalAfterStaleDispatch =
+      const eventsAfterStaleDispatch =
         showHits + nestedHits + switchHits + dynamicAHits + dynamicBHits + stressHits;
       context.assert(
         '1,000 retired rapid-swap node ids cannot dispatch stale handlers',
-        eventTotalAfterStaleDispatch === eventTotalBeforeStaleDispatch,
+        eventsAfterStaleDispatch === eventsBeforeStaleDispatch,
       );
 
-      const reachableIds = collectSubtreeIds(host.root);
-      let ghostId: number | undefined;
-      for (const retiredId of retiredIds) {
-        if (reachableIds.has(retiredId)) {
-          ghostId = retiredId;
-          break;
-        }
-      }
+      const reachable = collectSubtreeIds(host.root);
+      const ghostId = [...retiredIds].find(id => reachable.has(id));
       context.assert(
-        'all retired conditional nodes and descendants are absent from the live shadow tree',
+        'retired conditional nodes and descendants are absent from the live shadow tree',
         ghostId === undefined,
         ghostId === undefined ? undefined : `retired node ${ghostId} is still reachable`,
       );
 
       context.assert('stable left sibling preserves native identity', appRoot.children[0]?.id === stableLeftId);
       context.assert('stable right sibling preserves native identity', appRoot.children[7]?.id === stableRightId);
-      const stableSiblingReplay = transitionOperations.some(operation => {
-        if (operation.kind === 'removeNode') {
-          return operation.nodeId === stableLeftId || operation.nodeId === stableRightId;
-        }
-        if (operation.kind === 'insertNode') {
-          return operation.nodeId === stableLeftId || operation.nodeId === stableRightId;
-        }
-        return false;
-      });
-      context.assert('unaffected native siblings are never reinserted or removed', !stableSiblingReplay);
-
-      // When this bundle is running in JSC/UIKit, RecordingBridge forwards every
-      // asserted mutation to the actual native bridge. Portable engines use the
-      // same deterministic operation stream through their host bridge/fallback.
-      context.assert(
-        'native root identity remains stable across all control-flow mutations',
-        host.root.children[0] === appRoot,
+      const replayedStableSibling = transitionOperations.some(operation =>
+        (operation.kind === 'insertNode' || operation.kind === 'removeNode') &&
+        (operation.nodeId === stableLeftId || operation.nodeId === stableRightId),
       );
+      context.assert('unaffected stable siblings are never structurally replayed', !replayedStableSibling);
+      context.assert('native app root identity remains stable', host.root.children[0] === appRoot);
     } finally {
       dispose();
       resetNativeBridgeForTests();
