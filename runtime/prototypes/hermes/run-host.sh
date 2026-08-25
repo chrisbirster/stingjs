@@ -12,8 +12,11 @@ readonly BUILD_DIR="${CACHE_ROOT}/build/${HERMES_TAG}"
 readonly STAGED_SOURCE_DIR="${BUILD_DIR}/sting-zig-src"
 readonly ENGINE_OUTPUT="${BUILD_DIR}/sting-hermes-engine-bench"
 readonly STING_OUTPUT="${BUILD_DIR}/sting-hermes-sting-smoke"
+readonly ASYNC_OUTPUT="${BUILD_DIR}/sting-hermes-async-smoke"
 readonly APP_BUNDLE="${REPO_ROOT}/examples/hello-world/dist/sting-app.js"
 readonly BENCHMARK_BUNDLE="${REPO_ROOT}/benchmarks/sting-benchmark/dist/sting-benchmark.js"
+readonly ASYNC_BUNDLE="${REPO_ROOT}/examples/async-native/dist/sting-async-native.js"
+readonly ASYNC_SEMANTICS="${REPO_ROOT}/runtime/prototypes/shared/async_semantics.js"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "error: Zig 0.16.0 is required for this prototype" >&2
@@ -56,9 +59,6 @@ if [[ "${actual_commit}" != "${HERMES_COMMIT}" ]]; then
   exit 1
 fi
 
-# Prefer Ninja when it is already installed, but do not require it. Use an
-# explicit generator branch instead of an optionally empty Bash array because
-# stock macOS Bash 3.2 treats an empty array expansion as unbound under `set -u`.
 if command -v ninja >/dev/null 2>&1; then
   desired_generator="Ninja"
 else
@@ -102,21 +102,23 @@ readonly HERMES_LIB_DIR="$(dirname "${hermes_library}")"
 cd "${REPO_ROOT}"
 npm run build --workspace @stingjs/example-hello-world
 npm run build --workspace @stingjs/benchmark-native
+npm run build --workspace @stingjs/example-async-native
 
 mkdir -p "${STAGED_SOURCE_DIR}"
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
 cp "${PROTOTYPE_DIR}/src/sting_smoke.zig" "${STAGED_SOURCE_DIR}/sting_smoke.zig"
+cp "${PROTOTYPE_DIR}/src/async_smoke.zig" "${STAGED_SOURCE_DIR}/async_smoke.zig"
 cp "${REPO_ROOT}/benchmarks/js-engine/engine-bench.js" "${STAGED_SOURCE_DIR}/engine-bench.js"
 cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
 cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
+cp "${ASYNC_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-async-native.js"
+cp "${ASYNC_SEMANTICS}" "${STAGED_SOURCE_DIR}/sting-async-semantics.js"
 
-# Zig 0.16's Darwin libc translation exposes stderr as an inline accessor,
-# while glibc exposes it as a FILE pointer. Normalize only the staged prototype
-# sources so Linux CI and macOS local testing use the same checked-in sources.
 if [[ "$(uname -s)" == "Darwin" ]]; then
   sed -i '' 's/c\.stderr/c.stderr()/g' \
     "${STAGED_SOURCE_DIR}/main.zig" \
-    "${STAGED_SOURCE_DIR}/sting_smoke.zig"
+    "${STAGED_SOURCE_DIR}/sting_smoke.zig" \
+    "${STAGED_SOURCE_DIR}/async_smoke.zig"
 fi
 
 zig build-exe \
@@ -139,6 +141,16 @@ zig build-exe \
   -OReleaseFast \
   -femit-bin="${STING_OUTPUT}"
 
+zig build-exe \
+  "${STAGED_SOURCE_DIR}/async_smoke.zig" \
+  -I"${PROTOTYPE_DIR}/include" \
+  -L"${BUILD_DIR}" \
+  -L"${HERMES_LIB_DIR}" \
+  -lsting_hermes_adapter \
+  -lc \
+  -OReleaseFast \
+  -femit-bin="${ASYNC_OUTPUT}"
+
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export DYLD_LIBRARY_PATH="${BUILD_DIR}:${HERMES_LIB_DIR}:${DYLD_LIBRARY_PATH:-}"
 else
@@ -146,4 +158,5 @@ else
 fi
 
 "${ENGINE_OUTPUT}"
-exec "${STING_OUTPUT}"
+"${STING_OUTPUT}"
+exec "${ASYNC_OUTPUT}"
