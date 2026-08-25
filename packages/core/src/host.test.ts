@@ -46,6 +46,22 @@ describe('StingHost', () => {
     expect(bridge.insertNode).toHaveBeenLastCalledWith(parent.id, first.id, second.id);
   });
 
+  it('deduplicates identical text writes before crossing the native bridge', () => {
+    const bridge = makeBridge();
+    const host = new StingHost(bridge);
+    const text = host.createTextNode('alpha');
+
+    host.replaceText(text, 'alpha');
+    expect(bridge.replaceText).not.toHaveBeenCalled();
+
+    host.replaceText(text, 'beta');
+    host.replaceText(text, 'beta');
+
+    expect(bridge.replaceText).toHaveBeenCalledTimes(1);
+    expect(bridge.replaceText).toHaveBeenCalledWith(text.id, 'beta');
+    expect(text.textValue).toBe('beta');
+  });
+
   it('keeps event callbacks in JavaScript and round-trips native events by identity', () => {
     const bridge = makeBridge();
     const host = installNativeBridge(bridge);
