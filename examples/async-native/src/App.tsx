@@ -11,6 +11,7 @@ interface StingAsyncNativeControls {
   resolve(value: string): void;
   beginRefresh(): void;
   reject(message: string): void;
+  retry(): void;
 }
 
 declare global {
@@ -37,6 +38,7 @@ let activeRequest = deferred<string>();
 
 export default function App() {
   const [requestGeneration, setRequestGeneration] = createSignal(0);
+  let retryErrored: (() => void) | undefined;
 
   const value = createMemo(() => {
     requestGeneration();
@@ -66,6 +68,14 @@ export default function App() {
     reject(message) {
       activeRequest.reject(new Error(message));
     },
+
+    retry() {
+      // Exercise the same transaction as the native Retry button below. The
+      // replacement Promise and Errored reset are prepared before one flush so
+      // Solid never observes a reset against the already-rejected computation.
+      retryErrored?.();
+      flush();
+    },
   };
 
   return (
@@ -73,23 +83,24 @@ export default function App() {
       <Text accessibilityLabel="async-title">Solid 2 async native proof</Text>
 
       <Errored
-        fallback={(error, reset) => (
-          <View accessibilityLabel="async-error-state">
-            <Text accessibilityLabel="async-error">Error: {String(error())}</Text>
-            <Button
-              accessibilityLabel="async-retry"
-              onPress={() => {
-                // Keep the replacement request and error reset in the SAME
-                // Solid event batch. Sting's native event wrapper performs one
-                // flush after this callback, matching production app behavior.
-                prepareRequest();
-                reset();
-              }}
-            >
-              Retry
-            </Button>
-          </View>
-        )}
+        fallback={(error, reset) => {
+          retryErrored = () => {
+            prepareRequest();
+            reset();
+          };
+
+          return (
+            <View accessibilityLabel="async-error-state">
+              <Text accessibilityLabel="async-error">Error: {String(error())}</Text>
+              <Button
+                accessibilityLabel="async-retry"
+                onPress={() => retryErrored?.()}
+              >
+                Retry
+              </Button>
+            </View>
+          );
+        }}
       >
         <Loading fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}>
           <View accessibilityLabel="async-ready-state">
