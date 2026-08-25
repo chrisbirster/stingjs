@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "integration_branch": "feature/solid2-conformance-train",
+  "workstreams": [
+    {
+      "id": "reactivity",
+      "branch": "feature/solid2-conformance-reactivity",
+      "scenario_dir": "src/scenarios/reactivity",
+      "scope": "signals, memos, dynamic dependencies, diamond graphs, batching, flush, equality and subscriber fanout"
+    },
+    {
+      "id": "lifecycle",
+      "branch": "feature/solid2-conformance-lifecycle",
+      "scenario_dir": "src/scenarios/lifecycle",
+      "scope": "owners, effects, onSettled, cleanup ordering, context, mount/unmount and leak checks"
+    },
+    {
+      "id": "control-flow",
+      "branch": "feature/solid2-conformance-control-flow",
+      "scenario_dir": "src/scenarios/control-flow",
+      "scope": "Show, Switch, Match, Dynamic and structural branch replacement semantics"
+    },
+    {
+      "id": "lists",
+      "branch": "feature/solid2-conformance-lists",
+      "scenario_dir": "src/scenarios/lists",
+      "scope": "For keyed/non-keyed, Repeat, insert/remove/filter/sort/reverse and native identity preservation"
+    },
+    {
+      "id": "stores",
+      "branch": "feature/solid2-conformance-stores",
+      "scenario_dir": "src/scenarios/stores",
+      "scope": "createStore, nested mutation, arrays, drafts, derived stores, projections and sparse 10K updates"
+    },
+    {
+      "id": "async-stress",
+      "branch": "feature/solid2-conformance-async-stress",
+      "scenario_dir": "src/scenarios/async-stress",
+      "scope": "async graph fanout, races, supersession, nested async, iterator completion/errors and stale results"
+    },
+    {
+      "id": "reveal",
+      "branch": "feature/solid2-conformance-reveal",
+      "scenario_dir": "src/scenarios/reveal",
+      "scope": "Reveal ordering modes, nesting, Loading/Errored interaction and streaming reveal semantics"
+    },
+    {
+      "id": "actions",
+      "branch": "feature/solid2-conformance-actions",
+      "scenario_dir": "src/scenarios/actions",
+      "scope": "concurrent actions, failures, optimistic scalar/store updates, correction and rollback"
+    },
+    {
+      "id": "renderer",
+      "branch": "feature/solid2-conformance-renderer",
+      "scenario_dir": "src/scenarios/renderer",
+      "scope": "structural renderer torture, event replacement/removal, subtree disposal, property dedupe and node identity"
+    },
+    {
+      "id": "real-app",
+      "branch": "feature/solid2-conformance-real-app",
+      "scenario_dir": "src/scenarios/real-app",
+      "scope": "representative composed application workload combining stores, lists, forms, async, actions, events and lifecycle"
+    }
+  ]
+}
