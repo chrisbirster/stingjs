@@ -35,7 +35,7 @@ function AsyncText(props: {
   request: Deferred<string>;
   label: string;
   prefix?: string;
-}): HostNode {
+}) {
   const value = createMemo(() => props.request.promise);
   return (
     <Text accessibilityLabel={props.label}>
@@ -47,7 +47,7 @@ function AsyncText(props: {
 function StreamText(props: {
   stream: ControlledAsyncIterable<string>;
   label: string;
-}): HostNode {
+}) {
   // This is intentionally the Promise-backed AsyncIterator form used by the
   // existing async-native cross-engine proof. It exercises Solid 2 streaming
   // without async-generator syntax, which the pinned Hermes V1 parser rejects.
@@ -55,9 +55,9 @@ function StreamText(props: {
   return <Text accessibilityLabel={props.label}>Stream: {value()}</Text>;
 }
 
-async function mountCase(code: () => HostNode): Promise<MountedCase> {
+async function mountCase(code: () => unknown): Promise<MountedCase> {
   const trace = createTraceHost();
-  const disposeRender = render(code, trace.host.root);
+  const disposeRender = render(() => code() as HostNode, trace.host.root);
   await settleSolid();
   return { ...trace, disposeRender };
 }
@@ -595,7 +595,7 @@ async function runErroredRecovery(context: ScenarioContext): Promise<void> {
   const [generation, setGeneration] = createSignal(0);
   let resetError: (() => void) | undefined;
 
-  function RecoverableContent(): HostNode {
+  function RecoverableContent() {
     const value = createMemo(() => {
       generation();
       return activeRequest.promise;
