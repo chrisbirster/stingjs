@@ -164,10 +164,13 @@ export class StingHost {
     const handlers = this.events.get(node.id);
     if (!handlers) return;
 
-    for (const event of handlers.keys()) {
+    // Delete first so even a re-entrant native callback during disable cannot
+    // observe a handler for a subtree Solid has already detached.
+    const events = [...handlers.keys()];
+    this.events.delete(node.id);
+    for (const event of events) {
       this.bridge.setEventEnabled(node.id, event, false);
     }
-    this.events.delete(node.id);
   }
 
   private setEventProperty(node: HostNode, event: string, value: unknown): void {
