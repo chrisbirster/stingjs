@@ -60,10 +60,19 @@ class ControlledStringStream implements AsyncIterable<string> {
     });
   }
 
-  async *[Symbol.asyncIterator]() {
-    while (true) {
-      yield await this.nextValue();
-    }
+  [Symbol.asyncIterator](): AsyncIterator<string> {
+    // Exercise the AsyncIterable protocol Solid 2 consumes without requiring
+    // JavaScript async-generator syntax. The pinned Hermes V1 generation used
+    // by React Native 0.87 supports Promises/async work but rejects `async *`
+    // at parse time. Returning Promise-backed IteratorResult objects preserves
+    // the same streaming semantics across every candidate runtime.
+    return {
+      next: () =>
+        this.nextValue().then(value => ({
+          value,
+          done: false as const,
+        })),
+    };
   }
 }
 
