@@ -277,6 +277,62 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertNil(firstButton(titled: "Retry", in: rootView))
     }
 
+    func testSolidTwoAsyncIterableStreamsFineGrainedUpdatesIntoUIKit() throws {
+        let bundleURL = try requireBundle(named: "sting-async-native")
+        let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let runtime = try StingJavaScriptRuntime(rootView: rootView)
+
+        try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
+
+        // An AsyncIterable memo has no value until its first yield, so Solid 2's
+        // Loading boundary must render the stream fallback into real UIKit.
+        XCTAssertEqual(
+            waitForLabel(accessibilityLabel: "stream-loading", in: rootView)?.text,
+            "Stream loading..."
+        )
+        XCTAssertNil(label(accessibilityLabel: "stream-value", in: rootView))
+
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.streamYield('one');",
+            in: runtime
+        )
+
+        guard let streamLabel = waitForLabel(
+            accessibilityLabel: "stream-value",
+            in: rootView,
+            where: { $0.text == "Stream: one" }
+        ) else {
+            XCTFail("The first AsyncIterable yield should reveal a native stream UILabel")
+            return
+        }
+        XCTAssertNil(label(accessibilityLabel: "stream-loading", in: rootView))
+
+        // After the first yield the stream is already revealed. A subsequent
+        // yield must update that exact UILabel in place with one text mutation,
+        // not recreate or structurally reconcile the native subtree.
+        runtime.resetMutationCounts()
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.streamYield('two');",
+            in: runtime
+        )
+
+        guard let updatedStreamLabel = waitForLabel(
+            accessibilityLabel: "stream-value",
+            in: rootView,
+            where: { $0.text == "Stream: two" }
+        ) else {
+            XCTFail("The second AsyncIterable yield should update the native stream UILabel")
+            return
+        }
+
+        XCTAssertTrue(
+            streamLabel === updatedStreamLabel,
+            "Streaming updates should preserve the mounted native UILabel identity"
+        )
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
+    }
+
     private func requireBundle(named name: String) throws -> URL {
         guard let bundleURL = Bundle.module.url(
             forResource: name,
