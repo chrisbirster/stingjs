@@ -1,5 +1,13 @@
 import { createRenderer } from '@solidjs/universal';
-import { createRenderEffect, flush } from 'solid-js';
+import {
+  createMemo,
+  createRenderEffect,
+  flush,
+  splitProps,
+  untrack,
+  type ComponentProps,
+  type ValidComponent,
+} from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
@@ -61,6 +69,49 @@ export const {
   applyRef,
   ref,
 } = renderer;
+
+export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {
+  [K in keyof P]: P[K];
+} & {
+  component: T | undefined;
+};
+
+/**
+ * Universal/native counterpart to Solid 2's renderer-specific Dynamic helper.
+ *
+ * Solid keeps Dynamic in renderer packages because intrinsic element creation is
+ * platform-specific. This mirrors the current Solid 2 control-flow behavior but
+ * routes string intrinsics through Sting's @solidjs/universal renderer instead
+ * of importing the DOM-oriented @solidjs/web implementation.
+ */
+export function createDynamic<T extends ValidComponent>(
+  component: () => T | undefined,
+  props: ComponentProps<T>,
+): unknown {
+  const cached = createMemo<Function | string | undefined>(
+    () => component() as Function | string | undefined,
+  );
+
+  return createMemo(() => {
+    const selected = cached();
+    switch (typeof selected) {
+      case 'function':
+        return untrack(() => selected(props));
+      case 'string': {
+        const element = createElement(selected);
+        spread(element, props as object);
+        return element;
+      }
+      default:
+        return undefined;
+    }
+  });
+}
+
+export function Dynamic<T extends ValidComponent>(props: DynamicProps<T>): unknown {
+  const [, others] = splitProps(props, ['component']);
+  return createDynamic(() => props.component, others as ComponentProps<T>);
+}
 
 /**
  * Bind one existing Sting host text node to a Solid computation.
