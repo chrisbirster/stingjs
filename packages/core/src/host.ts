@@ -107,6 +107,11 @@ export class StingHost {
 
     parent.children.splice(index, 1);
     node.parent = null;
+
+    // Native removal owns the whole subtree. Tear down every JavaScript event
+    // registration before the native node disappears so an in-flight or stale
+    // native callback can never reach a branch that Solid has already removed.
+    this.disableEventsForSubtree(node);
     this.bridge.removeNode(parent.id, node.id);
   }
 
@@ -151,6 +156,18 @@ export class StingHost {
       children: [],
       textValue,
     };
+  }
+
+  private disableEventsForSubtree(node: HostNode): void {
+    for (const child of node.children) this.disableEventsForSubtree(child);
+
+    const handlers = this.events.get(node.id);
+    if (!handlers) return;
+
+    for (const event of handlers.keys()) {
+      this.bridge.setEventEnabled(node.id, event, false);
+    }
+    this.events.delete(node.id);
   }
 
   private setEventProperty(node: HostNode, event: string, value: unknown): void {
