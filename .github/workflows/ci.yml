@@ -111,6 +111,24 @@ jobs:
       - name: Verify release APK
         run: test -f ${{ runner.temp }}/StingRNBenchmark/android/app/build/outputs/apk/release/app-release.apk
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Compile Android host and instrumentation APK
+        working-directory: examples/hello-world/android
+        run: gradle :app:assembleDebug :sting-runtime:assembleDebug :sting-runtime:assembleDebugAndroidTest --no-daemon
+
   ios:
     runs-on: macos-latest
     steps:
