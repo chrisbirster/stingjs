@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Errored, flush, isPending, Loading } from 'solid-js';
+import { action, createMemo, createOptimistic, createSignal, Errored, flush, isPending, Loading } from 'solid-js';
 import { Button, Text, View } from '@stingjs/native';
 
 interface Deferred<T> {
@@ -12,6 +12,7 @@ interface StingAsyncNativeControls {
   beginRefresh(): void;
   reject(message: string): void;
   streamYield(value: string): void;
+  resolveAction(): void;
 }
 
 declare global {
@@ -67,6 +68,7 @@ class ControlledStringStream implements AsyncIterable<string> {
 }
 
 let activeRequest = deferred<string>();
+let activeActionRequest = deferred<void>();
 const controlledStream = new ControlledStringStream();
 
 interface AsyncContentProps {
@@ -112,6 +114,33 @@ function StreamContent() {
   );
 }
 
+function ActionContent() {
+  const [optimisticCount, setOptimisticCount] = createOptimistic(0);
+
+  const increment = action(function* () {
+    // Optimistic state is intentionally the only visible write before the
+    // async boundary. It should reach native UI immediately, while Solid owns
+    // the rollback when the yielded work settles.
+    setOptimisticCount(count => count + 1);
+    yield activeActionRequest.promise;
+  });
+
+  return (
+    <View accessibilityLabel="action-state">
+      <Text accessibilityLabel="action-title">Solid 2 action + optimistic proof</Text>
+      <Text accessibilityLabel="action-value">Optimistic: {optimisticCount()}</Text>
+      <Button
+        accessibilityLabel="action-increment"
+        onPress={() => {
+          void increment();
+        }}
+      >
+        Optimistic +1
+      </Button>
+    </View>
+  );
+}
+
 export default function App() {
   const [requestGeneration, setRequestGeneration] = createSignal(0);
   let retryErrored: (() => void) | undefined;
@@ -143,6 +172,12 @@ export default function App() {
     streamYield(value) {
       controlledStream.push(value);
     },
+
+    resolveAction() {
+      const request = activeActionRequest;
+      activeActionRequest = deferred<void>();
+      request.resolve(undefined);
+    },
   };
 
   return (
@@ -173,6 +208,7 @@ export default function App() {
       </Errored>
 
       <StreamContent />
+      <ActionContent />
     </View>
   );
 }

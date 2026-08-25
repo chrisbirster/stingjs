@@ -35,16 +35,8 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertEqual(label.text, "Count: 0")
         XCTAssertEqual(button.title(for: .normal), "Add")
 
-        // Ignore initial mount work. From this point forward we want the exact
-        // hot-path mutations caused by one native press.
         runtime.resetMutationCounts()
 
-        // Swift-package XCTest runs without UIApplicationMain, so UIKit cannot
-        // dispatch sendActions(for:) in this process. Verify the real UIKit
-        // target/action wiring exists, then invoke the exact native event sink
-        // installed on StingButton. Everything after UIKit dispatch remains the
-        // production path: native event -> JS handler -> Solid flush -> native
-        // text mutation + native module call.
         let pressActions = button.actions(forTarget: button, forControlEvent: .touchUpInside) ?? []
         XCTAssertTrue(pressActions.contains("handlePress"))
         XCTAssertNotNil(button.onPress)
@@ -96,9 +88,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
 
         XCTAssertEqual(targetLabel.text, "Row 4281: 0")
 
-        // Mounting 10,000 rows is intentionally expensive and is measured
-        // separately. Sparse/dense mutation invariants start only after the
-        // complete native tree exists.
         runtime.resetMutationCounts()
         sparseButton.onPress?(sparseButton.nodeId)
 
@@ -109,9 +98,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         )
         assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
 
-        // The deterministic dense fixture includes row 4,281 and 99 other
-        // unique rows. Solid should therefore schedule exactly 100 bound text
-        // computations and Sting should emit exactly 100 native text mutations.
         runtime.resetMutationCounts()
         denseButton.onPress?(denseButton.nodeId)
 
@@ -127,9 +113,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
 
         try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
 
-        // Solid 2's async memo starts with an unresolved Promise. The native
-        // renderer must therefore show the <Loading> fallback as a real UILabel
-        // rather than exposing undefined or requiring Sting-specific loading state.
         XCTAssertEqual(
             waitForLabel(accessibilityLabel: "async-loading", in: rootView)?.text,
             "Loading..."
@@ -159,9 +142,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         )
         XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
 
-        // Changing the question should enter Solid 2's stale-while-pending
-        // state. The already-mounted value must remain visible; only the
-        // pending indicator should mutate while the next Promise is unresolved.
         runtime.resetMutationCounts()
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.beginRefresh();",
@@ -180,8 +160,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
         assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
 
-        // Resolving the refresh should update the existing native value text and
-        // clear the pending indicator without rebuilding the native subtree.
         runtime.resetMutationCounts()
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.resolve('beta');",
@@ -206,8 +184,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         )
         assertOnlyTextMutations(runtime.mutationCounts, expected: 2)
 
-        // A rejected subsequent computation must enter Solid 2's <Errored>
-        // boundary and surface the error through native UI.
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.beginRefresh();",
             in: runtime
@@ -240,11 +216,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         XCTAssertTrue(retryActions.contains("handlePress"))
         XCTAssertNotNil(retryButton.onPress)
 
-        // Solid 2 RC intentionally keeps <Errored> visible while the replacement
-        // async source is still pending. Retry starts from the real native event
-        // path, but the previously successful beta UI does not reappear until the
-        // new source actually succeeds. This avoids presenting stale content as a
-        // successful recovery while the retry may still fail.
         retryButton.onPress?(retryButton.nodeId)
         XCTAssertTrue(
             label(accessibilityLabel: "async-error", in: rootView)?.text?.contains("native async boom") == true
@@ -285,8 +256,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
 
         try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
 
-        // An AsyncIterable memo has no value until its first yield, so Solid 2's
-        // Loading boundary must render the stream fallback into real UIKit.
         XCTAssertEqual(
             waitForLabel(accessibilityLabel: "stream-loading", in: rootView)?.text,
             "Stream loading..."
@@ -308,9 +277,6 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         }
         XCTAssertNil(label(accessibilityLabel: "stream-loading", in: rootView))
 
-        // After the first yield the stream is already revealed. A subsequent
-        // yield must update that exact UILabel in place with one text mutation,
-        // not recreate or structurally reconcile the native subtree.
         runtime.resetMutationCounts()
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.streamYield('two');",
@@ -330,6 +296,69 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             streamLabel === updatedStreamLabel,
             "Streaming updates should preserve the mounted native UILabel identity"
         )
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
+    }
+
+    func testSolidTwoActionOptimisticStateAppliesAndRollsBackInUIKit() throws {
+        let bundleURL = try requireBundle(named: "sting-async-native")
+        let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let runtime = try StingJavaScriptRuntime(rootView: rootView)
+
+        try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
+
+        guard let actionLabel = waitForLabel(
+            accessibilityLabel: "action-value",
+            in: rootView,
+            where: { $0.text == "Optimistic: 0" }
+        ) else {
+            XCTFail("The optimistic action fixture should mount its native value UILabel")
+            return
+        }
+        guard let actionButton = firstButton(titled: "Optimistic +1", in: rootView) else {
+            XCTFail("The optimistic action fixture should expose a native button")
+            return
+        }
+
+        let actions = actionButton.actions(forTarget: actionButton, forControlEvent: .touchUpInside) ?? []
+        XCTAssertTrue(actions.contains("handlePress"))
+        XCTAssertNotNil(actionButton.onPress)
+
+        // createOptimistic is the one write that is intentionally visible while
+        // an action is in flight. A native press should reveal it immediately
+        // without rebuilding or replaying unrelated native state.
+        runtime.resetMutationCounts()
+        actionButton.onPress?(actionButton.nodeId)
+
+        guard let optimisticLabel = waitForLabel(
+            accessibilityLabel: "action-value",
+            in: rootView,
+            where: { $0.text == "Optimistic: 1" }
+        ) else {
+            XCTFail("The in-flight action should immediately reveal optimistic native state")
+            return
+        }
+        XCTAssertTrue(actionLabel === optimisticLabel)
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
+
+        // Once the yielded async work settles, Solid owns the optimistic
+        // rollback. The same UILabel must return to its committed value with
+        // exactly one native text write and no structural reconciliation.
+        runtime.resetMutationCounts()
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.resolveAction();",
+            in: runtime
+        )
+
+        guard let rolledBackLabel = waitForLabel(
+            accessibilityLabel: "action-value",
+            in: rootView,
+            where: { $0.text == "Optimistic: 0" }
+        ) else {
+            XCTFail("Settling the action should roll optimistic native state back")
+            return
+        }
+        XCTAssertTrue(actionLabel === rolledBackLabel)
         assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
     }
 
