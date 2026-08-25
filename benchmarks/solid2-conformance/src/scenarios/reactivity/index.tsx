@@ -98,7 +98,7 @@ function recordDistribution(
   context.metric(`${prefix}.p50`, percentile(sorted, 0.5), unit);
   context.metric(`${prefix}.p95`, percentile(sorted, 0.95), unit);
   context.metric(`${prefix}.p99`, percentile(sorted, 0.99), unit);
-  context.metric(`${prefix}.max`, sorted.at(-1) ?? 0, unit);
+  context.metric(`${prefix}.max`, sorted[sorted.length - 1] ?? 0, unit);
 }
 
 function testMemoChain(context: ScenarioContext): void {
@@ -138,11 +138,12 @@ function testMemoChain(context: ScenarioContext): void {
     applyCount = 0;
     setSource(5);
 
-    context.assert('source reads expose the written value before flush', readSource() === 5);
+    context.assert('source getter keeps the settled value before flush', readSource() === 1);
     context.assert('render application remains batched before flush', observed === 33);
 
     flush();
 
+    context.assert('source getter exposes the new value after flush', readSource() === 5);
     context.assert('32-deep memo chain settles to the correct value', observed === 37);
     context.assert(
       'every memo in the chain recomputes exactly once',
@@ -370,25 +371,28 @@ async function testBatchingAndFlush(context: ScenarioContext): Promise<void> {
     applyCount = 0;
 
     setValue(1);
-    context.assert('signal getter observes a pending write immediately', readValue() === 1);
+    context.assert('signal getter keeps the settled value while a write is pending', readValue() === 0);
     context.assert('render application waits for the automatic batch boundary', applied === 0);
 
     await settleMicrotasks();
+    context.assert('microtask boundary automatically settles the signal value', readValue() === 1);
     context.assert('microtask boundary automatically settles pending work', applied === 1 && applyCount === 1);
 
     applyCount = 0;
     setValue(2);
     setValue(3);
     setValue(4);
+    context.assert('multiple writes keep the previous settled signal value', readValue() === 1);
     context.assert('multiple writes stay deferred before microtask settlement', applied === 1);
     await settleMicrotasks();
+    context.assert('multiple writes settle to the final signal value', readValue() === 4);
     context.assert('multiple writes in one turn coalesce to one application', applied === 4 && applyCount === 1);
 
     applyCount = 0;
     setValue(5);
-    context.assert('explicit flush test has pending work before flush', applied === 4);
+    context.assert('explicit flush test has pending work before flush', applied === 4 && readValue() === 4);
     flush();
-    context.assert('flush settles the graph synchronously', applied === 5 && applyCount === 1);
+    context.assert('flush settles the graph synchronously', applied === 5 && readValue() === 5 && applyCount === 1);
   } finally {
     dispose();
   }
@@ -425,9 +429,10 @@ async function testBatchingAndFlush(context: ScenarioContext): Promise<void> {
       return previous + 1;
     });
 
-    context.assert('nested writes update source getters before settlement', readA() === 2 && readB() === 12);
+    context.assert('nested writes keep both source getters at their settled values before flush', readA() === 1 && readB() === 2);
     context.assert('nested writes preserve the previously applied value before flush', observedSum === 3);
     flush();
+    context.assert('nested writes settle their source values together', readA() === 2 && readB() === 12);
     context.assert('nested writes settle to one consistent graph state', observedSum === 14);
     context.assert('nested writes produce one downstream application', sumApplies === 1);
   } finally {
@@ -458,7 +463,7 @@ function testFanoutCorrectness(context: ScenarioContext): void {
       setValue(1);
       flush();
       context.assert(
-        `one signal fans out to exactly ${size.toLocaleString()} subscribers`,
+        `one signal fans out to exactly ${size} subscribers`,
         applies === size,
         `expected=${size} actual=${applies}`,
       );
@@ -541,7 +546,7 @@ function benchmarkFanout(context: ScenarioContext): void {
         }
         const elapsed = context.now() - start;
         durations.push(elapsed / iterations);
-        allSamplesExact &&= applies === size * iterations;
+        allSamplesExact = allSamplesExact && applies === size * iterations;
       } finally {
         dispose();
       }
