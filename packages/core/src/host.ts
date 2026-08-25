@@ -13,6 +13,7 @@ export interface HostNode {
   readonly isText: boolean;
   parent: HostNode | null;
   children: HostNode[];
+  textValue: string | null;
 }
 
 type EventHandler = (payload: NativeValue) => void;
@@ -32,6 +33,7 @@ export class StingHost {
     isText: false,
     parent: null,
     children: [],
+    textValue: null,
   };
 
   private nextNodeId = 1;
@@ -44,19 +46,26 @@ export class StingHost {
   }
 
   createElement(type: string): HostNode {
-    const node = this.createHostNode(type, false);
+    const node = this.createHostNode(type, false, null);
     this.bridge.createElement(node.id, type);
     return node;
   }
 
   createTextNode(value: string): HostNode {
-    const node = this.createHostNode('#text', true);
+    const node = this.createHostNode('#text', true, value);
     this.bridge.createTextNode(node.id, value);
     return node;
   }
 
   replaceText(node: HostNode, value: string): void {
     if (!node.isText) throw new TypeError('replaceText requires a Sting text node');
+
+    // Solid is free to reevaluate a text binding more than once while async
+    // state settles. Crossing the native boundary with an identical string is
+    // still wasted work, so the Sting shadow tree owns this final dedupe.
+    if (node.textValue === value) return;
+
+    node.textValue = value;
     this.bridge.replaceText(node.id, value);
   }
 
@@ -133,13 +142,14 @@ export class StingHost {
     return response.value;
   }
 
-  private createHostNode(type: string, isText: boolean): HostNode {
+  private createHostNode(type: string, isText: boolean, textValue: string | null): HostNode {
     return {
       id: this.nextNodeId++,
       type,
       isText,
       parent: null,
       children: [],
+      textValue,
     };
   }
 
