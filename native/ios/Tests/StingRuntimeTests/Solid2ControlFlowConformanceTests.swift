@@ -84,9 +84,24 @@ final class Solid2ControlFlowConformanceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(mutations.removeNode, 1000)
         XCTAssertGreaterThanOrEqual(mutations.setEventEnabled, 2000)
 
-        XCTAssertTrue(
-            rootView.subviews.isEmpty,
-            "The conformance scenario disposer must leave no ghost UIKit nodes behind"
+        guard let appRoot = rootView.subviews.first else {
+            XCTFail("The control-flow scenario should leave its final native app root mounted")
+            return
+        }
+        XCTAssertEqual(
+            rootView.subviews.count,
+            1,
+            "Control-flow replacement must not create ghost app roots in UIKit"
+        )
+        XCTAssertEqual(
+            appRoot.subviews.count,
+            8,
+            "The eight stable control-flow sections must preserve their native parent identities"
+        )
+        XCTAssertEqual(
+            descendantCount(of: StingButton.self, in: appRoot),
+            5,
+            "Removed conditional branches must not leave ghost StingButton instances in UIKit"
         )
     }
 
@@ -135,5 +150,13 @@ final class Solid2ControlFlowConformanceTests: XCTestCase {
             return value.intValue
         }
         return nil
+    }
+
+    private func descendantCount<View: UIView>(of type: View.Type, in root: UIView) -> Int {
+        var count = root is View ? 1 : 0
+        for child in root.subviews {
+            count += descendantCount(of: type, in: child)
+        }
+        return count
     }
 }
