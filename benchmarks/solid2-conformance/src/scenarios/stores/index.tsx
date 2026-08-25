@@ -243,12 +243,12 @@ function runStoreApiConformance(context: ScenarioContext): void {
     );
 
     setState(draft => {
-      delete draft.profile.location.city;
+      Reflect.deleteProperty(draft.profile.location, 'city');
     });
     flush();
     context.assert(
-      'draft setter deletes nested optional field',
-      !('city' in state.profile.location) && state.profile.location.city === undefined,
+      'draft setter deletes nested field',
+      !Object.prototype.hasOwnProperty.call(state.profile.location, 'city'),
     );
 
     setState(draft => {
