@@ -2,9 +2,14 @@ import { Text, View } from '@stingjs/native';
 import { render } from '@stingjs/solid';
 import { createMemo, createSignal, flush, Loading } from 'solid-js';
 import type { ScenarioContext } from '../../harness/types.js';
-import { ControlledAsyncIterator, deferred, drainAsync } from './controls.js';
+import { ControlledAsyncIterator, deferred, drainAsync, type Deferred } from './controls.js';
 import { PromiseContent, StreamContent } from './components.js';
-import { assertOnlyReplaceText, benchmark, type HostInstrumentation } from './instrumentation.js';
+import {
+  assertOnlyReplaceText,
+  benchmark,
+  hasTextContaining,
+  type HostInstrumentation,
+} from './instrumentation.js';
 
 export async function runBenchmarks(context: ScenarioContext, instrumentation: HostInstrumentation): Promise<void> {
   await benchmark(context, 'async-settle', async () => {
@@ -131,6 +136,57 @@ export async function runBenchmarks(context: ScenarioContext, instrumentation: H
         return mutations.length;
       },
       async cleanup() {
+        dispose();
+        await drainAsync();
+      },
+    };
+  });
+
+  await benchmark(context, 'race-resolution-handling', async () => {
+    const requests = new Map<string, Deferred<string>>();
+    requests.set('base', deferred<string>());
+    requests.set('A', deferred<string>());
+    requests.set('B', deferred<string>());
+    const [source, setSource] = createSignal('base');
+
+    function Content() {
+      const value = createMemo<string>(() => {
+        const request = requests.get(source());
+        if (!request) throw new Error('missing benchmark race request');
+        return request.promise;
+      });
+      return (
+        <Loading fallback={<Text>bench-race:loading</Text>}>
+          <Text>bench-race:value:{value()}</Text>
+        </Loading>
+      );
+    }
+
+    const dispose = render(() => <Content />, instrumentation.host.root);
+    requests.get('base')?.resolve('baseline');
+    await drainAsync();
+    setSource('A');
+    flush();
+    setSource('B');
+    flush();
+    await drainAsync();
+    const mark = instrumentation.mark();
+
+    return {
+      async run() {
+        requests.get('A')?.resolve('stale-A');
+        await drainAsync();
+        const mutations = instrumentation.since(mark);
+        assertOnlyReplaceText(context, 'benchmark stale race resolution', mutations, 0);
+        context.assert(
+          'benchmark stale race resolution: stale result is not published',
+          !hasTextContaining(instrumentation.host.root, 'stale-A'),
+        );
+        return mutations.length;
+      },
+      async cleanup() {
+        requests.get('B')?.resolve('current-B');
+        await drainAsync();
         dispose();
         await drainAsync();
       },
