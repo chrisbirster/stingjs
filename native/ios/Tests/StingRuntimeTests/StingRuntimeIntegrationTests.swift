@@ -119,6 +119,153 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         assertOnlyTextMutations(runtime.mutationCounts, expected: 100)
     }
 
+    func testSolidTwoAsyncMemoLoadingPendingErrorAndRecoveryRenderIntoUIKit() throws {
+        let bundleURL = try requireBundle(named: "sting-async-native")
+        let bundle = try String(contentsOf: bundleURL, encoding: .utf8)
+        let rootView = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let runtime = try StingJavaScriptRuntime(rootView: rootView)
+
+        try runtime.evaluate(bundle: bundle, sourceURL: bundleURL)
+
+        // Solid 2's async memo starts with an unresolved Promise. The native
+        // renderer must therefore show the <Loading> fallback as a real UILabel
+        // rather than exposing undefined or requiring Sting-specific loading state.
+        XCTAssertEqual(
+            waitForLabel(accessibilityLabel: "async-loading", in: rootView)?.text,
+            "Loading..."
+        )
+        XCTAssertNil(label(accessibilityLabel: "async-value", in: rootView))
+
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.resolve('alpha');",
+            in: runtime
+        )
+
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-value",
+                in: rootView,
+                where: { $0.text == "Value: alpha" }
+            )?.text,
+            "Value: alpha"
+        )
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-pending",
+                in: rootView,
+                where: { $0.text == "Pending: no" }
+            )?.text,
+            "Pending: no"
+        )
+        XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
+
+        // Changing the question should enter Solid 2's stale-while-pending
+        // state. The already-mounted value must remain visible; only the
+        // pending indicator should mutate while the next Promise is unresolved.
+        runtime.resetMutationCounts()
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.beginRefresh();",
+            in: runtime
+        )
+
+        XCTAssertEqual(label(accessibilityLabel: "async-value", in: rootView)?.text, "Value: alpha")
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-pending",
+                in: rootView,
+                where: { $0.text == "Pending: yes" }
+            )?.text,
+            "Pending: yes"
+        )
+        XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 1)
+
+        // Resolving the refresh should update the existing native value text and
+        // clear the pending indicator without rebuilding the native subtree.
+        runtime.resetMutationCounts()
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.resolve('beta');",
+            in: runtime
+        )
+
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-value",
+                in: rootView,
+                where: { $0.text == "Value: beta" }
+            )?.text,
+            "Value: beta"
+        )
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-pending",
+                in: rootView,
+                where: { $0.text == "Pending: no" }
+            )?.text,
+            "Pending: no"
+        )
+        assertOnlyTextMutations(runtime.mutationCounts, expected: 2)
+
+        // A rejected subsequent computation must enter Solid 2's <Errored>
+        // boundary and surface the error through native UI.
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.beginRefresh();",
+            in: runtime
+        )
+        _ = waitForLabel(
+            accessibilityLabel: "async-pending",
+            in: rootView,
+            where: { $0.text == "Pending: yes" }
+        )
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.reject('native async boom');",
+            in: runtime
+        )
+
+        guard let errorLabel = waitForLabel(
+            accessibilityLabel: "async-error",
+            in: rootView,
+            where: { $0.text?.contains("native async boom") == true }
+        ) else {
+            XCTFail("Solid 2 <Errored> should render the rejected async computation into UIKit")
+            return
+        }
+        XCTAssertTrue(errorLabel.text?.contains("native async boom") == true)
+
+        // Retrying starts a brand-new unresolved computation. With no stale
+        // successful branch left behind after the error, <Loading> owns the UI
+        // again until the replacement Promise resolves.
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.retry();",
+            in: runtime
+        )
+        XCTAssertEqual(
+            waitForLabel(accessibilityLabel: "async-loading", in: rootView)?.text,
+            "Loading..."
+        )
+
+        evaluateJavaScript(
+            "globalThis.__stingAsyncNative.resolve('gamma');",
+            in: runtime
+        )
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-value",
+                in: rootView,
+                where: { $0.text == "Value: gamma" }
+            )?.text,
+            "Value: gamma"
+        )
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-pending",
+                in: rootView,
+                where: { $0.text == "Pending: no" }
+            )?.text,
+            "Pending: no"
+        )
+    }
+
     private func requireBundle(named name: String) throws -> URL {
         guard let bundleURL = Bundle.module.url(
             forResource: name,
@@ -129,6 +276,36 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             throw StingRuntimeError("Missing generated benchmark bundle: \(name).js")
         }
         return bundleURL
+    }
+
+    private func evaluateJavaScript(_ source: String, in runtime: StingJavaScriptRuntime) {
+        runtime.context.evaluateScript(source)
+    }
+
+    private func label(accessibilityLabel: String, in root: UIView) -> UILabel? {
+        firstSubview(of: UILabel.self, in: root) {
+            $0.accessibilityLabel == accessibilityLabel
+        }
+    }
+
+    private func waitForLabel(
+        accessibilityLabel: String,
+        in root: UIView,
+        timeout: TimeInterval = 1.0,
+        where predicate: (UILabel) -> Bool = { _ in true }
+    ) -> UILabel? {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if let candidate = label(accessibilityLabel: accessibilityLabel, in: root),
+               predicate(candidate) {
+                return candidate
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < deadline
+
+        return nil
     }
 
     private func assertOnlyTextMutations(
