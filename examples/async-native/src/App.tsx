@@ -38,7 +38,6 @@ let activeRequest = deferred<string>();
 
 export default function App() {
   const [requestGeneration, setRequestGeneration] = createSignal(0);
-  const [loadingEpoch, setLoadingEpoch] = createSignal(0);
   let resetErrored: (() => void) | undefined;
 
   const value = createMemo(() => {
@@ -71,11 +70,10 @@ export default function App() {
     },
 
     retry() {
-      // A normal refresh intentionally demonstrates Solid 2's stale-while-
-      // pending behavior. Retry is different: changing Loading's `on` key asks
-      // the boundary to re-show its fallback while the replacement request is
-      // pending, which is useful after an error or route/key transition.
-      setLoadingEpoch(epoch => epoch + 1);
+      // Recovery starts a replacement async computation, then resets the error
+      // boundary. Since this Loading boundary has already revealed successful
+      // content, Solid 2 intentionally restores that stale content while the
+      // replacement value is pending rather than flashing the initial fallback.
       startRequest();
       resetErrored?.();
       flush();
@@ -96,10 +94,7 @@ export default function App() {
           );
         }}
       >
-        <Loading
-          on={loadingEpoch()}
-          fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}
-        >
+        <Loading fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}>
           <View accessibilityLabel="async-ready-state">
             <Text accessibilityLabel="async-value">Value: {value()}</Text>
             <Text accessibilityLabel="async-pending">
