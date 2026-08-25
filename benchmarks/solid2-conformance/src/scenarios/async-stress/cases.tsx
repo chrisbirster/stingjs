@@ -411,7 +411,14 @@ export async function testIteratorSemantics(context: ScenarioContext, instrument
 
   dispose();
   await drainAsync();
-  context.assert('iterator disposal: active iterator receives return when supported', current.returnCalls >= 1 || current.nextCalls >= 1);
+  const disposedMark = instrumentation.mark();
+  current.push('ghost-after-dispose');
+  await drainAsync();
+  context.assert(
+    'iterator disposal: disposed source cannot publish native mutations',
+    instrumentation.since(disposedMark).length === 0,
+    JSON.stringify(instrumentation.since(disposedMark)),
+  );
 }
 
 export async function testEmptyIterator(context: ScenarioContext, instrumentation: HostInstrumentation): Promise<void> {
