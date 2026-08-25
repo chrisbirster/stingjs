@@ -72,7 +72,7 @@ fn jsHostCall(
 ) callconv(.c) c.JSValue {
     _ = this_value;
 
-    const ctx = maybe_ctx orelse return c.JS_MKUNDEFINED();
+    const ctx = maybe_ctx orelse return c.JS_NewInt32(maybe_ctx, 0);
     const state = stateFromContext(ctx) orelse return fail(ctx, "Sting QuickJS runtime state is missing");
     if (argc < 1) return fail(ctx, "Sting host call is missing an operation");
 
@@ -242,12 +242,17 @@ export fn sting_qjs_android_create(
 ) ?*anyopaque {
     const host = callbacks orelse return null;
     const runtime = c.JS_NewRuntime() orelse return null;
-    errdefer c.JS_FreeRuntime(runtime);
 
-    const ctx = c.JS_NewContext(runtime) orelse return null;
-    errdefer c.JS_FreeContext(ctx);
+    const ctx = c.JS_NewContext(runtime) orelse {
+        c.JS_FreeRuntime(runtime);
+        return null;
+    };
 
-    const raw_state = c.malloc(@sizeOf(RuntimeState)) orelse return null;
+    const raw_state = c.malloc(@sizeOf(RuntimeState)) orelse {
+        c.JS_FreeContext(ctx);
+        c.JS_FreeRuntime(runtime);
+        return null;
+    };
     const state: *RuntimeState = @ptrCast(@alignCast(raw_state));
     state.* = .{
         .runtime = runtime,
@@ -310,9 +315,17 @@ export fn sting_qjs_android_dispatch_event(
         c.JS_NewString(state.context, event),
         c.JS_NewString(state.context, payload_json),
     };
-    defer for (&args) |*arg| c.JS_FreeValue(state.context, arg.*);
+    defer {
+        for (&args) |*arg| c.JS_FreeValue(state.context, arg.*);
+    }
 
-    const result = c.JS_Call(state.context, dispatch, global, args.len, &args);
+    const result = c.JS_Call(
+        state.context,
+        dispatch,
+        global,
+        @intCast(args.len),
+        &args[0],
+    );
     defer c.JS_FreeValue(state.context, result);
     if (c.JS_IsException(result) != 0) return copyException(state.context);
     return drainPendingJobs(state);
