@@ -410,12 +410,8 @@ async function runNativeMutationConformance(context: ScenarioContext): Promise<v
 
 async function runDisposalWhilePending(context: ScenarioContext): Promise<void> {
   const gate = deferred<void>();
-  let disposeRoot: (() => void) | undefined;
-  let pending: Promise<void> | undefined;
-  let bridge: RecordingNativeBridge | undefined;
-  createRoot(dispose => {
-    disposeRoot = dispose;
-    bridge = new RecordingNativeBridge();
+  const fixture = createRoot(dispose => {
+    const bridge = new RecordingNativeBridge();
     const host = new StingHost(bridge);
     const [value, setValue] = createOptimistic(0);
     const text = host.createTextNode(String(value()));
@@ -424,17 +420,20 @@ async function runDisposalWhilePending(context: ScenarioContext): Promise<void> 
       setValue(1);
       yield gate.promise;
     });
-    pending = mutate();
     flush();
+    bridge.clear();
+    return { dispose, bridge, mutate };
   });
-  context.assert('pending action applies before disposal', bridge?.count('replaceText') === 1);
-  bridge?.clear();
-  disposeRoot?.();
-  gate.resolve(undefined);
-  if (pending) await pending;
+  const pending = fixture.mutate();
   flush();
-  context.assert('disposed owner receives no stale rollback callback', bridge?.count('replaceText') === 0);
-  context.assert('disposed owner receives no unrelated native replay', bridge?.unrelatedMutationCount() === 0);
+  context.assert('pending action applies before disposal', fixture.bridge.count('replaceText') === 1);
+  fixture.bridge.clear();
+  fixture.dispose();
+  gate.resolve(undefined);
+  await pending;
+  flush();
+  context.assert('disposed owner receives no stale rollback callback', fixture.bridge.count('replaceText') === 0);
+  context.assert('disposed owner receives no unrelated native replay', fixture.bridge.unrelatedMutationCount() === 0);
 }
 
 async function runBenchmark(context: ScenarioContext): Promise<void> {
