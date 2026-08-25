@@ -36,14 +36,35 @@ function deferred<T>(): Deferred<T> {
 
 let activeRequest = deferred<string>();
 
+interface AsyncContentProps {
+  generation: () => number;
+}
+
+function AsyncContent(props: AsyncContentProps) {
+  // Keep the async computation INSIDE <Errored>'s owned subtree. If this memo
+  // rejects, resetting the boundary can dispose/recreate it against the fresh
+  // request prepared by the retry transaction. A memo created in App itself
+  // would outlive the boundary and immediately rethrow the same settled error.
+  const value = createMemo(() => {
+    props.generation();
+    return activeRequest.promise;
+  });
+
+  return (
+    <Loading fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}>
+      <View accessibilityLabel="async-ready-state">
+        <Text accessibilityLabel="async-value">Value: {value()}</Text>
+        <Text accessibilityLabel="async-pending">
+          Pending: {isPending(() => value()) ? 'yes' : 'no'}
+        </Text>
+      </View>
+    </Loading>
+  );
+}
+
 export default function App() {
   const [requestGeneration, setRequestGeneration] = createSignal(0);
   let retryErrored: (() => void) | undefined;
-
-  const value = createMemo(() => {
-    requestGeneration();
-    return activeRequest.promise;
-  });
 
   function prepareRequest(): void {
     activeRequest = deferred<string>();
@@ -72,7 +93,7 @@ export default function App() {
     retry() {
       // Exercise the same transaction as the native Retry button below. The
       // replacement Promise and Errored reset are prepared before one flush so
-      // Solid never observes a reset against the already-rejected computation.
+      // the newly-created AsyncContent memo sees the fresh request immediately.
       retryErrored?.();
       flush();
     },
@@ -102,14 +123,7 @@ export default function App() {
           );
         }}
       >
-        <Loading fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}>
-          <View accessibilityLabel="async-ready-state">
-            <Text accessibilityLabel="async-value">Value: {value()}</Text>
-            <Text accessibilityLabel="async-pending">
-              Pending: {isPending(() => value()) ? 'yes' : 'no'}
-            </Text>
-          </View>
-        </Loading>
+        <AsyncContent generation={requestGeneration} />
       </Errored>
     </View>
   );
