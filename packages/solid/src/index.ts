@@ -6,6 +6,7 @@ import {
   splitProps,
   untrack,
   type ComponentProps,
+  type Element as SolidElement,
   type ValidComponent,
 } from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
@@ -76,6 +77,8 @@ export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {
   component: T | undefined;
 };
 
+type DynamicElement = SolidElement | HostNode;
+
 /**
  * Universal/native counterpart to Solid 2's renderer-specific Dynamic helper.
  *
@@ -87,7 +90,7 @@ export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {
 export function createDynamic<T extends ValidComponent>(
   component: () => T | undefined,
   props: ComponentProps<T>,
-): unknown {
+): DynamicElement {
   const cached = createMemo<Function | string | undefined>(
     () => component() as Function | string | undefined,
   );
@@ -105,10 +108,10 @@ export function createDynamic<T extends ValidComponent>(
       default:
         return undefined;
     }
-  });
+  }) as unknown as DynamicElement;
 }
 
-export function Dynamic<T extends ValidComponent>(props: DynamicProps<T>): unknown {
+export function Dynamic<T extends ValidComponent>(props: DynamicProps<T>): DynamicElement {
   const [, others] = splitProps(props, ['component']);
   return createDynamic(() => props.component, others as ComponentProps<T>);
 }
