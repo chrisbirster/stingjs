@@ -2,6 +2,8 @@ plugins {
     id("com.android.library")
 }
 
+val generatedJniLibsDir = layout.buildDirectory.dir("generated/jniLibs").get().asFile
+
 android {
     namespace = "run.stingjs.runtime.candidates.quickjs"
     compileSdk = 36
@@ -13,7 +15,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            jniLibs.srcDir(layout.buildDirectory.dir("generated/jniLibs"))
+            jniLibs.srcDir(generatedJniLibsDir)
         }
     }
 
@@ -23,16 +25,14 @@ android {
     }
 }
 
-val generatedJniLibs = layout.buildDirectory.dir("generated/jniLibs")
-
 val buildOfficialQuickJsAndroid by tasks.registering(Exec::class) {
     group = "build"
     description = "Build the isolated official QuickJS Android candidate through Zig"
-    outputs.dir(generatedJniLibs)
+    outputs.dir(generatedJniLibsDir)
     commandLine(
         "bash",
         project.file("build-android.sh").absolutePath,
-        generatedJniLibs.get().asFile.absolutePath,
+        generatedJniLibsDir.absolutePath,
     )
 }
 
