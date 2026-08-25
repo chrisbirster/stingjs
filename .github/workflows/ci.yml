@@ -129,16 +129,29 @@ jobs:
         run: npm install
       - name: Build hello-world Sting bundle
         run: npm run build --workspace @stingjs/example-hello-world
-      - name: Install Android SDK platform
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android SDK and pinned NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.5.0'
-      - name: Compile Android host and instrumentation APK
+      - name: Compile Android host, QuickJS candidate, and instrumentation APKs
         working-directory: examples/hello-world/android
-        run: gradle :app:assembleDebug :sting-runtime:assembleDebug :sting-runtime:assembleDebugAndroidTest --no-daemon
-      - name: Verify compiled Sting bundle is packaged as an Android asset
-        run: unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-app.js'
+        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest :sting-runtime:assembleDebugAndroidTest --no-daemon
+      - name: Verify compiled Sting bundle and native candidate are packaged
+        run: |
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-app.js'
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so'
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_android.so'
 
   ios:
     runs-on: macos-latest
