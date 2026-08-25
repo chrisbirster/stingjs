@@ -11,7 +11,7 @@ interface StingAsyncNativeControls {
   resolve(value: string): void;
   beginRefresh(): void;
   reject(message: string): void;
-  retry(): void;
+  streamYield(value: string): void;
 }
 
 declare global {
@@ -34,7 +34,40 @@ function deferred<T>(): Deferred<T> {
   };
 }
 
+class ControlledStringStream implements AsyncIterable<string> {
+  private readonly queuedValues: string[] = [];
+  private readonly waiters: Array<(value: string) => void> = [];
+
+  push(value: string): void {
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter(value);
+      return;
+    }
+
+    this.queuedValues.push(value);
+  }
+
+  private nextValue(): Promise<string> {
+    const queuedValue = this.queuedValues.shift();
+    if (queuedValue !== undefined) {
+      return Promise.resolve(queuedValue);
+    }
+
+    return new Promise<string>(resolve => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  async *[Symbol.asyncIterator]() {
+    while (true) {
+      yield await this.nextValue();
+    }
+  }
+}
+
 let activeRequest = deferred<string>();
+const controlledStream = new ControlledStringStream();
 
 interface AsyncContentProps {
   generation: () => number;
@@ -59,6 +92,23 @@ function AsyncContent(props: AsyncContentProps) {
         </Text>
       </View>
     </Loading>
+  );
+}
+
+function StreamContent() {
+  // Solid 2 treats an AsyncIterable as a first-class async memo result. Before
+  // the first yield the Loading fallback is visible. Every later yield becomes
+  // the memo's new value, which should let Sting mutate one existing native
+  // text node rather than rebuilding the native subtree.
+  const value = createMemo<string>(() => controlledStream);
+
+  return (
+    <View accessibilityLabel="stream-state">
+      <Text accessibilityLabel="stream-title">Solid 2 async iterable proof</Text>
+      <Loading fallback={<Text accessibilityLabel="stream-loading">Stream loading...</Text>}>
+        <Text accessibilityLabel="stream-value">Stream: {value()}</Text>
+      </Loading>
+    </View>
   );
 }
 
@@ -90,12 +140,8 @@ export default function App() {
       activeRequest.reject(new Error(message));
     },
 
-    retry() {
-      // Exercise the same transaction as the native Retry button below. The
-      // replacement Promise and Errored reset are prepared before one flush so
-      // the newly-created AsyncContent memo sees the fresh request immediately.
-      retryErrored?.();
-      flush();
+    streamYield(value) {
+      controlledStream.push(value);
     },
   };
 
@@ -125,6 +171,8 @@ export default function App() {
       >
         <AsyncContent generation={requestGeneration} />
       </Errored>
+
+      <StreamContent />
     </View>
   );
 }
