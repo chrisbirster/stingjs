@@ -35,38 +35,41 @@ export function instrumentHost(): HostInstrumentation {
   const host = getHost();
   const mutations: MutationRecord[] = [];
 
-  const createElement = host.createElement.bind(host);
-  const createTextNode = host.createTextNode.bind(host);
-  const replaceText = host.replaceText.bind(host);
-  const setProperty = host.setProperty.bind(host);
-  const insertNode = host.insertNode.bind(host);
-  const removeNode = host.removeNode.bind(host);
+  // Preserve the original method objects exactly. The wrappers use call(host)
+  // while installed, and restore() puts the same method identities back so a
+  // conformance run leaves the shared Sting host untouched for later suites.
+  const createElement = host.createElement;
+  const createTextNode = host.createTextNode;
+  const replaceText = host.replaceText;
+  const setProperty = host.setProperty;
+  const insertNode = host.insertNode;
+  const removeNode = host.removeNode;
 
   host.createElement = (type: string) => {
-    const node = createElement(type);
+    const node = createElement.call(host, type);
     mutations.push({ kind: 'createElement', nodeId: node.id });
     return node;
   };
   host.createTextNode = (value: string) => {
-    const node = createTextNode(value);
+    const node = createTextNode.call(host, value);
     mutations.push({ kind: 'createTextNode', nodeId: node.id, value });
     return node;
   };
   host.replaceText = (node: HostNode, value: string) => {
     const before = node.textValue;
-    replaceText(node, value);
+    replaceText.call(host, node, value);
     if (before !== value) mutations.push({ kind: 'replaceText', nodeId: node.id, value });
   };
   host.setProperty = (node: HostNode, name: string, value: unknown) => {
-    setProperty(node, name, value);
+    setProperty.call(host, node, name, value);
     mutations.push({ kind: 'setProperty', nodeId: node.id, value: name });
   };
   host.insertNode = (parent: HostNode, node: HostNode, anchor?: HostNode | null) => {
-    insertNode(parent, node, anchor);
+    insertNode.call(host, parent, node, anchor);
     mutations.push({ kind: 'insertNode', nodeId: node.id });
   };
   host.removeNode = (parent: HostNode, node: HostNode) => {
-    removeNode(parent, node);
+    removeNode.call(host, parent, node);
     mutations.push({ kind: 'removeNode', nodeId: node.id });
   };
 
