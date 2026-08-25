@@ -1,5 +1,5 @@
 import { createMemo, createSignal, Errored, flush, isPending, Loading } from 'solid-js';
-import { Text, View } from '@stingjs/native';
+import { Button, Text, View } from '@stingjs/native';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -11,7 +11,6 @@ interface StingAsyncNativeControls {
   resolve(value: string): void;
   beginRefresh(): void;
   reject(message: string): void;
-  retry(): void;
 }
 
 declare global {
@@ -38,22 +37,15 @@ let activeRequest = deferred<string>();
 
 export default function App() {
   const [requestGeneration, setRequestGeneration] = createSignal(0);
-  let resetErrored: (() => void) | undefined;
 
   const value = createMemo(() => {
     requestGeneration();
     return activeRequest.promise;
   });
 
-  function startRequest(): void {
+  function prepareRequest(): void {
     activeRequest = deferred<string>();
     setRequestGeneration(generation => generation + 1);
-
-    // Solid 2 batches writes onto a microtask. The controls below are a
-    // deterministic test surface, so settle the generation change now. This
-    // makes XCTest able to inspect the exact pending state immediately after
-    // requesting a refresh/retry without using timers or network I/O.
-    flush();
   }
 
   globalThis.__stingAsyncNative = {
@@ -62,21 +54,17 @@ export default function App() {
     },
 
     beginRefresh() {
-      startRequest();
+      prepareRequest();
+
+      // This global is a deterministic XCTest control rather than a native
+      // event, so explicitly settle Solid 2's automatically batched update.
+      // Native events do not need this: renderApp() flushes once after the
+      // complete event handler returns.
+      flush();
     },
 
     reject(message) {
       activeRequest.reject(new Error(message));
-    },
-
-    retry() {
-      // Recovery starts a replacement async computation, then resets the error
-      // boundary. Since this Loading boundary has already revealed successful
-      // content, Solid 2 intentionally restores that stale content while the
-      // replacement value is pending rather than flashing the initial fallback.
-      startRequest();
-      resetErrored?.();
-      flush();
     },
   };
 
@@ -85,14 +73,23 @@ export default function App() {
       <Text accessibilityLabel="async-title">Solid 2 async native proof</Text>
 
       <Errored
-        fallback={(error, reset) => {
-          resetErrored = reset;
-          return (
-            <View accessibilityLabel="async-error-state">
-              <Text accessibilityLabel="async-error">Error: {String(error())}</Text>
-            </View>
-          );
-        }}
+        fallback={(error, reset) => (
+          <View accessibilityLabel="async-error-state">
+            <Text accessibilityLabel="async-error">Error: {String(error())}</Text>
+            <Button
+              accessibilityLabel="async-retry"
+              onPress={() => {
+                // Keep the replacement request and error reset in the SAME
+                // Solid event batch. Sting's native event wrapper performs one
+                // flush after this callback, matching production app behavior.
+                prepareRequest();
+                reset();
+              }}
+            >
+              Retry
+            </Button>
+          </View>
+        )}
       >
         <Loading fallback={<Text accessibilityLabel="async-loading">Loading...</Text>}>
           <View accessibilityLabel="async-ready-state">
