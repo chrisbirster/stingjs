@@ -164,4 +164,19 @@ fi
 
 "${ENGINE_OUTPUT}"
 "${STING_OUTPUT}"
-exec "${ASYNC_OUTPUT}"
+
+set +e
+async_output="$("${ASYNC_OUTPUT}" 2>&1)"
+async_status=$?
+set -e
+
+printf '%s\n' "${async_output}"
+
+if [[ ${async_status} -ne 0 ]]; then
+  if grep -Fq "JS_LANGUAGE_CONFORMANCE: for-let-closure:" <<<"${async_output}"; then
+    echo "STING_CANDIDATE_RESULT engine=hermes status=disqualified reason=for-let-closure"
+    exit 0
+  fi
+
+  exit "${async_status}"
+fi

@@ -16,6 +16,21 @@
           const api = globalThis.__stingSolid2Conformance;
           if (!api) throw new Error('Solid 2 conformance API was not installed');
 
+          // Candidate engines must preserve standard ECMAScript
+          // per-iteration lexical bindings before Solid semantics are tested.
+          const closureFns = [];
+          for (let index = 0; index < 32; index += 1) {
+            closureFns.push(() => index);
+          }
+
+          const closureValues = closureFns.map(fn => fn());
+
+          if (!closureValues.every((value, index) => value === index)) {
+            throw new Error(
+              `JS_LANGUAGE_CONFORMANCE: for-let-closure: ${JSON.stringify(closureValues)}`,
+            );
+          }
+
           const listed = api.list();
           if (listed.length === 0) throw new Error('Solid 2 conformance bundle contains no scenarios');
 
