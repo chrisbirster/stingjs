@@ -8,3 +8,4 @@ DerivedData/
 .gradle/
 .idea/
 native/ios/Tests/StingRuntimeTests/Fixtures/sting-app.js
+native/ios/Tests/StingRuntimeTests/Fixtures/sting-benchmark.js

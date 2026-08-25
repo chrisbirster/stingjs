@@ -13,15 +13,30 @@ import JavaScriptCore
     func callModuleSync(_ module: String, _ method: String, _ argsJSON: String) -> String
 }
 
+struct StingBridgeMutationCounts: Equatable {
+    var createElement = 0
+    var createTextNode = 0
+    var replaceText = 0
+    var setProperty = 0
+    var insertNode = 0
+    var removeNode = 0
+    var setEventEnabled = 0
+}
+
 final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
     private let nodes: StingNodeRegistry
     private let modules: StingModuleRegistry
     private let reportError: (Error) -> Void
+    private(set) var mutationCounts = StingBridgeMutationCounts()
 
     init(nodes: StingNodeRegistry, modules: StingModuleRegistry, reportError: @escaping (Error) -> Void) {
         self.nodes = nodes
         self.modules = modules
         self.reportError = reportError
+    }
+
+    func resetMutationCounts() {
+        mutationCounts = StingBridgeMutationCounts()
     }
 
     func getRuntimeInfo() -> String {
@@ -33,30 +48,37 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
     }
 
     func createElement(_ id: Int, _ type: String) {
+        mutationCounts.createElement += 1
         perform { try nodes.createElement(id: id, type: type) }
     }
 
     func createTextNode(_ id: Int, _ value: String) {
+        mutationCounts.createTextNode += 1
         perform { try nodes.createTextNode(id: id, value: value) }
     }
 
     func replaceText(_ id: Int, _ value: String) {
+        mutationCounts.replaceText += 1
         perform { try nodes.replaceText(id: id, value: value) }
     }
 
     func setProperty(_ id: Int, _ name: String, _ valueJSON: String) {
+        mutationCounts.setProperty += 1
         perform { try nodes.setProperty(id: id, name: name, valueJSON: valueJSON) }
     }
 
     func insertNode(_ parentId: Int, _ nodeId: Int, _ anchorId: Int) {
+        mutationCounts.insertNode += 1
         perform { try nodes.insertNode(parentId: parentId, nodeId: nodeId, anchorId: anchorId) }
     }
 
     func removeNode(_ parentId: Int, _ nodeId: Int) {
+        mutationCounts.removeNode += 1
         perform { try nodes.removeNode(parentId: parentId, nodeId: nodeId) }
     }
 
     func setEventEnabled(_ id: Int, _ event: String, _ enabled: Bool) {
+        mutationCounts.setEventEnabled += 1
         perform { try nodes.setEventEnabled(id: id, event: event, enabled: enabled) }
     }
 

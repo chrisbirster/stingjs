@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "scenarios": [
+    {
+      "id": "counter.single",
+      "screen": "Counter",
+      "setup": { "initialValue": 0 },
+      "action": { "type": "increment", "count": 1 },
+      "measure": [
+        "state_to_native_property_ms",
+        "native_event_to_js_ms",
+        "native_event_to_visible_update_ms"
+      ]
+    },
+    {
+      "id": "reactivity.ten_subscribers",
+      "screen": "Counter",
+      "setup": { "subscriberViews": 10, "initialValue": 0 },
+      "action": { "type": "increment", "count": 1 },
+      "measure": ["state_to_all_native_properties_ms", "native_mutation_count"]
+    },
+    {
+      "id": "rows.sparse_1000",
+      "screen": "LargeList",
+      "setup": { "logicalRows": 1000, "targetIndex": 428 },
+      "action": { "type": "update_row", "index": 428 },
+      "measure": ["state_to_target_native_property_ms", "native_mutation_count"]
+    },
+    {
+      "id": "rows.sparse_10000",
+      "screen": "LargeList",
+      "setup": { "logicalRows": 10000, "targetIndex": 4281 },
+      "action": { "type": "update_row", "index": 4281 },
+      "measure": [
+        "state_to_target_native_property_ms",
+        "native_mutation_count",
+        "js_framework_work_ms"
+      ]
+    },
+    {
+      "id": "rows.dense_100_of_10000",
+      "screen": "LargeList",
+      "setup": { "logicalRows": 10000, "updateCount": 100, "fixtureSeed": 4281 },
+      "action": { "type": "update_fixture_rows" },
+      "measure": [
+        "state_to_all_target_native_properties_ms",
+        "native_mutation_count",
+        "js_framework_work_ms"
+      ]
+    },
+    {
+      "id": "views.create_100",
+      "screen": "ViewStress",
+      "setup": { "viewCount": 100 },
+      "action": { "type": "mount" },
+      "measure": ["mount_to_native_commit_ms", "rss_delta_bytes"]
+    },
+    {
+      "id": "views.create_1000",
+      "screen": "ViewStress",
+      "setup": { "viewCount": 1000 },
+      "action": { "type": "mount" },
+      "measure": ["mount_to_native_commit_ms", "rss_delta_bytes"]
+    },
+    {
+      "id": "views.create_10000_stress",
+      "screen": "ViewStress",
+      "setup": { "viewCount": 10000 },
+      "action": { "type": "mount" },
+      "measure": ["mount_to_native_commit_ms", "rss_delta_bytes"]
+    },
+    {
+      "id": "module.noop_sync",
+      "screen": "NativeModules",
+      "setup": {},
+      "action": { "type": "repeat_native_noop", "count": 1000 },
+      "measure": ["call_latency_ms"]
+    },
+    {
+      "id": "module.async_roundtrip",
+      "screen": "NativeModules",
+      "setup": {},
+      "action": { "type": "repeat_native_async", "count": 1000 },
+      "measure": ["roundtrip_latency_ms"]
+    },
+    {
+      "id": "lifecycle.mount_unmount",
+      "screen": "Navigation",
+      "setup": { "iterations": 100 },
+      "action": { "type": "mount_unmount_loop" },
+      "measure": ["total_ms", "rss_before_bytes", "rss_after_bytes", "live_native_refs"]
+    }
+  ]
+}

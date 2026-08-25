@@ -9,7 +9,8 @@
     "packages/solid",
     "packages/native",
     "packages/modules/*",
-    "examples/*"
+    "examples/*",
+    "benchmarks/sting-benchmark"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

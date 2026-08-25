@@ -4,6 +4,8 @@
 
 StingJS provides a native application platform for SolidJS with an Expo-like developer experience, without React Native, Expo runtime dependencies, or a WebView rendering layer.
 
+If you are trying to understand the concrete path from `App.tsx` and Vite to a running UIKit application, start with [`how-sting-runs.md`](how-sting-runs.md). This document focuses on the architectural boundaries and invariants behind that pipeline.
+
 The architectural invariant is:
 
 ```text
@@ -56,11 +58,33 @@ The runtime owns actual native objects, applies mutations, dispatches native eve
 
 ## JavaScript engine strategy
 
-The first proof is iOS-first and uses Apple's JavaScriptCore framework because it is built into iOS and lets us prove the architecture without introducing a large runtime dependency.
+JavaScript-engine choice is an implementation decision behind the Sting runtime contract, not part of the public application API.
 
-JavaScript execution is behind a Sting runtime interface. Android is therefore not required to use JavaScriptCore. Before the Android proof we will evaluate Hermes and QuickJS/QuickJS-NG against startup size, async/Promise integration, debugging, maintenance, and embedding complexity.
+The first verified iOS native proof uses Apple's JavaScriptCore framework because it is built into iOS and allowed us to prove the renderer → native event → Solid signal → precise native mutation loop without first introducing a large runtime dependency.
 
-This is deliberately an implementation choice, not a public API contract.
+The runtime-engine evaluation now also exercises three candidate embeddings against the same real Solid/Sting semantic workload:
+
+- official QuickJS,
+- QuickJS-NG,
+- Hermes V1 matching the React Native 0.87 Hermes generation.
+
+All three candidate hosts have successfully run the current semantic gates on macOS:
+
+```text
+counter press       → exactly 1 replaceText + Haptics medium
+10k sparse update   → exactly 1 replaceText
+10k dense update    → exactly 100 replaceText
+```
+
+This establishes compatibility with the current Sting renderer semantics. It does **not** select the production engine.
+
+Engine selection still requires comparable release-build evidence for startup, memory, native-event latency, module-call latency, list/frame behavior, lifecycle, bundle/binary size, and physical-device p50/p95/p99 measurements. See [`performance.md`](performance.md).
+
+The embedding architecture remains intentionally narrow:
+
+- QuickJS and QuickJS-NG can be driven through their C APIs from Zig,
+- Hermes can sit behind a small isolated C++/JSI adapter with a C ABI,
+- application packages and the renderer must not import engine-specific APIs.
 
 ## Renderer model
 
@@ -72,6 +96,7 @@ Benefits:
 - The bridge stays mutation-oriented.
 - Native code never needs to understand Solid's owner graph.
 - Unit tests can run against an in-memory bridge.
+- Fine-grained signal updates can remain fine-grained native mutations instead of entering a general virtual-tree reconciliation pass.
 
 ## Threading
 
@@ -79,7 +104,7 @@ For v0.1, JavaScript execution and native UI mutations are serialized on the mai
 
 ## Layout
 
-Do not block the first renderer proof on a complete cross-platform layout engine. The initial native views will support a deliberately tiny style/layout subset sufficient for the example. A later v0.1 decision will compare native layout primitives with an independent layout engine such as Yoga. Using Yoga would not imply a React Native dependency, but it should only be introduced if cross-platform consistency justifies the additional native dependency.
+Do not block the first renderer proof on a complete cross-platform layout engine. The initial native views support a deliberately tiny style/layout subset sufficient for the example. A later v0.1 decision will compare native layout primitives with an independent layout engine such as Yoga. Using Yoga would not imply a React Native dependency, but it should only be introduced if cross-platform consistency justifies the additional native dependency.
 
 ## Versioned runtime contract
 
@@ -99,6 +124,26 @@ interface StingRuntimeInfo {
 
 v0.1 defines runtime-created, app-mounted, foreground/background, and runtime-destroyed hooks. Native modules may subscribe through the registry rather than editing application delegate/activity code directly.
 
+## Current implementation versus target architecture
+
+Contributors should distinguish the verified implementation from the longer-term portability target.
+
+The current native iOS proof is:
+
+```text
+Solid / TypeScript
+       ↓
+Sting JS contracts
+       ↓
+Swift JavaScriptCore host
+       ↓
+UIKit
+```
+
+The runtime-engine prototypes are establishing how the portable runtime can own alternative engines, including direct Zig/C paths for QuickJS-family engines and a narrow C ABI around Hermes' C++/JSI API.
+
+Do not prematurely introduce a public multi-engine abstraction merely because benchmark prototypes exist. The engine should remain an internal runtime choice until evidence justifies the production architecture.
+
 ## Deliberately deferred
 
 - navigation architecture
@@ -108,5 +153,6 @@ v0.1 defines runtime-created, app-mounted, foreground/background, and runtime-de
 - production dev client
 - app-store deployment
 - generalized C++ core
+- final production JavaScript-engine selection
 
-Those only become priorities after the renderer → native event → signal update → native mutation loop works on a real device/simulator.
+Those become priorities only as the native renderer/event/module loop and measured runtime foundation mature.

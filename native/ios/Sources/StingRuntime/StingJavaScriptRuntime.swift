@@ -58,6 +58,18 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    // Internal diagnostics used by native integration tests and benchmark
+    // harnesses. These deliberately stay out of the public Sting application
+    // API while allowing us to verify fine-grained renderer behavior at the
+    // production JavaScript -> native bridge boundary.
+    func resetMutationCounts() {
+        bridge?.resetMutationCounts()
+    }
+
+    var mutationCounts: StingBridgeMutationCounts {
+        bridge?.mutationCounts ?? StingBridgeMutationCounts()
+    }
+
     private func installHostGlobals(in context: JSContext) {
         // JavaScriptCore embeds the ECMAScript runtime but does not provide every
         // browser/Node host API. Solid 2 schedules batched reactive work with
