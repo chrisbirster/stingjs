@@ -32,22 +32,29 @@ npx --yes "@react-native-community/cli@${CLI_VERSION}" init StingRNBenchmark \
 
 cp "${BENCHMARK_DIR}/App.tsx" "${OUTPUT_DIR}/App.tsx"
 
-STING_RN_BASELINE_DIR="${OUTPUT_DIR}" \
-RN_VERSION="${RN_VERSION}" \
-HERMES_COMPILER_VERSION="${HERMES_COMPILER_VERSION}" \
-node <<'NODE'
+# Do not reuse the readonly shell variable names as temporary command
+# assignments. Bash treats `RN_VERSION=... node` as an attempted assignment to
+# the readonly variable before starting the child process. Give the verification
+# process distinct environment names instead.
+env \
+  STING_RN_BASELINE_DIR="${OUTPUT_DIR}" \
+  EXPECTED_RN_VERSION="${RN_VERSION}" \
+  EXPECTED_HERMES_COMPILER_VERSION="${HERMES_COMPILER_VERSION}" \
+  node <<'NODE'
 const path = require('node:path');
 const root = process.env.STING_RN_BASELINE_DIR;
 const reactNative = require(path.join(root, 'node_modules/react-native/package.json'));
 const hermesCompiler = require(path.join(root, 'node_modules/hermes-compiler/package.json'));
 const app = require(path.join(root, 'package.json'));
 
-if (reactNative.version !== process.env.RN_VERSION) {
-  throw new Error(`expected react-native ${process.env.RN_VERSION}, found ${reactNative.version}`);
-}
-if (hermesCompiler.version !== process.env.HERMES_COMPILER_VERSION) {
+if (reactNative.version !== process.env.EXPECTED_RN_VERSION) {
   throw new Error(
-    `expected hermes-compiler ${process.env.HERMES_COMPILER_VERSION}, found ${hermesCompiler.version}`,
+    `expected react-native ${process.env.EXPECTED_RN_VERSION}, found ${reactNative.version}`,
+  );
+}
+if (hermesCompiler.version !== process.env.EXPECTED_HERMES_COMPILER_VERSION) {
+  throw new Error(
+    `expected hermes-compiler ${process.env.EXPECTED_HERMES_COMPILER_VERSION}, found ${hermesCompiler.version}`,
   );
 }
 if (app.dependencies?.expo) {
