@@ -232,32 +232,26 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         }
         XCTAssertTrue(errorLabel.text?.contains("native async boom") == true)
 
-        // Error recovery starts a replacement async computation. Because this
-        // Loading boundary already revealed a successful value, Solid 2 restores
-        // that stale content while the retry is pending instead of flashing the
-        // first-load fallback again.
-        evaluateJavaScript(
-            "globalThis.__stingAsyncNative.retry();",
-            in: runtime
+        guard let retryButton = firstButton(titled: "Retry", in: rootView) else {
+            XCTFail("Solid 2 <Errored> fallback should expose the native Retry button")
+            return
+        }
+        let retryActions = retryButton.actions(forTarget: retryButton, forControlEvent: .touchUpInside) ?? []
+        XCTAssertTrue(retryActions.contains("handlePress"))
+        XCTAssertNotNil(retryButton.onPress)
+
+        // Solid 2 RC intentionally keeps <Errored> visible while the replacement
+        // async source is still pending. Retry starts from the real native event
+        // path, but the previously successful beta UI does not reappear until the
+        // new source actually succeeds. This avoids presenting stale content as a
+        // successful recovery while the retry may still fail.
+        retryButton.onPress?(retryButton.nodeId)
+        XCTAssertTrue(
+            label(accessibilityLabel: "async-error", in: rootView)?.text?.contains("native async boom") == true
         )
-        XCTAssertNil(label(accessibilityLabel: "async-error", in: rootView))
         XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
-        XCTAssertEqual(
-            waitForLabel(
-                accessibilityLabel: "async-value",
-                in: rootView,
-                where: { $0.text == "Value: beta" }
-            )?.text,
-            "Value: beta"
-        )
-        XCTAssertEqual(
-            waitForLabel(
-                accessibilityLabel: "async-pending",
-                in: rootView,
-                where: { $0.text == "Pending: yes" }
-            )?.text,
-            "Pending: yes"
-        )
+        XCTAssertNil(label(accessibilityLabel: "async-value", in: rootView))
+        XCTAssertNil(label(accessibilityLabel: "async-pending", in: rootView))
 
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.resolve('gamma');",
@@ -279,6 +273,8 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             )?.text,
             "Pending: no"
         )
+        XCTAssertNil(label(accessibilityLabel: "async-error", in: rootView))
+        XCTAssertNil(firstButton(titled: "Retry", in: rootView))
     }
 
     private func requireBundle(named name: String) throws -> URL {
