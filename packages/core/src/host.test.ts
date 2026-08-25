@@ -75,6 +75,36 @@ describe('StingHost', () => {
     expect(onPress).toHaveBeenCalledWith({ source: 'native' });
   });
 
+  it('tears down descendant event callbacks before a native subtree is removed', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const parent = host.createElement('view');
+    const button = host.createElement('button');
+    const onPress = vi.fn();
+
+    host.insertNode(host.root, parent);
+    host.insertNode(parent, button);
+    host.setProperty(button, 'onPress', onPress);
+
+    const calls: string[] = [];
+    bridge.setEventEnabled = vi.fn((id, event, enabled) => {
+      calls.push(`event:${id}:${event}:${enabled}`);
+    });
+    bridge.removeNode = vi.fn((parentId, nodeId) => {
+      calls.push(`remove:${parentId}:${nodeId}`);
+    });
+
+    host.removeNode(host.root, parent);
+
+    expect(calls).toEqual([
+      `event:${button.id}:press:false`,
+      `remove:${host.root.id}:${parent.id}`,
+    ]);
+
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
   it('rejects an incompatible native bridge before rendering begins', () => {
     const bridge = makeBridge();
     bridge.getRuntimeInfo = vi.fn(() => JSON.stringify({
