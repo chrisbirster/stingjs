@@ -232,16 +232,31 @@ final class StingRuntimeIntegrationTests: XCTestCase {
         }
         XCTAssertTrue(errorLabel.text?.contains("native async boom") == true)
 
-        // Retrying starts a brand-new unresolved computation. With no stale
-        // successful branch left behind after the error, <Loading> owns the UI
-        // again until the replacement Promise resolves.
+        // Error recovery starts a replacement async computation. Because this
+        // Loading boundary already revealed a successful value, Solid 2 restores
+        // that stale content while the retry is pending instead of flashing the
+        // first-load fallback again.
         evaluateJavaScript(
             "globalThis.__stingAsyncNative.retry();",
             in: runtime
         )
+        XCTAssertNil(label(accessibilityLabel: "async-error", in: rootView))
+        XCTAssertNil(label(accessibilityLabel: "async-loading", in: rootView))
         XCTAssertEqual(
-            waitForLabel(accessibilityLabel: "async-loading", in: rootView)?.text,
-            "Loading..."
+            waitForLabel(
+                accessibilityLabel: "async-value",
+                in: rootView,
+                where: { $0.text == "Value: beta" }
+            )?.text,
+            "Value: beta"
+        )
+        XCTAssertEqual(
+            waitForLabel(
+                accessibilityLabel: "async-pending",
+                in: rootView,
+                where: { $0.text == "Pending: yes" }
+            )?.text,
+            "Pending: yes"
         )
 
         evaluateJavaScript(
