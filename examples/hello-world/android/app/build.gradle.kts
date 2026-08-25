@@ -14,6 +14,12 @@ android {
         versionName = "0.1.0"
     }
 
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../dist")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

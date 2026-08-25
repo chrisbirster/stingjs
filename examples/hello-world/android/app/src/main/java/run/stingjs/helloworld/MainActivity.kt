@@ -12,6 +12,7 @@ import run.stingjs.runtime.StingNodeRegistry
 class MainActivity : Activity() {
     private lateinit var nodes: StingNodeRegistry
     private lateinit var bridge: StingNativeBridge
+    private lateinit var bundleSource: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,5 +31,8 @@ class MainActivity : Activity() {
             nodes = nodes,
             modules = StingModuleRegistry(listOf(HapticsModule(this))),
         )
+
+        bundleSource = assets.open("sting-app.js").bufferedReader().use { it.readText() }
+        check(bundleSource.isNotBlank()) { "sting-app.js is empty" }
     }
 }
