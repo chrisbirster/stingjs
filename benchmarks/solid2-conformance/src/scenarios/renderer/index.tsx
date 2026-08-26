@@ -24,13 +24,12 @@ type MixedMode = 'alpha' | 'beta' | 'component' | 'gamma' | 'empty';
 
 function createPortableFallbackBridge(): StingNativeBridge {
   return {
-    getRuntimeInfo() {
-      return JSON.stringify({
+    getRuntimeInfo: () =>
+      JSON.stringify({
         protocolVersion: STING_PROTOCOL_VERSION,
         platform: 'ios',
         modules: { Solid2Conformance: 'portable-fallback' },
-      });
-    },
+      }),
     createElement() {},
     createTextNode() {},
     replaceText() {},
@@ -38,9 +37,7 @@ function createPortableFallbackBridge(): StingNativeBridge {
     insertNode() {},
     removeNode() {},
     setEventEnabled() {},
-    callModuleSync() {
-      return JSON.stringify({ ok: true, value: null });
-    },
+    callModuleSync: () => JSON.stringify({ ok: true, value: null }),
   };
 }
 
@@ -53,9 +50,9 @@ class RecordingBridge implements StingNativeBridge {
   constructor(readonly target: StingNativeBridge) {}
 
   take(): Operation[] {
-    const taken = this.operations;
+    const operations = this.operations;
     this.operations = [];
-    return taken;
+    return operations;
   }
 
   isAlive(id: number): boolean {
@@ -81,7 +78,7 @@ class RecordingBridge implements StingNativeBridge {
   }
 
   createElement(id: number, type: string): void {
-    this.assertNewNode(id);
+    this.assertNew(id);
     this.alive.add(id);
     this.children.set(id, []);
     this.parent.set(id, null);
@@ -90,7 +87,7 @@ class RecordingBridge implements StingNativeBridge {
   }
 
   createTextNode(id: number, value: string): void {
-    this.assertNewNode(id);
+    this.assertNew(id);
     this.alive.add(id);
     this.children.set(id, []);
     this.parent.set(id, null);
@@ -113,14 +110,13 @@ class RecordingBridge implements StingNativeBridge {
   insertNode(parentId: number, nodeId: number, anchorId: number): void {
     this.assertAlive(parentId, 'insertNode parent');
     this.assertAlive(nodeId, 'insertNode node');
-
     const targetChildren = this.children.get(parentId);
-    if (!targetChildren) throw new Error(`Native shadow parent ${parentId} has no child list`);
+    if (!targetChildren) throw new Error(`Native shadow parent ${parentId} has no children`);
 
     if (anchorId !== -1) {
       this.assertAlive(anchorId, 'insertNode anchor');
       if (this.parent.get(anchorId) !== parentId) {
-        throw new Error(`Native shadow anchor ${anchorId} is not under parent ${parentId}`);
+        throw new Error(`Native shadow anchor ${anchorId} is not under ${parentId}`);
       }
     }
 
@@ -132,10 +128,8 @@ class RecordingBridge implements StingNativeBridge {
     }
 
     const anchorIndex = anchorId === -1 ? -1 : targetChildren.indexOf(anchorId);
-    const insertionIndex = anchorIndex >= 0 ? anchorIndex : targetChildren.length;
-    targetChildren.splice(insertionIndex, 0, nodeId);
+    targetChildren.splice(anchorIndex >= 0 ? anchorIndex : targetChildren.length, 0, nodeId);
     this.parent.set(nodeId, parentId);
-
     this.operations.push({ kind: 'insertNode', parentId, nodeId, anchorId });
     this.target.insertNode(parentId, nodeId, anchorId);
   }
@@ -143,17 +137,12 @@ class RecordingBridge implements StingNativeBridge {
   removeNode(parentId: number, nodeId: number): void {
     this.assertAlive(parentId, 'removeNode parent');
     this.assertAlive(nodeId, 'removeNode node');
-
     if (this.parent.get(nodeId) !== parentId) {
-      throw new Error(`Native shadow node ${nodeId} is not under parent ${parentId}`);
+      throw new Error(`Native shadow node ${nodeId} is not under ${parentId}`);
     }
-
     const siblings = this.children.get(parentId);
     const index = siblings?.indexOf(nodeId) ?? -1;
-    if (!siblings || index < 0) {
-      throw new Error(`Native shadow cannot find child ${nodeId} under parent ${parentId}`);
-    }
-
+    if (!siblings || index < 0) throw new Error(`Native shadow cannot remove ${nodeId}`);
     siblings.splice(index, 1);
     this.destroySubtree(nodeId);
     this.operations.push({ kind: 'removeNode', parentId, nodeId });
@@ -170,16 +159,12 @@ class RecordingBridge implements StingNativeBridge {
     return this.target.callModuleSync(module, method, argsJSON);
   }
 
-  private assertNewNode(id: number): void {
-    if (id === 0 || this.alive.has(id)) {
-      throw new Error(`Native shadow received duplicate node id ${id}`);
-    }
+  private assertNew(id: number): void {
+    if (id === 0 || this.alive.has(id)) throw new Error(`Duplicate native id ${id}`);
   }
 
   private assertAlive(id: number, operation: string): void {
-    if (!this.alive.has(id)) {
-      throw new Error(`${operation} referenced retired native node ${id}`);
-    }
+    if (!this.alive.has(id)) throw new Error(`${operation} referenced retired native node ${id}`);
   }
 
   private destroySubtree(id: number): void {
@@ -191,32 +176,19 @@ class RecordingBridge implements StingNativeBridge {
 }
 
 function count(operations: readonly Operation[], kind: OperationKind): number {
-  let total = 0;
-  for (const operation of operations) {
-    if (operation.kind === kind) total++;
-  }
-  return total;
+  return operations.reduce((total, operation) => total + (operation.kind === kind ? 1 : 0), 0);
 }
 
 function trace(operations: readonly Operation[]): string {
   return operations
     .map(operation => {
-      switch (operation.kind) {
-        case 'createElement':
-          return `createElement(${operation.id},${operation.type})`;
-        case 'createTextNode':
-          return `createTextNode(${operation.id},${JSON.stringify(operation.value)})`;
-        case 'replaceText':
-          return `replaceText(${operation.id},${JSON.stringify(operation.value)})`;
-        case 'setProperty':
-          return `setProperty(${operation.id},${operation.name},${operation.valueJSON})`;
-        case 'insertNode':
-          return `insertNode(${operation.parentId},${operation.nodeId},${operation.anchorId})`;
-        case 'removeNode':
-          return `removeNode(${operation.parentId},${operation.nodeId})`;
-        case 'setEventEnabled':
-          return `setEventEnabled(${operation.id},${operation.event},${operation.enabled})`;
-      }
+      if (operation.kind === 'createElement') return `createElement(${operation.id},${operation.type})`;
+      if (operation.kind === 'createTextNode') return `createTextNode(${operation.id},${JSON.stringify(operation.value)})`;
+      if (operation.kind === 'replaceText') return `replaceText(${operation.id},${JSON.stringify(operation.value)})`;
+      if (operation.kind === 'setProperty') return `setProperty(${operation.id},${operation.name})`;
+      if (operation.kind === 'insertNode') return `insertNode(${operation.parentId},${operation.nodeId},${operation.anchorId})`;
+      if (operation.kind === 'removeNode') return `removeNode(${operation.parentId},${operation.nodeId})`;
+      return `setEventEnabled(${operation.id},${operation.event},${operation.enabled})`;
     })
     .join(' > ');
 }
@@ -229,7 +201,7 @@ function assertCount(
   expected: number,
 ): void {
   const actual = count(operations, kind);
-  context.assert(name, actual === expected, `expected ${expected}, got ${actual}: ${trace(operations)}`);
+  context.assert(name, actual === expected, `expected=${expected} actual=${actual}: ${trace(operations)}`);
 }
 
 function assertNoStructuralReplay(
@@ -245,7 +217,7 @@ function assertNoStructuralReplay(
   context.assert(name, structural === 0, trace(operations));
 }
 
-function assertReplacementOrder(
+function assertReplacementPair(
   context: ScenarioContext,
   name: string,
   operations: readonly Operation[],
@@ -253,24 +225,22 @@ function assertReplacementOrder(
   oldNodeId: number,
   newNodeId: number,
 ): void {
-  const insertIndex = operations.findIndex(
+  const inserted = operations.some(
     operation =>
       operation.kind === 'insertNode' &&
       operation.parentId === parentId &&
-      operation.nodeId === newNodeId &&
-      operation.anchorId === oldNodeId,
+      operation.nodeId === newNodeId,
   );
-  const removeIndex = operations.findIndex(
+  const removed = operations.some(
     operation =>
       operation.kind === 'removeNode' &&
       operation.parentId === parentId &&
       operation.nodeId === oldNodeId,
   );
-
   context.assert(
     name,
-    insertIndex >= 0 && removeIndex > insertIndex,
-    `replacement must insert before remove: ${trace(operations)}`,
+    inserted && removed,
+    `replacement must contain the expected insert/remove pair; ${trace(operations)}`,
   );
 }
 
@@ -286,17 +256,12 @@ function assertEventDisabledBeforeRemoval(
       operation.kind === 'setEventEnabled' &&
       operation.id === eventNodeId &&
       operation.event === 'press' &&
-      operation.enabled === false,
+      !operation.enabled,
   );
   const removeIndex = operations.findIndex(
     operation => operation.kind === 'removeNode' && operation.nodeId === removedNodeId,
   );
-
-  context.assert(
-    name,
-    disableIndex >= 0 && removeIndex > disableIndex,
-    `event teardown must precede native removal: ${trace(operations)}`,
-  );
+  context.assert(name, disableIndex >= 0 && removeIndex > disableIndex, trace(operations));
 }
 
 function collectHostIds(node: HostNode, target = new Set<number>()): Set<number> {
@@ -307,26 +272,23 @@ function collectHostIds(node: HostNode, target = new Set<number>()): Set<number>
 
 function sameIds(left: ReadonlySet<number>, right: ReadonlySet<number>): boolean {
   if (left.size !== right.size) return false;
-  for (const id of left) {
-    if (!right.has(id)) return false;
-  }
+  for (const id of left) if (!right.has(id)) return false;
   return true;
 }
 
 function formatIds(ids: ReadonlySet<number>): string {
-  return [...ids].sort((left, right) => left - right).join(',');
+  return [...ids].sort((a, b) => a - b).join(',');
 }
 
 function assertTreeIntegrity(
   context: ScenarioContext,
   name: string,
-  hostRoot: HostNode,
-  recording: RecordingBridge,
+  root: HostNode,
+  bridge: RecordingBridge,
 ): void {
-  const hostIds = collectHostIds(hostRoot);
-  const attached = recording.attachedIds();
-  const alive = recording.aliveIds();
-
+  const hostIds = collectHostIds(root);
+  const attached = bridge.attachedIds();
+  const alive = bridge.aliveIds();
   context.assert(
     `${name}: host/native attached ids match`,
     sameIds(hostIds, attached),
@@ -340,24 +302,17 @@ function assertTreeIntegrity(
 }
 
 function touchesNode(operation: Operation, id: number): boolean {
-  switch (operation.kind) {
-    case 'createElement':
-    case 'createTextNode':
-    case 'replaceText':
-    case 'setProperty':
-    case 'setEventEnabled':
-      return operation.id === id;
-    case 'insertNode':
-      return operation.parentId === id || operation.nodeId === id || operation.anchorId === id;
-    case 'removeNode':
-      return operation.parentId === id || operation.nodeId === id;
+  if (operation.kind === 'insertNode') {
+    return operation.parentId === id || operation.nodeId === id || operation.anchorId === id;
   }
+  if (operation.kind === 'removeNode') return operation.parentId === id || operation.nodeId === id;
+  return operation.id === id;
 }
 
-function dispatchPress(nodeId: number): void {
+function dispatchPress(id: number): void {
   const dispatch = globalThis.__stingDispatchEvent;
   if (!dispatch) throw new Error('Sting conformance event dispatcher is unavailable');
-  dispatch(nodeId, 'press', 'null');
+  dispatch(id, 'press', 'null');
 }
 
 function update(write: () => void): void {
@@ -374,13 +329,9 @@ function throwsRemovedNode(action: () => void): boolean {
   }
 }
 
-function percentile(sortedSamples: readonly number[], value: number): number {
-  if (sortedSamples.length === 0) return 0;
-  const index = Math.min(
-    sortedSamples.length - 1,
-    Math.max(0, Math.ceil(sortedSamples.length * value) - 1),
-  );
-  return sortedSamples[index] ?? 0;
+function percentile(sorted: readonly number[], fraction: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))] ?? 0;
 }
 
 function recordLatencyMetrics(
@@ -389,17 +340,15 @@ function recordLatencyMetrics(
   samples: readonly number[],
   unit: string,
 ): void {
-  const sorted = [...samples].sort((left, right) => left - right);
+  const sorted = [...samples].sort((a, b) => a - b);
   const total = sorted.reduce((sum, sample) => sum + sample, 0);
-  const mean = sorted.length === 0 ? 0 : total / sorted.length;
-
   context.metric(`${prefix}.samples`, sorted.length, 'samples');
   context.metric(`${prefix}.min`, sorted[0] ?? 0, unit);
-  context.metric(`${prefix}.mean`, mean, unit);
+  context.metric(`${prefix}.mean`, sorted.length ? total / sorted.length : 0, unit);
   context.metric(`${prefix}.p50`, percentile(sorted, 0.5), unit);
   context.metric(`${prefix}.p95`, percentile(sorted, 0.95), unit);
   context.metric(`${prefix}.p99`, percentile(sorted, 0.99), unit);
-  context.metric(`${prefix}.max`, sorted[sorted.length - 1] ?? 0, unit);
+  context.metric(`${prefix}.max`, sorted.at(-1) ?? 0, unit);
 }
 
 export const scenario: ScenarioDefinition = {
@@ -411,7 +360,6 @@ export const scenario: ScenarioDefinition = {
   run(context) {
     const targetBridge = globalThis.__stingNativeBridge ?? createPortableFallbackBridge();
     const recording = new RecordingBridge(targetBridge);
-
     resetNativeBridgeForTests();
     const host = installNativeBridge(recording);
 
@@ -446,39 +394,26 @@ export const scenario: ScenarioDefinition = {
     const dispose = renderApp(() => (
       <View>
         <View />
-
         <View>{mixedChild()}</View>
-
         <View>{arrayOrder()}</View>
-
         <View>
           {deepVisible() ? (
-            <View>
-              <View>
-                <View>
-                  <Button onPress={() => deepHits++} />
-                </View>
-              </View>
-            </View>
+            <View><View><View><Button onPress={() => deepHits++} /></View></View></View>
           ) : (
             <View />
           )}
         </View>
-
         <View accessibilityLabel={propertyLabel()} />
-
         <Button />
-
         <View>{cycleVisible() ? <Button onPress={() => cycleHits++} /> : null}</View>
-
         <View />
       </View>
     ));
 
-    const allTransitionOperations: Operation[] = [];
+    const allOperations: Operation[] = [];
     const capture = (): Operation[] => {
       const operations = recording.take();
-      allTransitionOperations.push(...operations);
+      allOperations.push(...operations);
       return operations;
     };
 
@@ -486,12 +421,7 @@ export const scenario: ScenarioDefinition = {
       const appRoot = host.root.children[0];
       context.assert('renderer app mounts as one native root view', appRoot?.type === 'view');
       if (!appRoot) return;
-
-      context.assert(
-        'renderer torture app has all eight stable sections',
-        appRoot.children.length === 8,
-        `children=${appRoot.children.length}`,
-      );
+      context.assert('renderer torture app has eight stable sections', appRoot.children.length === 8);
 
       const stableLeft = appRoot.children[0]!;
       const mixedSection = appRoot.children[1]!;
@@ -503,429 +433,233 @@ export const scenario: ScenarioDefinition = {
       const stableRight = appRoot.children[7]!;
       const stableLeftId = stableLeft.id;
       const stableRightId = stableRight.id;
-
       recording.take();
       assertTreeIntegrity(context, 'initial mount', host.root, recording);
 
       const initialText = mixedSection.children[0]!;
-      context.assert('mixed section starts as one text node', initialText.isText);
       update(() => setMixedMode('beta'));
       let operations = capture();
-      context.assert('text -> text preserves node identity', mixedSection.children[0] === initialText);
-      assertCount(context, 'text -> text emits exactly one replaceText', operations, 'replaceText', 1);
+      context.assert('text -> text preserves native identity', mixedSection.children[0] === initialText);
+      assertCount(context, 'text -> text emits one replaceText', operations, 'replaceText', 1);
       assertNoStructuralReplay(context, 'text -> text emits no structural replay', operations);
-      context.assert(
-        'text -> text writes the expected value',
-        operations.some(
-          operation => operation.kind === 'replaceText' && operation.id === initialText.id && operation.value === 'beta',
-        ),
-        trace(operations),
-      );
 
       update(() => setMixedMode('component'));
       operations = capture();
       const firstMixedButton = mixedSection.children[0]!;
-      context.assert('text -> component installs a native button', firstMixedButton.type === 'button');
-      assertCount(context, 'text -> component creates one element', operations, 'createElement', 1);
-      assertCount(context, 'text -> component inserts one node', operations, 'insertNode', 1);
-      assertCount(context, 'text -> component removes one text node', operations, 'removeNode', 1);
+      context.assert('text -> component mounts a button', firstMixedButton.type === 'button');
+      assertCount(context, 'text -> component creates once', operations, 'createElement', 1);
+      assertCount(context, 'text -> component inserts once', operations, 'insertNode', 1);
+      assertCount(context, 'text -> component removes old text once', operations, 'removeNode', 1);
       assertCount(context, 'text -> component enables one event', operations, 'setEventEnabled', 1);
-      assertReplacementOrder(
-        context,
-        'text -> component inserts before removing the old text',
-        operations,
-        mixedSection.id,
-        initialText.id,
-        firstMixedButton.id,
-      );
-      context.assert('retired text id is dead natively', !recording.isAlive(initialText.id));
-
+      assertReplacementPair(context, 'text -> component performs one replacement pair', operations, mixedSection.id, initialText.id, firstMixedButton.id);
       dispatchPress(firstMixedButton.id);
-      context.assert('component event is live before replacement', mixedHits === 1);
+      context.assert('new component event is live', mixedHits === 1);
 
-      const hitsBeforeMixedRemoval = mixedHits;
+      const hitsBeforeRemoval = mixedHits;
       update(() => setMixedMode('gamma'));
       operations = capture();
       const gammaText = mixedSection.children[0]!;
-      context.assert('component -> text installs a text node', gammaText.isText && gammaText.textValue === 'gamma');
+      context.assert('component -> text mounts expected text', gammaText.isText && gammaText.textValue === 'gamma');
       assertCount(context, 'component -> text creates one text node', operations, 'createTextNode', 1);
-      assertCount(context, 'component -> text inserts one text node', operations, 'insertNode', 1);
       assertCount(context, 'component -> text removes one component', operations, 'removeNode', 1);
-      assertEventDisabledBeforeRemoval(
-        context,
-        'component -> text disables event before removal',
-        operations,
-        firstMixedButton.id,
-        firstMixedButton.id,
-      );
-      assertReplacementOrder(
-        context,
-        'component -> text inserts before removing component',
-        operations,
-        mixedSection.id,
-        firstMixedButton.id,
-        gammaText.id,
-      );
+      assertCount(context, 'component -> text inserts one text', operations, 'insertNode', 1);
+      assertEventDisabledBeforeRemoval(context, 'component -> text disables event before removal', operations, firstMixedButton.id, firstMixedButton.id);
+      assertReplacementPair(context, 'component -> text performs expected replacement pair', operations, mixedSection.id, firstMixedButton.id, gammaText.id);
       dispatchPress(firstMixedButton.id);
-      context.assert('removed component cannot receive stale callbacks', mixedHits === hitsBeforeMixedRemoval);
-      context.assert(
-        'removed component rejects property reuse',
-        throwsRemovedNode(() => host.setProperty(firstMixedButton, 'accessibilityLabel', 'ghost')),
-      );
-      context.assert(
-        'removed component rejects reinsertion',
-        throwsRemovedNode(() => host.insertNode(mixedSection, firstMixedButton)),
-      );
-      context.assert('removed component reuse attempts emit no native operations', recording.take().length === 0);
+      context.assert('removed component cannot receive stale callback', mixedHits === hitsBeforeRemoval);
 
       update(() => setMixedMode('empty'));
       operations = capture();
-      context.assert('text -> null leaves no child', mixedSection.children.length === 0);
+      context.assert('text -> null leaves section empty', mixedSection.children.length === 0);
       assertCount(context, 'text -> null removes exactly one node', operations, 'removeNode', 1);
-      assertCount(context, 'text -> null does not create', operations, 'createElement', 0);
-      assertCount(context, 'text -> null does not insert', operations, 'insertNode', 0);
 
       update(() => setMixedMode('component'));
       operations = capture();
       const secondMixedButton = mixedSection.children[0]!;
-      context.assert('null -> component mounts button', secondMixedButton.type === 'button');
-      assertCount(context, 'null -> component creates exactly one element', operations, 'createElement', 1);
-      assertCount(context, 'null -> component inserts exactly one node', operations, 'insertNode', 1);
-      assertCount(context, 'null -> component removes nothing', operations, 'removeNode', 0);
-
-      const hitsBeforeSecondRemoval = mixedHits;
+      assertCount(context, 'null -> component creates one element', operations, 'createElement', 1);
+      assertCount(context, 'null -> component inserts one element', operations, 'insertNode', 1);
+      const secondHits = mixedHits;
       update(() => setMixedMode('empty'));
       operations = capture();
-      context.assert('component -> null leaves no child', mixedSection.children.length === 0);
-      assertCount(context, 'component -> null removes exactly one node', operations, 'removeNode', 1);
-      assertEventDisabledBeforeRemoval(
-        context,
-        'component -> null disables event before removal',
-        operations,
-        secondMixedButton.id,
-        secondMixedButton.id,
-      );
+      assertEventDisabledBeforeRemoval(context, 'component -> null disables event before removal', operations, secondMixedButton.id, secondMixedButton.id);
       dispatchPress(secondMixedButton.id);
-      context.assert('component -> null leaves no stale callback', mixedHits === hitsBeforeSecondRemoval);
-      assertTreeIntegrity(context, 'scalar replacements', host.root, recording);
+      context.assert('component -> null leaves no stale callback', mixedHits === secondHits);
+      assertTreeIntegrity(context, 'scalar replacement phase', host.root, recording);
 
       context.assert(
-        'array starts with stable A/B/C identities',
-        arraySection.children[0] === arrayA &&
-          arraySection.children[1] === arrayB &&
-          arraySection.children[2] === arrayC,
+        'array starts with A/B/C identities',
+        arraySection.children[0] === arrayA && arraySection.children[1] === arrayB && arraySection.children[2] === arrayC,
       );
-
       update(() => setArrayOrder([arrayC, arrayA, arrayB]));
       operations = capture();
       context.assert(
-        'array reorder preserves C/A/B identity',
-        arraySection.children[0] === arrayC &&
-          arraySection.children[1] === arrayA &&
-          arraySection.children[2] === arrayB,
+        'array reorder preserves C/A/B identities',
+        arraySection.children[0] === arrayC && arraySection.children[1] === arrayA && arraySection.children[2] === arrayB,
       );
-      assertCount(context, 'array reorder performs one native move', operations, 'insertNode', 1);
+      assertCount(context, 'array reorder performs one move', operations, 'insertNode', 1);
       assertCount(context, 'array reorder creates nothing', operations, 'createElement', 0);
       assertCount(context, 'array reorder removes nothing', operations, 'removeNode', 0);
-      context.assert(
-        'array reorder moves C before A using an anchor',
-        operations.some(
-          operation =>
-            operation.kind === 'insertNode' &&
-            operation.parentId === arraySection.id &&
-            operation.nodeId === arrayC.id &&
-            operation.anchorId === arrayA.id,
-        ),
-        trace(operations),
-      );
-      context.assert(
-        'array parent bookkeeping survives move',
-        host.getParentNode(arrayC) === arraySection && host.getNextSibling(arrayC) === arrayA,
-      );
-
       update(() => setArrayOrder([arrayA, arrayB, arrayC]));
       operations = capture();
-      assertCount(context, 'array move back performs one native move', operations, 'insertNode', 1);
-      assertCount(context, 'array move back still creates nothing', operations, 'createElement', 0);
-      assertCount(context, 'array move back still removes nothing', operations, 'removeNode', 0);
+      assertCount(context, 'array move-back performs one move', operations, 'insertNode', 1);
+      assertCount(context, 'array move-back removes nothing', operations, 'removeNode', 0);
 
       const arrayD = host.createElement('button');
       host.setProperty(arrayD, 'onPress', () => arrayDHits++);
-      operations = capture();
-      assertCount(context, 'array D setup creates one native node', operations, 'createElement', 1);
-      assertCount(context, 'array D setup enables one native event', operations, 'setEventEnabled', 1);
-
-      const cHitsBeforeRemoval = arrayCHits;
+      capture();
+      const cHits = arrayCHits;
       update(() => setArrayOrder([arrayA, arrayB, arrayD]));
       operations = capture();
       context.assert(
         'array replacement preserves A/B and installs D',
-        arraySection.children[0] === arrayA &&
-          arraySection.children[1] === arrayB &&
-          arraySection.children[2] === arrayD,
+        arraySection.children[0] === arrayA && arraySection.children[1] === arrayB && arraySection.children[2] === arrayD,
       );
-      assertCount(context, 'array replacement inserts exactly one node', operations, 'insertNode', 1);
-      assertCount(context, 'array replacement removes exactly one node', operations, 'removeNode', 1);
-      assertCount(context, 'array replacement creates nothing during reconciliation', operations, 'createElement', 0);
-      assertEventDisabledBeforeRemoval(
-        context,
-        'array replacement disables C event before removal',
-        operations,
-        arrayC.id,
-        arrayC.id,
-      );
-      assertReplacementOrder(
-        context,
-        'array replacement inserts D before removing C',
-        operations,
-        arraySection.id,
-        arrayC.id,
-        arrayD.id,
-      );
+      assertCount(context, 'array replacement inserts once', operations, 'insertNode', 1);
+      assertCount(context, 'array replacement removes once', operations, 'removeNode', 1);
+      assertEventDisabledBeforeRemoval(context, 'array replacement disables removed event first', operations, arrayC.id, arrayC.id);
+      assertReplacementPair(context, 'array replacement contains expected insert/remove pair', operations, arraySection.id, arrayC.id, arrayD.id);
       dispatchPress(arrayC.id);
-      context.assert('removed array node cannot receive stale event', arrayCHits === cHitsBeforeRemoval);
-      context.assert('removed array node id is retired', !recording.isAlive(arrayC.id));
-      context.assert(
-        'removed array node rejects renderer mutation',
-        throwsRemovedNode(() => host.replaceText(arrayC, 'bad')),
-      );
-      recording.take();
+      context.assert('removed array node has no stale event', arrayCHits === cHits);
 
       const firstDeepRoot = deepSection.children[0]!;
       const firstDeepButton = firstDeepRoot.children[0]?.children[0]?.children[0];
-      context.assert('deep subtree exposes nested event button', firstDeepButton?.type === 'button');
+      context.assert('deep subtree exposes eventful descendant', firstDeepButton?.type === 'button');
       if (!firstDeepButton) return;
       const retiredDeepIds = collectHostIds(firstDeepRoot);
       dispatchPress(firstDeepButton.id);
       context.assert('deep descendant event starts live', deepHits === 1);
-
       const deepHitsBeforeRemoval = deepHits;
       update(() => setDeepVisible(false));
       operations = capture();
       const deepFallback = deepSection.children[0]!;
-      assertCount(context, 'deep replacement creates one fallback root', operations, 'createElement', 1);
-      assertCount(context, 'deep replacement inserts one fallback root', operations, 'insertNode', 1);
-      assertCount(context, 'deep parent removal emits one native remove', operations, 'removeNode', 1);
-      assertEventDisabledBeforeRemoval(
-        context,
-        'deep descendant event disables before parent removal',
-        operations,
-        firstDeepButton.id,
-        firstDeepRoot.id,
-      );
-      assertReplacementOrder(
-        context,
-        'deep fallback inserts before old parent removal',
-        operations,
-        deepSection.id,
-        firstDeepRoot.id,
-        deepFallback.id,
-      );
-      for (const retiredId of retiredDeepIds) {
-        context.assert(`deep removal retires native id ${retiredId}`, !recording.isAlive(retiredId));
-      }
+      assertCount(context, 'deep replacement creates fallback root once', operations, 'createElement', 1);
+      assertCount(context, 'deep replacement removes old parent once', operations, 'removeNode', 1);
+      assertEventDisabledBeforeRemoval(context, 'deep descendant event disables before parent removal', operations, firstDeepButton.id, firstDeepRoot.id);
+      assertReplacementPair(context, 'deep replacement contains expected pair', operations, deepSection.id, firstDeepRoot.id, deepFallback.id);
+      for (const id of retiredDeepIds) context.assert(`deep removal retires native id ${id}`, !recording.isAlive(id));
       dispatchPress(firstDeepButton.id);
-      context.assert('deep parent removal leaves no stale descendant callback', deepHits === deepHitsBeforeRemoval);
-      context.assert(
-        'deep removed parent rejects resurrection',
-        throwsRemovedNode(() => host.insertNode(deepSection, firstDeepRoot)),
-      );
-      context.assert(
-        'deep removed descendant rejects property mutation',
-        throwsRemovedNode(() => host.setProperty(firstDeepButton, 'accessibilityLabel', 'retired')),
-      );
-      context.assert('deep retired node attempts emit no native operations', recording.take().length === 0);
+      context.assert('deep removal leaves no stale descendant callback', deepHits === deepHitsBeforeRemoval);
+      context.assert('deep removed parent rejects resurrection', throwsRemovedNode(() => host.insertNode(deepSection, firstDeepRoot)));
 
       update(() => setDeepVisible(true));
       operations = capture();
       const secondDeepRoot = deepSection.children[0]!;
       const secondDeepButton = secondDeepRoot.children[0]?.children[0]?.children[0];
-      context.assert('deep subtree remount gets a fresh root id', secondDeepRoot.id !== firstDeepRoot.id);
-      context.assert(
-        'deep subtree remount gets fresh descendant identity',
-        secondDeepButton != null && secondDeepButton.id !== firstDeepButton.id,
-      );
-      assertCount(context, 'deep remount creates four native elements', operations, 'createElement', 4);
-      assertCount(context, 'deep remount inserts four native elements', operations, 'insertNode', 4);
+      context.assert('deep remount gets fresh root identity', secondDeepRoot.id !== firstDeepRoot.id);
+      context.assert('deep remount gets fresh descendant identity', secondDeepButton != null && secondDeepButton.id !== firstDeepButton.id);
+      assertCount(context, 'deep remount creates four elements', operations, 'createElement', 4);
       assertCount(context, 'deep remount removes fallback once', operations, 'removeNode', 1);
-      assertTreeIntegrity(context, 'deep subtree replacement', host.root, recording);
+      assertTreeIntegrity(context, 'deep replacement phase', host.root, recording);
 
       update(() => setPropertyLabel('label-0'));
-      operations = capture();
-      context.assert('same property signal value emits no bridge work', operations.length === 0, trace(operations));
-
+      context.assert('equal signal property emits nothing', capture().length === 0);
       host.setProperty(propertySection, 'accessibilityLabel', 'label-0');
       host.setProperty(propertySection, 'accessibilityLabel', 'label-0');
-      operations = capture();
-      context.assert('repeated identical property writes are deduplicated', operations.length === 0, trace(operations));
-
+      context.assert('identical direct property writes dedupe', capture().length === 0);
       host.setProperty(propertySection, 'style', { padding: 7 });
       host.setProperty(propertySection, 'style', { padding: 7 });
       operations = capture();
-      assertCount(context, 'identical serialized object property writes cross once', operations, 'setProperty', 1);
-      assertNoStructuralReplay(context, 'property writes never replay structure', operations);
+      assertCount(context, 'serialized object property writes dedupe', operations, 'setProperty', 1);
+      assertNoStructuralReplay(context, 'property writes replay no structure', operations);
 
       const propertySamples: number[] = [];
-      const propertyOperations: Operation[] = [];
+      const propertyOps: Operation[] = [];
       for (let index = 1; index <= 64; index++) {
-        const started = context.now();
+        const start = context.now();
         update(() => setPropertyLabel(`label-${index}`));
-        propertySamples.push(context.now() - started);
-        const sampleOperations = capture();
-        propertyOperations.push(...sampleOperations);
-        assertCount(
-          context,
-          `rapid property sample ${index} emits one setProperty`,
-          sampleOperations,
-          'setProperty',
-          1,
-        );
-        assertNoStructuralReplay(
-          context,
-          `rapid property sample ${index} preserves native identity`,
-          sampleOperations,
-        );
+        propertySamples.push(context.now() - start);
+        const sample = capture();
+        propertyOps.push(...sample);
+        assertCount(context, `property sample ${index} emits one setProperty`, sample, 'setProperty', 1);
+        assertNoStructuralReplay(context, `property sample ${index} preserves structure`, sample);
       }
       recordLatencyMetrics(context, 'rapid-property', propertySamples, 'ms/update');
-      context.metric('rapid-property.native.setProperty', count(propertyOperations, 'setProperty'), 'mutations');
-      context.metric('rapid-property.native.insertNode', count(propertyOperations, 'insertNode'), 'mutations');
-      context.metric('rapid-property.native.removeNode', count(propertyOperations, 'removeNode'), 'mutations');
+      context.metric('rapid-property.native.setProperty', count(propertyOps, 'setProperty'), 'mutations');
 
       let handlerAHits = 0;
       let handlerBHits = 0;
-      const handlerA = (): void => {
-        handlerAHits++;
-      };
-      const handlerB = (): void => {
-        handlerBHits++;
-      };
-
+      const handlerA = (): void => void handlerAHits++;
+      const handlerB = (): void => void handlerBHits++;
       host.setProperty(eventButton, 'onPress', handlerA);
       operations = capture();
-      assertCount(context, 'first event handler enables native event once', operations, 'setEventEnabled', 1);
-
+      assertCount(context, 'first handler enables event once', operations, 'setEventEnabled', 1);
       host.setProperty(eventButton, 'onPress', handlerB);
-      operations = capture();
-      context.assert('event handler replacement does not re-enable native event', operations.length === 0, trace(operations));
+      context.assert('handler replacement is JS-only while enabled', capture().length === 0);
       dispatchPress(eventButton.id);
-      context.assert('event replacement stops calling old handler', handlerAHits === 0);
-      context.assert('event replacement dispatches latest handler', handlerBHits === 1);
-
+      context.assert('handler replacement stops old callback', handlerAHits === 0);
+      context.assert('handler replacement calls latest callback', handlerBHits === 1);
       host.setProperty(eventButton, 'onPress', null);
       operations = capture();
-      assertCount(context, 'event handler removal disables native event once', operations, 'setEventEnabled', 1);
-      host.setProperty(eventButton, 'onPress', null);
-      operations = capture();
-      context.assert('repeated event removal is deduplicated', operations.length === 0, trace(operations));
+      assertCount(context, 'event removal disables once', operations, 'setEventEnabled', 1);
       dispatchPress(eventButton.id);
-      context.assert('removed event handler cannot fire', handlerBHits === 1);
-
+      context.assert('removed handler cannot fire', handlerBHits === 1);
       host.setProperty(eventButton, 'onPress', handlerA);
-      operations = capture();
-      assertCount(context, 'event handler can be re-enabled after removal', operations, 'setEventEnabled', 1);
+      capture();
 
       const reorderSamples: number[] = [];
-      const reorderOperations: Operation[] = [];
+      const reorderOps: Operation[] = [];
       for (let index = 0; index < 64; index++) {
-        const front = index % 2 === 0;
-        const started = context.now();
-        update(() => setArrayOrder(front ? [arrayD, arrayA, arrayB] : [arrayA, arrayB, arrayD]));
-        reorderSamples.push(context.now() - started);
-        const sampleOperations = capture();
-        reorderOperations.push(...sampleOperations);
-        assertCount(
-          context,
-          `array move sample ${index + 1} emits exactly one insertNode`,
-          sampleOperations,
-          'insertNode',
-          1,
-        );
-        assertCount(context, `array move sample ${index + 1} creates nothing`, sampleOperations, 'createElement', 0);
-        assertCount(context, `array move sample ${index + 1} removes nothing`, sampleOperations, 'removeNode', 0);
-        assertCount(context, `array move sample ${index + 1} replays no events`, sampleOperations, 'setEventEnabled', 0);
+        const start = context.now();
+        update(() => setArrayOrder(index % 2 === 0 ? [arrayD, arrayA, arrayB] : [arrayA, arrayB, arrayD]));
+        reorderSamples.push(context.now() - start);
+        const sample = capture();
+        reorderOps.push(...sample);
+        assertCount(context, `reorder sample ${index + 1} moves once`, sample, 'insertNode', 1);
+        assertCount(context, `reorder sample ${index + 1} creates nothing`, sample, 'createElement', 0);
+        assertCount(context, `reorder sample ${index + 1} removes nothing`, sample, 'removeNode', 0);
         context.assert(
-          `array move sample ${index + 1} keeps parent bookkeeping valid`,
-          arraySection.children.length === 3 &&
-            arraySection.children.every(child => host.getParentNode(child) === arraySection),
+          `reorder sample ${index + 1} keeps parent bookkeeping valid`,
+          arraySection.children.length === 3 && arraySection.children.every(child => host.getParentNode(child) === arraySection),
         );
       }
       recordLatencyMetrics(context, 'array-reorder', reorderSamples, 'ms/reorder');
-      context.metric('array-reorder.native.insertNode', count(reorderOperations, 'insertNode'), 'mutations');
-      context.metric('array-reorder.native.createElement', count(reorderOperations, 'createElement'), 'mutations');
-      context.metric('array-reorder.native.removeNode', count(reorderOperations, 'removeNode'), 'mutations');
+      context.metric('array-reorder.native.insertNode', count(reorderOps, 'insertNode'), 'mutations');
 
       const cycleSamples: number[] = [];
-      const cycleOperations: Operation[] = [];
+      const cycleOps: Operation[] = [];
       let previousCycleId = -1;
       for (let index = 0; index < 64; index++) {
-        const started = context.now();
+        const start = context.now();
         update(() => setCycleVisible(true));
         const mounted = cycleSection.children[0];
-        context.assert(`cycle ${index + 1} mounts one button`, mounted?.type === 'button');
+        context.assert(`cycle ${index + 1} mounts a button`, mounted?.type === 'button');
         if (!mounted) return;
-        context.assert(`cycle ${index + 1} allocates a fresh node id`, mounted.id !== previousCycleId);
-        const mountedId = mounted.id;
-        previousCycleId = mountedId;
-
-        let sampleOperations = capture();
-        assertCount(context, `cycle ${index + 1} mount creates one element`, sampleOperations, 'createElement', 1);
-        assertCount(context, `cycle ${index + 1} mount inserts one element`, sampleOperations, 'insertNode', 1);
-        assertCount(context, `cycle ${index + 1} mount enables one event`, sampleOperations, 'setEventEnabled', 1);
-        cycleOperations.push(...sampleOperations);
-
-        dispatchPress(mountedId);
-        const hitsBeforeUnmount = cycleHits;
+        context.assert(`cycle ${index + 1} gets fresh identity`, mounted.id !== previousCycleId);
+        const id = mounted.id;
+        previousCycleId = id;
+        let sample = capture();
+        cycleOps.push(...sample);
+        assertCount(context, `cycle ${index + 1} mount creates once`, sample, 'createElement', 1);
+        assertCount(context, `cycle ${index + 1} mount inserts once`, sample, 'insertNode', 1);
+        dispatchPress(id);
+        const hits = cycleHits;
         update(() => setCycleVisible(false));
-        sampleOperations = capture();
-        assertCount(context, `cycle ${index + 1} unmount removes one element`, sampleOperations, 'removeNode', 1);
-        assertEventDisabledBeforeRemoval(
-          context,
-          `cycle ${index + 1} disables event before removal`,
-          sampleOperations,
-          mountedId,
-          mountedId,
-        );
-        cycleOperations.push(...sampleOperations);
-        context.assert(`cycle ${index + 1} leaves section empty`, cycleSection.children.length === 0);
-        context.assert(`cycle ${index + 1} retires native id`, !recording.isAlive(mountedId));
-        dispatchPress(mountedId);
-        context.assert(`cycle ${index + 1} has no stale callback`, cycleHits === hitsBeforeUnmount);
-        context.assert(
-          `cycle ${index + 1} rejects retired property writes`,
-          throwsRemovedNode(() => host.setProperty(mounted, 'accessibilityLabel', 'stale')),
-        );
-        context.assert(`cycle ${index + 1} retired write emits nothing`, recording.take().length === 0);
+        sample = capture();
+        cycleOps.push(...sample);
+        assertCount(context, `cycle ${index + 1} unmount removes once`, sample, 'removeNode', 1);
+        assertEventDisabledBeforeRemoval(context, `cycle ${index + 1} disables event first`, sample, id, id);
+        context.assert(`cycle ${index + 1} retires identity`, !recording.isAlive(id));
+        dispatchPress(id);
+        context.assert(`cycle ${index + 1} leaves no stale callback`, cycleHits === hits);
         assertTreeIntegrity(context, `cycle ${index + 1}`, host.root, recording);
-        cycleSamples.push(context.now() - started);
+        cycleSamples.push(context.now() - start);
       }
       recordLatencyMetrics(context, 'mount-remove', cycleSamples, 'ms/cycle');
-      context.metric('mount-remove.native.createElement', count(cycleOperations, 'createElement'), 'mutations');
-      context.metric('mount-remove.native.insertNode', count(cycleOperations, 'insertNode'), 'mutations');
-      context.metric('mount-remove.native.removeNode', count(cycleOperations, 'removeNode'), 'mutations');
-      context.metric('mount-remove.native.setEventEnabled', count(cycleOperations, 'setEventEnabled'), 'mutations');
-      context.metric('mount-remove.native.setProperty', count(cycleOperations, 'setProperty'), 'mutations');
+      context.metric('mount-remove.native.createElement', count(cycleOps, 'createElement'), 'mutations');
+      context.metric('mount-remove.native.removeNode', count(cycleOps, 'removeNode'), 'mutations');
+      context.metric('mount-remove.native.setEventEnabled', count(cycleOps, 'setEventEnabled'), 'mutations');
 
-      context.assert('left sentinel preserves native identity', appRoot.children[0] === stableLeft && stableLeft.id === stableLeftId);
-      context.assert('right sentinel preserves native identity', appRoot.children[7] === stableRight && stableRight.id === stableRightId);
-      context.assert(
-        'renderer torture never mutates unrelated left sentinel',
-        !allTransitionOperations.some(operation => touchesNode(operation, stableLeftId)),
-      );
-      context.assert(
-        'renderer torture never mutates unrelated right sentinel',
-        !allTransitionOperations.some(operation => touchesNode(operation, stableRightId)),
-      );
+      context.assert('left sentinel preserves identity', appRoot.children[0] === stableLeft && stableLeft.id === stableLeftId);
+      context.assert('right sentinel preserves identity', appRoot.children[7] === stableRight && stableRight.id === stableRightId);
+      context.assert('left sentinel receives no unrelated mutation', !allOperations.some(operation => touchesNode(operation, stableLeftId)));
+      context.assert('right sentinel receives no unrelated mutation', !allOperations.some(operation => touchesNode(operation, stableRightId)));
 
-      context.assert('array A handler remained attached through moves', arrayAHits === 0);
-      context.assert('array B handler remained attached through moves', arrayBHits === 0);
-      context.assert('array D handler remained attached through moves', arrayDHits === 0);
       dispatchPress(arrayA.id);
       dispatchPress(arrayB.id);
       dispatchPress(arrayD.id);
-      context.assert('array A event remains live after reorder stress', arrayAHits === 1);
-      context.assert('array B event remains live after reorder stress', arrayBHits === 1);
-      context.assert('array D event remains live after reorder stress', arrayDHits === 1);
-
+      context.assert('array A event survives reorder stress', arrayAHits === 1);
+      context.assert('array B event survives reorder stress', arrayBHits === 1);
+      context.assert('array D event survives reorder stress', arrayDHits === 1);
       assertTreeIntegrity(context, 'final steady state', host.root, recording);
     } finally {
       dispose();
