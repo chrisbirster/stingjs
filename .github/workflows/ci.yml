@@ -153,6 +153,20 @@ jobs:
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-app.js'
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so'
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_android.so'
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run real Android native instrumentation
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd examples/hello-world/android && gradle :app:connectedDebugAndroidTest :sting-runtime:connectedDebugAndroidTest --no-daemon
 
   ios:
     runs-on: macos-latest
