@@ -28,6 +28,18 @@ function makeBridge(): StingNativeBridge {
 afterEach(() => resetNativeBridgeForTests());
 
 describe('Sting Solid renderer disposal', () => {
+  it('lets the universal renderer normalize a function-valued root expression', () => {
+    const host = installNativeBridge(makeBridge());
+    const rendered = createElement('view');
+
+    const dispose = render(() => () => rendered, host.root);
+
+    expect(host.root.children).toEqual([rendered]);
+
+    dispose();
+    expect(host.root.children).toEqual([]);
+  });
+
   it('removes nodes mounted by render while preserving pre-existing container children', () => {
     const bridge = makeBridge();
     const host = installNativeBridge(bridge);
