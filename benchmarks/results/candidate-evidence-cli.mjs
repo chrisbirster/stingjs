@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { candidateCaptureToEvidence } from './candidate-capture.mjs';
@@ -23,10 +23,28 @@ export async function runCandidateEvidenceCli(argv = process.argv.slice(2)) {
   const destination = resolve(outputDirectory);
   await mkdir(destination, { recursive: true });
 
-  for (const { filename, result } of files) {
+  const outputs = files.map(({ filename, result }) => ({
+    filename,
+    result,
+    path: resolve(destination, filename),
+  }));
+
+  for (const output of outputs) {
+    try {
+      await access(output.path);
+      throw new Error(
+        `${output.path}: evidence file already exists; refusing to overwrite any capture output`,
+      );
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+  }
+
+  for (const output of outputs) {
     await writeFile(
-      resolve(destination, filename),
-      `${JSON.stringify(result, null, 2)}\n`,
+      output.path,
+      `${JSON.stringify(output.result, null, 2)}\n`,
       { encoding: 'utf8', flag: 'wx' },
     );
   }
