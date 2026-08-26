@@ -1,5 +1,6 @@
 import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {dirname, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {controlCaptureDocument, parseBenchmarkCaptures} from './capture.mjs';
 
 function requireEnv(name) {
@@ -52,7 +53,10 @@ export async function runControlCaptureCli(argv = process.argv.slice(2)) {
   process.stdout.write(`${destination}\n`);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
+const modulePath = fileURLToPath(import.meta.url);
+
+if (invokedPath === modulePath) {
   runControlCaptureCli().catch(error => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;
