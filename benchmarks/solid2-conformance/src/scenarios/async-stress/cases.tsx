@@ -437,10 +437,8 @@ export async function testEmptyIterator(context: ScenarioContext, instrumentatio
   stream.complete();
   await drainAsync();
   context.assert('AsyncIterable empty completion: iterator completes normally', stream.nextCalls >= 1);
-  context.assert(
-    'AsyncIterable empty completion: no value node is invented',
-    !hasTextContaining(instrumentation.host.root, 'empty-stream:value:'),
-  );
+  context.assert('AsyncIterable empty completion: loading fallback is cleared', !hasText(instrumentation.host.root, 'empty-stream:loading'));
+  context.assert('AsyncIterable empty completion: undefined commit renders empty textual slot', hasText(instrumentation.host.root, 'empty-stream:value:'));
 
   dispose();
   await drainAsync();
