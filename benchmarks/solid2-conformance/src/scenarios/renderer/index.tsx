@@ -438,7 +438,7 @@ export const scenario: ScenarioDefinition = {
 
     const mixedChild = (): HostNode | string | null => {
       const mode = mixedMode();
-      if (mode === 'component') return <Button onPress={() => mixedHits++} />;
+      if (mode === 'component') return Button({ onPress: () => mixedHits++ });
       if (mode === 'empty') return null;
       return mode;
     };
@@ -507,7 +507,6 @@ export const scenario: ScenarioDefinition = {
       recording.take();
       assertTreeIntegrity(context, 'initial mount', host.root, recording);
 
-      // text -> text: one persistent text identity, one replaceText, no structure.
       const initialText = mixedSection.children[0]!;
       context.assert('mixed section starts as one text node', initialText.isText);
       update(() => setMixedMode('beta'));
@@ -523,7 +522,6 @@ export const scenario: ScenarioDefinition = {
         trace(operations),
       );
 
-      // text -> component: create/enable/insert replacement before retiring text.
       update(() => setMixedMode('component'));
       operations = capture();
       const firstMixedButton = mixedSection.children[0]!;
@@ -545,7 +543,6 @@ export const scenario: ScenarioDefinition = {
       dispatchPress(firstMixedButton.id);
       context.assert('component event is live before replacement', mixedHits === 1);
 
-      // component -> text: preserve parent identity, disable stale event before remove.
       const hitsBeforeMixedRemoval = mixedHits;
       update(() => setMixedMode('gamma'));
       operations = capture();
@@ -581,7 +578,6 @@ export const scenario: ScenarioDefinition = {
       );
       context.assert('removed component reuse attempts emit no native operations', recording.take().length === 0);
 
-      // component/null transitions.
       update(() => setMixedMode('empty'));
       operations = capture();
       context.assert('text -> null leaves no child', mixedSection.children.length === 0);
@@ -613,7 +609,6 @@ export const scenario: ScenarioDefinition = {
       context.assert('component -> null leaves no stale callback', mixedHits === hitsBeforeSecondRemoval);
       assertTreeIntegrity(context, 'scalar replacements', host.root, recording);
 
-      // array -> array reorders must move existing identities, never recreate them.
       context.assert(
         'array starts with stable A/B/C identities',
         arraySection.children[0] === arrayA &&
@@ -654,8 +649,6 @@ export const scenario: ScenarioDefinition = {
       assertCount(context, 'array move back still creates nothing', operations, 'createElement', 0);
       assertCount(context, 'array move back still removes nothing', operations, 'removeNode', 0);
 
-      // Structural array replacement inserts D before retiring C and tears down
-      // C's native event without replaying unaffected A/B identities.
       const arrayD = host.createElement('button');
       host.setProperty(arrayD, 'onPress', () => arrayDHits++);
       operations = capture();
@@ -698,8 +691,6 @@ export const scenario: ScenarioDefinition = {
       );
       recording.take();
 
-      // Deep parent removal owns every descendant: one removeNode at the top,
-      // event disable on the deep button first, and every descendant id retired.
       const firstDeepRoot = deepSection.children[0]!;
       const firstDeepButton = firstDeepRoot.children[0]?.children[0]?.children[0];
       context.assert('deep subtree exposes nested event button', firstDeepButton?.type === 'button');
@@ -759,8 +750,6 @@ export const scenario: ScenarioDefinition = {
       assertCount(context, 'deep remount removes fallback once', operations, 'removeNode', 1);
       assertTreeIntegrity(context, 'deep subtree replacement', host.root, recording);
 
-      // Property writes: Solid signal equality suppresses identical writes, and
-      // StingHost performs a final JSON-level dedupe for direct repeated values.
       update(() => setPropertyLabel('label-0'));
       operations = capture();
       context.assert('same property signal value emits no bridge work', operations.length === 0, trace(operations));
@@ -802,8 +791,6 @@ export const scenario: ScenarioDefinition = {
       context.metric('rapid-property.native.insertNode', count(propertyOperations, 'insertNode'), 'mutations');
       context.metric('rapid-property.native.removeNode', count(propertyOperations, 'removeNode'), 'mutations');
 
-      // Event replacement is JS-only while enabled. Native sees only edge
-      // transitions; dispatch always reaches the latest handler and none after removal.
       let handlerAHits = 0;
       let handlerBHits = 0;
       const handlerA = (): void => {
@@ -837,8 +824,6 @@ export const scenario: ScenarioDefinition = {
       operations = capture();
       assertCount(context, 'event handler can be re-enabled after removal', operations, 'setEventEnabled', 1);
 
-      // Repeated array moves torture insert-before-anchor bookkeeping without
-      // creating/removing nodes or replaying events/properties.
       const reorderSamples: number[] = [];
       const reorderOperations: Operation[] = [];
       for (let index = 0; index < 64; index++) {
@@ -869,8 +854,6 @@ export const scenario: ScenarioDefinition = {
       context.metric('array-reorder.native.createElement', count(reorderOperations, 'createElement'), 'mutations');
       context.metric('array-reorder.native.removeNode', count(reorderOperations, 'removeNode'), 'mutations');
 
-      // Repeated mount/remove cycles must allocate fresh IDs, disable events
-      // before each remove, leave the section empty, and never accumulate ghosts.
       const cycleSamples: number[] = [];
       const cycleOperations: Operation[] = [];
       let previousCycleId = -1;
@@ -922,8 +905,6 @@ export const scenario: ScenarioDefinition = {
       context.metric('mount-remove.native.setEventEnabled', count(cycleOperations, 'setEventEnabled'), 'mutations');
       context.metric('mount-remove.native.setProperty', count(cycleOperations, 'setProperty'), 'mutations');
 
-      // The two unrelated sentinels must retain object/id identity and never be
-      // targeted by any mutation after initial mount.
       context.assert('left sentinel preserves native identity', appRoot.children[0] === stableLeft && stableLeft.id === stableLeftId);
       context.assert('right sentinel preserves native identity', appRoot.children[7] === stableRight && stableRight.id === stableRightId);
       context.assert(
