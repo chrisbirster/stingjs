@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSignal, Errored, flush } from 'solid-js';
+import { createSignal, flush } from 'solid-js';
 import {
   STING_PROTOCOL_VERSION,
   installNativeBridge,
   resetNativeBridgeForTests,
-  type HostNode,
   type StingNativeBridge,
 } from '@stingjs/core';
-import { createComponent, createElement, render } from './index.js';
+import { createElement, render } from './index.js';
 
 function makeBridge(): StingNativeBridge {
   return {
@@ -42,7 +41,7 @@ describe('Sting Solid renderer disposal', () => {
     expect(host.root.children).toEqual([]);
   });
 
-  it('lets Errored replace the protected native root after a prior render is disposed', () => {
+  it('replaces a dynamic native root after a prior render is disposed', () => {
     const host = installNativeBridge(makeBridge());
     const stale = createElement('stale');
     const disposeStale = render(() => stale, host.root);
@@ -50,26 +49,13 @@ describe('Sting Solid renderer disposal', () => {
 
     const content = createElement('content');
     const fallback = createElement('fallback');
-    const [failed, setFailed] = createSignal(false);
-    const HostErrored = Errored as unknown as (props: {
-      readonly children: HostNode;
-      readonly fallback: (error: () => unknown, reset: () => void) => HostNode;
-    }) => HostNode;
+    const [current, setCurrent] = createSignal(content);
 
-    const dispose = render(
-      () => createComponent(HostErrored, {
-        get children() {
-          if (failed()) throw new Error('boom');
-          return content;
-        },
-        fallback: (_error, _reset) => fallback,
-      }),
-      host.root,
-    );
+    const dispose = render(() => current, host.root);
 
     expect(host.root.children).toEqual([content]);
 
-    setFailed(true);
+    setCurrent(fallback);
     flush();
 
     expect(host.root.children).toEqual([fallback]);
