@@ -3,7 +3,7 @@ import {
   createMemo,
   createRenderEffect,
   flush,
-  splitProps,
+  omit,
   untrack,
   type ComponentProps,
   type Element as SolidElement,
@@ -71,7 +71,15 @@ export const {
   ref,
 } = renderer;
 
-export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {
+export type StingDynamicComponent = ValidComponent | string;
+
+type StingDynamicComponentProps<T extends StingDynamicComponent> =
+  T extends ValidComponent ? ComponentProps<T> : Record<string, unknown>;
+
+export type DynamicProps<
+  T extends StingDynamicComponent,
+  P = StingDynamicComponentProps<T>,
+> = {
   [K in keyof P]: P[K];
 } & {
   component: T | undefined;
@@ -87,9 +95,9 @@ type DynamicElement = SolidElement | HostNode;
  * routes string intrinsics through Sting's @solidjs/universal renderer instead
  * of importing the DOM-oriented @solidjs/web implementation.
  */
-export function createDynamic<T extends ValidComponent>(
+export function createDynamic<T extends StingDynamicComponent>(
   component: () => T | undefined,
-  props: ComponentProps<T>,
+  props: StingDynamicComponentProps<T>,
 ): DynamicElement {
   const cached = createMemo<Function | string | undefined>(
     () => component() as Function | string | undefined,
@@ -111,9 +119,14 @@ export function createDynamic<T extends ValidComponent>(
   }) as unknown as DynamicElement;
 }
 
-export function Dynamic<T extends ValidComponent>(props: DynamicProps<T>): DynamicElement {
-  const [, others] = splitProps(props, ['component']);
-  return createDynamic(() => props.component, others as ComponentProps<T>);
+export function Dynamic<T extends StingDynamicComponent>(
+  props: DynamicProps<T>,
+): DynamicElement {
+  const others = omit(props, 'component');
+  return createDynamic(
+    () => props.component,
+    others as StingDynamicComponentProps<T>,
+  );
 }
 
 /**

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { AssertionRecord, MetricRecord, ScenarioContext } from '../../harness/types.js';
 import { scenario } from './index.js';

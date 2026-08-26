@@ -7,7 +7,7 @@ import {
 } from '@stingjs/core';
 import { Button, View } from '@stingjs/native';
 import { Dynamic, Match, Show, Switch, renderApp } from '@stingjs/solid';
-import { createSignal, flush } from 'solid-js';
+import { createSignal, flush, type Component } from 'solid-js';
 import type { ScenarioContext, ScenarioDefinition } from '../../harness/types.js';
 
 type Operation =
@@ -20,8 +20,10 @@ type Operation =
   | { kind: 'setEventEnabled'; id: number; event: string; enabled: boolean };
 
 type OperationKind = Operation['kind'];
-type NativeComponent = () => HostNode;
-type DynamicSelection = NativeComponent | 'view' | undefined;
+type NativeComponent = Component;
+type DynamicSelection = {
+  component: NativeComponent | 'view' | undefined;
+};
 
 const OPERATION_KINDS: readonly OperationKind[] = [
   'createElement',
@@ -315,7 +317,9 @@ export const scenario: ScenarioDefinition = {
 
     const DynamicA: NativeComponent = () => <Button onPress={() => dynamicAHits++} />;
     const DynamicB: NativeComponent = () => <Button onPress={() => dynamicBHits++} />;
-    const [dynamicSelection, setDynamicSelection] = createSignal<DynamicSelection>(DynamicA);
+    const [dynamicSelection, setDynamicSelection] = createSignal<DynamicSelection>({
+      component: DynamicA,
+    });
 
     const NestedLive: NativeComponent = () => (
       <View><Button onPress={() => nestedHits++} /></View>
@@ -365,7 +369,7 @@ export const scenario: ScenarioDefinition = {
           </Switch>
         </View>
         <View>
-          <Dynamic component={dynamicSelection() as never} />
+          <Dynamic component={dynamicSelection().component} />
         </View>
         <View>
           <Show when={textAsComponent()} fallback="plain-text">
@@ -602,7 +606,7 @@ export const scenario: ScenarioDefinition = {
       const dynamicA = dynamicSection.children[0]!;
       retire(retiredIds, dynamicA);
       const dynamicAHitsBeforeRemoval = dynamicAHits;
-      update(() => setDynamicSelection(() => DynamicB));
+      update(() => setDynamicSelection({ component: DynamicB }));
       operations = capture();
       const dynamicB = dynamicSection.children[0]!;
       assertCounts(context, 'Dynamic component-to-component', operations, {
@@ -627,7 +631,7 @@ export const scenario: ScenarioDefinition = {
 
       retire(retiredIds, dynamicB);
       const dynamicBHitsBeforeRemoval = dynamicBHits;
-      update(() => setDynamicSelection('view'));
+      update(() => setDynamicSelection({ component: 'view' }));
       operations = capture();
       const dynamicIntrinsic = dynamicSection.children[0]!;
       context.assert('Dynamic intrinsic uses Sting native view, not DOM', dynamicIntrinsic.type === 'view');
@@ -644,7 +648,7 @@ export const scenario: ScenarioDefinition = {
       context.assert('Dynamic replaced component handler is removed', dynamicBHits === dynamicBHitsBeforeRemoval);
 
       retire(retiredIds, dynamicIntrinsic);
-      update(() => setDynamicSelection(undefined));
+      update(() => setDynamicSelection({ component: undefined }));
       operations = capture();
       assertCounts(context, 'Dynamic intrinsic-to-null', operations, {
         createElement: 0,
@@ -657,7 +661,7 @@ export const scenario: ScenarioDefinition = {
       });
       context.assert('Dynamic component-to-null leaves no native child', dynamicSection.children.length === 0);
 
-      update(() => setDynamicSelection(() => DynamicA));
+      update(() => setDynamicSelection({ component: DynamicA }));
       operations = capture();
       const remountedDynamicA = dynamicSection.children[0]!;
       assertCounts(context, 'Dynamic null-to-component', operations, {
