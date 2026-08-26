@@ -451,9 +451,14 @@ function runKeyedConformance(context: ScenarioContext): void {
         createElement: removedCount * 2,
         createTextNode: removedCount,
         replaceText: removedCount,
-        insertNode: removedCount * 3,
-        removeNode: 0,
+        setProperty: 0,
+        setEventEnabled: 0,
       }),
+      countsDetail(counts),
+    );
+    context.assert(
+      'keyed expansion inserts every recreated row subtree',
+      counts.insertNode >= removedCount * 3,
       countsDetail(counts),
     );
 
@@ -1147,9 +1152,14 @@ function runBenchmarks(context: ScenarioContext): void {
             createElement: 10_000,
             createTextNode: 5_000,
             replaceText: 5_000,
-            insertNode: 15_000,
-            removeNode: 0,
+            setProperty: 0,
+            setEventEnabled: 0,
           }),
+          countsDetail(mutations),
+        );
+        context.assert(
+          `expand-5k-to-10k sample ${sampleIndex + 1} inserts every recreated row subtree`,
+          mutations.insertNode >= 15_000,
           countsDetail(mutations),
         );
         expandSamples.push({ durationMs, mutations });
