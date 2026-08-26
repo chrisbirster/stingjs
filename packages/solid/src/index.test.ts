@@ -4,9 +4,10 @@ import {
   STING_PROTOCOL_VERSION,
   installNativeBridge,
   resetNativeBridgeForTests,
+  type HostNode,
   type StingNativeBridge,
 } from '@stingjs/core';
-import { createElement, render } from './index.js';
+import { createComponent, createElement, render } from './index.js';
 
 function makeBridge(): StingNativeBridge {
   return {
@@ -50,14 +51,18 @@ describe('Sting Solid renderer disposal', () => {
     const content = createElement('content');
     const fallback = createElement('fallback');
     const [failed, setFailed] = createSignal(false);
+    const HostErrored = Errored as unknown as (props: {
+      readonly children: HostNode;
+      readonly fallback: (error: () => unknown, reset: () => void) => HostNode;
+    }) => HostNode;
 
     const dispose = render(
-      () => Errored({
+      () => createComponent(HostErrored, {
         get children() {
           if (failed()) throw new Error('boom');
           return content;
         },
-        fallback: () => fallback,
+        fallback: (_error, _reset) => fallback,
       }),
       host.root,
     );
