@@ -291,6 +291,26 @@ function assertEventDisabledBeforeRemoval(
   );
 }
 
+function assertMoveDetachesAreReinserted(
+  context: ScenarioContext,
+  name: string,
+  operations: readonly Operation[],
+): void {
+  const insertedIds = new Set(
+    operations
+      .filter((operation): operation is Extract<Operation, { kind: 'insertNode' }> => operation.kind === 'insertNode')
+      .map(operation => operation.nodeId),
+  );
+  const detachedIds = operations
+    .filter((operation): operation is Extract<Operation, { kind: 'removeNode' }> => operation.kind === 'removeNode')
+    .map(operation => operation.nodeId);
+  context.assert(
+    name,
+    detachedIds.every(id => insertedIds.has(id)),
+    `every detached keyed identity must be reinserted in the same move: ${trace(operations)}`,
+  );
+}
+
 function collectHostIds(node: HostNode, target = new Set<number>()): Set<number> {
   target.add(node.id);
   for (const child of node.children) collectHostIds(child, target);
@@ -551,7 +571,7 @@ export const scenario: ScenarioDefinition = {
       context.assert('array reorder preserves C/A/B object identity', arraySection.children[0] === arrayC && arraySection.children[1] === arrayA && arraySection.children[2] === arrayB);
       context.assert('array reorder uses native insert moves', count(operations, 'insertNode') > 0, trace(operations));
       assertCount(context, 'array reorder creates nothing', operations, 'createElement', 0);
-      assertCount(context, 'array reorder detaches nothing permanently', operations, 'removeNode', 0);
+      assertMoveDetachesAreReinserted(context, 'array reorder has no permanent detach', operations);
 
       update(() => setArrayOrder([arrayA, arrayB, arrayC]));
       capture();
@@ -671,7 +691,7 @@ export const scenario: ScenarioDefinition = {
         reorderOperations.push(...sampleOperations);
         context.assert(`array move sample ${index + 1} emits insert moves`, count(sampleOperations, 'insertNode') > 0, trace(sampleOperations));
         assertCount(context, `array move sample ${index + 1} creates nothing`, sampleOperations, 'createElement', 0);
-        assertCount(context, `array move sample ${index + 1} removes nothing`, sampleOperations, 'removeNode', 0);
+        assertMoveDetachesAreReinserted(context, `array move sample ${index + 1} has no permanent detach`, sampleOperations);
         context.assert(`array move sample ${index + 1} keeps parent bookkeeping valid`, arraySection.children.length === 3 && arraySection.children.every(child => host.getParentNode(child) === arraySection));
       }
       recordLatencyMetrics(context, 'array-reorder', reorderSamples, 'ms/reorder');
