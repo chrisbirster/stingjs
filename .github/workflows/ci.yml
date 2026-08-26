@@ -7,6 +7,7 @@ on:
     branches:
       - dev
       - main
+      - feature/android-native-host
 
 jobs:
   typescript:
