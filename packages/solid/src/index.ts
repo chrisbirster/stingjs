@@ -143,32 +143,19 @@ export function bindHostText(node: HostNode, readValue: () => string): void {
   });
 }
 
-function requireHostNode(value: unknown): HostNode {
-  if (
-    value == null ||
-    typeof value !== 'object' ||
-    typeof (value as Partial<HostNode>).id !== 'number' ||
-    typeof (value as Partial<HostNode>).type !== 'string' ||
-    !Array.isArray((value as Partial<HostNode>).children)
-  ) {
-    throw new TypeError('A StingJS application must render a native host node at its root');
-  }
-
-  return value as HostNode;
-}
-
 /**
  * Render Solid JSX into an explicit Sting host root.
  *
- * Solid 2 types JSX expressions as `Element`, which is intentionally wider than
- * Sting's concrete HostNode. Keep that upstream type detail out of application
- * and conformance code, then validate the renderer invariant at the Sting
- * boundary before passing the value to @solidjs/universal.
+ * Solid 2 JSX expressions are intentionally wider than HostNode: control-flow
+ * primitives can return accessors, arrays, or temporarily empty values and the
+ * universal renderer owns normalization of those values into host mutations.
+ * Keep the upstream generic mismatch contained here without narrowing valid
+ * Solid expressions at runtime.
  */
 export function render(code: () => unknown, root: HostNode): () => void {
   const host = getHost();
   const baselineChildren = new Set(root.children);
-  const disposeSolid = universalRender(() => requireHostNode(code()), root);
+  const disposeSolid = universalRender(code as () => HostNode, root);
   let disposed = false;
 
   return () => {
