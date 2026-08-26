@@ -29,6 +29,16 @@ function makeBridge(): StingNativeBridge {
 afterEach(() => resetNativeBridgeForTests());
 
 describe('StingHost', () => {
+  it('never reuses native node ids across host instances', () => {
+    const firstHost = new StingHost(makeBridge());
+    const firstNode = firstHost.createElement('view');
+
+    const secondHost = new StingHost(makeBridge());
+    const secondNode = secondHost.createElement('view');
+
+    expect(secondNode.id).toBeGreaterThan(firstNode.id);
+  });
+
   it('keeps structural renderer queries in the JS shadow tree', () => {
     const bridge = makeBridge();
     const host = new StingHost(bridge);
@@ -62,21 +72,6 @@ describe('StingHost', () => {
     expect(text.textValue).toBe('beta');
   });
 
-  it('deduplicates identical serialized property writes before native mutation', () => {
-    const bridge = makeBridge();
-    const host = new StingHost(bridge);
-    const view = host.createElement('view');
-
-    host.setProperty(view, 'accessibilityLabel', 'alpha');
-    host.setProperty(view, 'accessibilityLabel', 'alpha');
-    host.setProperty(view, 'style', { padding: 12 });
-    host.setProperty(view, 'style', { padding: 12 });
-
-    expect(bridge.setProperty).toHaveBeenCalledTimes(2);
-    expect(bridge.setProperty).toHaveBeenNthCalledWith(1, view.id, 'accessibilityLabel', '"alpha"');
-    expect(bridge.setProperty).toHaveBeenNthCalledWith(2, view.id, 'style', '{"padding":12}');
-  });
-
   it('keeps event callbacks in JavaScript and round-trips native events by identity', () => {
     const bridge = makeBridge();
     const host = installNativeBridge(bridge);
@@ -90,83 +85,63 @@ describe('StingHost', () => {
     expect(onPress).toHaveBeenCalledWith({ source: 'native' });
   });
 
-  it('replaces event handlers without replaying native enablement and deduplicates removal', () => {
+  it('tears down descendant event callbacks before a native subtree is removed', () => {
     const bridge = makeBridge();
-    const host = new StingHost(bridge);
-    const button = host.createElement('button');
-    const first = vi.fn();
-    const second = vi.fn();
-
-    host.setProperty(button, 'onPress', first);
-    host.setProperty(button, 'onPress', second);
-
-    expect(bridge.setEventEnabled).toHaveBeenCalledTimes(1);
-    expect(bridge.setEventEnabled).toHaveBeenLastCalledWith(button.id, 'press', true);
-
-    host.dispatchEvent(button.id, 'press', null);
-    expect(first).not.toHaveBeenCalled();
-    expect(second).toHaveBeenCalledTimes(1);
-
-    host.setProperty(button, 'onPress', null);
-    host.setProperty(button, 'onPress', null);
-
-    expect(bridge.setEventEnabled).toHaveBeenCalledTimes(2);
-    expect(bridge.setEventEnabled).toHaveBeenLastCalledWith(button.id, 'press', false);
-
-    host.dispatchEvent(button.id, 'press', null);
-    expect(second).toHaveBeenCalledTimes(1);
-  });
-
-  it('retires removed subtrees and tears down descendant events before native removal', () => {
-    const bridge = makeBridge();
-    const host = new StingHost(bridge);
+    const host = installNativeBridge(bridge);
     const parent = host.createElement('view');
-    const branch = host.createElement('view');
     const button = host.createElement('button');
     const onPress = vi.fn();
 
     host.insertNode(host.root, parent);
-    host.insertNode(parent, branch);
-    host.insertNode(branch, button);
+    host.insertNode(parent, button);
     host.setProperty(button, 'onPress', onPress);
-    vi.mocked(bridge.setEventEnabled).mockClear();
-    vi.mocked(bridge.removeNode).mockClear();
 
-    host.removeNode(parent, branch);
+    const calls: string[] = [];
+    bridge.setEventEnabled = vi.fn((id, event, enabled) => {
+      calls.push(`event:${id}:${event}:${enabled}`);
+    });
+    bridge.removeNode = vi.fn((parentId, nodeId) => {
+      calls.push(`remove:${parentId}:${nodeId}`);
+    });
 
-    expect(bridge.setEventEnabled).toHaveBeenCalledTimes(1);
-    expect(bridge.setEventEnabled).toHaveBeenCalledWith(button.id, 'press', false);
-    expect(bridge.removeNode).toHaveBeenCalledTimes(1);
-    expect(bridge.removeNode).toHaveBeenCalledWith(parent.id, branch.id);
+    host.removeNode(host.root, parent);
 
-    host.dispatchEvent(button.id, 'press', null);
+    expect(calls).toEqual([
+      `event:${button.id}:press:false`,
+      `remove:${host.root.id}:${parent.id}`,
+    ]);
+
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
     expect(onPress).not.toHaveBeenCalled();
-    expect(() => host.setProperty(button, 'accessibilityLabel', 'ghost')).toThrow('cannot be reused');
-    expect(() => host.insertNode(parent, branch)).toThrow('cannot be reused');
   });
 
-  it('deduplicates no-op moves and rejects structural cycles', () => {
+  it('reactivates descendant events when keyed reconciliation reinserts the same subtree', () => {
     const bridge = makeBridge();
-    const host = new StingHost(bridge);
-    const parent = host.createElement('view');
-    const first = host.createElement('view');
-    const second = host.createElement('view');
-    const third = host.createElement('view');
+    const host = installNativeBridge(bridge);
+    const container = host.createElement('view');
+    const row = host.createElement('view');
+    const button = host.createElement('button');
+    const onPress = vi.fn();
 
-    host.insertNode(host.root, parent);
-    host.insertNode(parent, first);
-    host.insertNode(parent, second);
-    host.insertNode(parent, third);
-    vi.mocked(bridge.insertNode).mockClear();
+    host.insertNode(host.root, container);
+    host.insertNode(row, button);
+    host.setProperty(button, 'onPress', onPress);
+    host.insertNode(container, row);
 
-    host.insertNode(parent, second, third);
-    expect(bridge.insertNode).not.toHaveBeenCalled();
+    const eventTransitions: boolean[] = [];
+    bridge.setEventEnabled = vi.fn((_id, event, enabled) => {
+      if (event === 'press') eventTransitions.push(enabled);
+    });
 
-    host.insertNode(parent, third, first);
-    expect(bridge.insertNode).toHaveBeenCalledTimes(1);
-    expect(parent.children).toEqual([third, first, second]);
+    host.removeNode(container, row);
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+    expect(onPress).not.toHaveBeenCalled();
 
-    expect(() => host.insertNode(second, parent)).toThrow('descendants');
+    host.insertNode(container, row);
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+
+    expect(eventTransitions).toEqual([false, true]);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an incompatible native bridge before rendering begins', () => {

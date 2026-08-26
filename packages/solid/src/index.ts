@@ -1,5 +1,14 @@
 import { createRenderer } from '@solidjs/universal';
-import { createRenderEffect, flush } from 'solid-js';
+import {
+  createMemo,
+  createRenderEffect,
+  flush,
+  omit,
+  untrack,
+  type ComponentProps,
+  type Element as SolidElement,
+  type ValidComponent,
+} from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
@@ -46,8 +55,9 @@ const renderer = createRenderer<HostNode>({
   },
 });
 
+const { render: universalRender } = renderer;
+
 export const {
-  render,
   effect,
   memo,
   createComponent,
@@ -62,6 +72,64 @@ export const {
   ref,
 } = renderer;
 
+export type StingDynamicComponent = ValidComponent | string;
+
+type StingDynamicComponentProps<T extends StingDynamicComponent> =
+  T extends ValidComponent ? ComponentProps<T> : Record<string, unknown>;
+
+export type DynamicProps<
+  T extends StingDynamicComponent,
+  P = StingDynamicComponentProps<T>,
+> = {
+  [K in keyof P]: P[K];
+} & {
+  component: T | undefined;
+};
+
+type DynamicElement = SolidElement | HostNode;
+
+/**
+ * Universal/native counterpart to Solid 2's renderer-specific Dynamic helper.
+ *
+ * Solid keeps Dynamic in renderer packages because intrinsic element creation is
+ * platform-specific. This mirrors the current Solid 2 control-flow behavior but
+ * routes string intrinsics through Sting's @solidjs/universal renderer instead
+ * of importing the DOM-oriented @solidjs/web implementation.
+ */
+export function createDynamic<T extends StingDynamicComponent>(
+  component: () => T | undefined,
+  props: StingDynamicComponentProps<T>,
+): DynamicElement {
+  const cached = createMemo<Function | string | undefined>(
+    () => component() as Function | string | undefined,
+  );
+
+  return createMemo(() => {
+    const selected = cached();
+    switch (typeof selected) {
+      case 'function':
+        return untrack(() => selected(props));
+      case 'string': {
+        const element = createElement(selected);
+        spread(element, props as object);
+        return element;
+      }
+      default:
+        return undefined;
+    }
+  }) as unknown as DynamicElement;
+}
+
+export function Dynamic<T extends StingDynamicComponent>(
+  props: DynamicProps<T>,
+): DynamicElement {
+  const others = omit(props, 'component');
+  return createDynamic(
+    () => props.component,
+    others as StingDynamicComponentProps<T>,
+  );
+}
+
 /**
  * Bind one existing Sting host text node to a Solid computation.
  *
@@ -75,18 +143,43 @@ export function bindHostText(node: HostNode, readValue: () => string): void {
   });
 }
 
-function requireHostNode(value: unknown): HostNode {
-  if (
-    value == null ||
-    typeof value !== 'object' ||
-    typeof (value as Partial<HostNode>).id !== 'number' ||
-    typeof (value as Partial<HostNode>).type !== 'string' ||
-    !Array.isArray((value as Partial<HostNode>).children)
-  ) {
-    throw new TypeError('A StingJS application must render a native host node at its root');
-  }
+/**
+ * Render Solid JSX into an explicit Sting host root.
+ *
+ * Solid 2 JSX expressions are intentionally wider than HostNode: control-flow
+ * primitives can return accessors, arrays, or temporarily empty values and the
+ * universal renderer owns normalization of those values into host mutations.
+ * Keep the upstream generic mismatch contained here without narrowing valid
+ * Solid expressions at runtime.
+ */
+export function render(code: () => unknown, root: HostNode): () => void {
+  const host = getHost();
+  const baselineChildren = new Set(root.children);
+  const disposeSolid = universalRender(code as () => HostNode, root);
+  let disposed = false;
 
-  return value as HostNode;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+
+    try {
+      // Tear down Solid ownership first so descendant reactive cleanups run
+      // before their native subtree is detached.
+      disposeSolid();
+    } finally {
+      // @solidjs/universal 2.0.0-rc.0 replaces the base renderer's render()
+      // implementation to schedule the initial mount, but that wrapper returns
+      // the reactive disposer without the base renderer's mounted-node cleanup.
+      // Remove only direct children introduced by this render so repeated
+      // renders cannot leave stale root nodes that corrupt later replacement
+      // operations such as <Errored> swapping content for its fallback.
+      for (const child of [...root.children]) {
+        if (!baselineChildren.has(child) && child.parent === root) {
+          host.removeNode(root, child);
+        }
+      }
+    }
+  };
 }
 
 export function renderApp(code: () => unknown): () => void {
@@ -105,7 +198,7 @@ export function renderApp(code: () => unknown): () => void {
     flush();
   };
 
-  const dispose = render(() => requireHostNode(code()), host.root);
+  const dispose = render(code, host.root);
   return () => {
     globalThis.__stingDispatchEvent = dispatchWithoutFlush;
     dispose();

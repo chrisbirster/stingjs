@@ -18,6 +18,11 @@ export interface HostNode {
 
 type EventHandler = (payload: NativeValue) => void;
 
+// Native registries retain retired node identities for stale-callback and
+// ghost-node protection. IDs therefore belong to the JavaScript runtime
+// lifetime, not to an individual StingHost instance.
+let nextNativeNodeId = 1;
+
 function eventNameFromProperty(name: string): string | null {
   if (!name.startsWith('on') || name.length <= 2) return null;
   const raw = name.slice(2);
@@ -36,10 +41,14 @@ export class StingHost {
     textValue: null,
   };
 
-  private nextNodeId = 1;
+  // `events` contains only handlers that are currently dispatchable. Solid's
+  // keyed universal reconciler may temporarily remove an existing node and
+  // later reinsert the same identity while reordering an array. Keep the source
+  // handlers in a WeakMap so such structural moves can reactivate them without
+  // retaining permanently removed nodes forever.
   private readonly events = new Map<number, Map<string, EventHandler>>();
-  private readonly properties = new Map<number, Map<string, string>>();
-  private readonly retiredNodeIds = new Set<number>();
+  private readonly retainedEvents = new WeakMap<HostNode, Map<string, EventHandler>>();
+  private readonly deactivatedNodes = new WeakSet<HostNode>();
 
   constructor(readonly bridge: StingNativeBridge) {}
 
@@ -60,7 +69,6 @@ export class StingHost {
   }
 
   replaceText(node: HostNode, value: string): void {
-    this.assertUsable(node);
     if (!node.isText) throw new TypeError('replaceText requires a Sting text node');
 
     // Solid is free to reevaluate a text binding more than once while async
@@ -73,51 +81,21 @@ export class StingHost {
   }
 
   setProperty(node: HostNode, name: string, value: unknown): void {
-    this.assertUsable(node);
-
     const eventName = eventNameFromProperty(name);
     if (eventName) {
       this.setEventProperty(node, eventName, value);
       return;
     }
 
-    const encodedValue = encodeNativeValue(value);
-    const properties = this.properties.get(node.id) ?? new Map<string, string>();
-    if (properties.get(name) === encodedValue) return;
-
-    properties.set(name, encodedValue);
-    this.properties.set(node.id, properties);
-    this.bridge.setProperty(node.id, name, encodedValue);
+    this.bridge.setProperty(node.id, name, encodeNativeValue(value));
   }
 
   insertNode(parent: HostNode, node: HostNode, anchor?: HostNode | null): void {
-    this.assertUsable(parent);
-    this.assertUsable(node);
-    if (anchor) this.assertUsable(anchor);
-
     if (anchor && anchor.parent !== parent) {
       throw new Error('Sting renderer anchor must be a child of the target parent');
     }
 
     if (node === parent) throw new Error('A Sting node cannot contain itself');
-    if (this.containsNode(node, parent)) {
-      throw new Error('A Sting node cannot be inserted into one of its descendants');
-    }
-
-    // Inserting a node immediately before itself, immediately before its
-    // existing next sibling, or at an end it already occupies is a structural
-    // no-op. Do not replay a meaningless move over the native boundary.
-    if (anchor === node) return;
-    if (node.parent === parent) {
-      const currentIndex = parent.children.indexOf(node);
-      if (currentIndex >= 0) {
-        if (anchor) {
-          if (parent.children[currentIndex + 1] === anchor) return;
-        } else if (currentIndex === parent.children.length - 1) {
-          return;
-        }
-      }
-    }
 
     if (node.parent) {
       const previousIndex = node.parent.children.indexOf(node);
@@ -130,12 +108,10 @@ export class StingHost {
     node.parent = parent;
 
     this.bridge.insertNode(parent.id, node.id, anchor?.id ?? -1);
+    this.reactivateEventsForSubtree(node);
   }
 
   removeNode(parent: HostNode, node: HostNode): void {
-    this.assertUsable(parent);
-    this.assertUsable(node);
-
     const index = parent.children.indexOf(node);
     if (index < 0 || node.parent !== parent) {
       throw new Error('Cannot remove a node that is not a child of the supplied parent');
@@ -144,13 +120,12 @@ export class StingHost {
     parent.children.splice(index, 1);
     node.parent = null;
 
-    // A native remove owns the complete subtree. Event callbacks must be
-    // disabled while every native descendant still exists, then all JS-side
-    // caches and node identities are retired before the removal crosses the
-    // bridge. This prevents ghost callbacks and accidental node resurrection.
-    this.disableEventsForSubtree(node);
-    this.clearPropertiesForSubtree(node);
-    this.retireSubtree(node);
+    // Universal keyed reconciliation can express a move as remove + later
+    // reinsert of the same host identity. Disable dispatch before the native
+    // detach, but retain the source handlers weakly so reinsert can restore
+    // them. A permanently removed subtree remains non-dispatchable, and the
+    // WeakMap does not keep it alive after Solid releases the node objects.
+    this.deactivateEventsForSubtree(node);
     this.bridge.removeNode(parent.id, node.id);
   }
 
@@ -174,7 +149,6 @@ export class StingHost {
   }
 
   dispatchEvent(nodeId: number, event: string, payload: NativeValue = null): void {
-    if (this.retiredNodeIds.has(nodeId)) return;
     this.events.get(nodeId)?.get(event)?.(payload);
   }
 
@@ -189,7 +163,7 @@ export class StingHost {
 
   private createHostNode(type: string, isText: boolean, textValue: string | null): HostNode {
     return {
-      id: this.nextNodeId++,
+      id: nextNativeNodeId++,
       type,
       isText,
       parent: null,
@@ -198,50 +172,46 @@ export class StingHost {
     };
   }
 
-  private assertUsable(node: HostNode): void {
-    if (node.id !== 0 && this.retiredNodeIds.has(node.id)) {
-      throw new Error(`Sting node ${node.id} has been removed and cannot be reused`);
-    }
-  }
+  private deactivateEventsForSubtree(node: HostNode): void {
+    for (const child of node.children) this.deactivateEventsForSubtree(child);
 
-  private containsNode(root: HostNode, target: HostNode): boolean {
-    if (root === target) return true;
-    for (const child of root.children) {
-      if (this.containsNode(child, target)) return true;
-    }
-    return false;
-  }
-
-  private disableEventsForSubtree(node: HostNode): void {
-    for (const child of node.children) this.disableEventsForSubtree(child);
-
+    this.deactivatedNodes.add(node);
     const handlers = this.events.get(node.id);
     if (!handlers) return;
 
+    // Delete first so even a re-entrant native callback during disable cannot
+    // observe a handler for a subtree Solid has already detached.
+    this.events.delete(node.id);
     for (const event of handlers.keys()) {
       this.bridge.setEventEnabled(node.id, event, false);
     }
-    this.events.delete(node.id);
   }
 
-  private clearPropertiesForSubtree(node: HostNode): void {
-    for (const child of node.children) this.clearPropertiesForSubtree(child);
-    this.properties.delete(node.id);
-  }
+  private reactivateEventsForSubtree(node: HostNode): void {
+    this.deactivatedNodes.delete(node);
 
-  private retireSubtree(node: HostNode): void {
-    for (const child of node.children) this.retireSubtree(child);
-    this.retiredNodeIds.add(node.id);
+    const retained = this.retainedEvents.get(node);
+    if (retained && retained.size > 0 && !this.events.has(node.id)) {
+      this.events.set(node.id, retained);
+      for (const event of retained.keys()) {
+        this.bridge.setEventEnabled(node.id, event, true);
+      }
+    }
+
+    for (const child of node.children) this.reactivateEventsForSubtree(child);
   }
 
   private setEventProperty(node: HostNode, event: string, value: unknown): void {
-    const existingHandlers = this.events.get(node.id);
+    const retained = this.retainedEvents.get(node) ?? new Map<string, EventHandler>();
 
     if (value == null) {
-      if (!existingHandlers?.has(event)) return;
+      retained.delete(event);
+      if (retained.size === 0) this.retainedEvents.delete(node);
+      else this.retainedEvents.set(node, retained);
 
-      existingHandlers.delete(event);
-      if (existingHandlers.size === 0) this.events.delete(node.id);
+      const active = this.events.get(node.id);
+      active?.delete(event);
+      if (active?.size === 0) this.events.delete(node.id);
       this.bridge.setEventEnabled(node.id, event, false);
       return;
     }
@@ -250,13 +220,17 @@ export class StingHost {
       throw new TypeError(`Event property on${event[0]?.toUpperCase() ?? ''}${event.slice(1)} must be a function`);
     }
 
-    const handlers = existingHandlers ?? new Map<string, EventHandler>();
-    const wasEnabled = handlers.has(event);
-    handlers.set(event, value as EventHandler);
-    this.events.set(node.id, handlers);
+    retained.set(event, value as EventHandler);
+    this.retainedEvents.set(node, retained);
 
-    // Handler replacement is entirely a JS-side identity change. Native only
-    // needs to hear about the disabled->enabled edge once.
-    if (!wasEnabled) this.bridge.setEventEnabled(node.id, event, true);
+    // A node removed by keyed reconciliation remains deliberately inactive
+    // until it is inserted again. Newly created nodes preserve the existing
+    // Sting behavior of registering event capability before first insertion.
+    if (this.deactivatedNodes.has(node)) return;
+
+    const active = this.events.get(node.id) ?? new Map<string, EventHandler>();
+    active.set(event, value as EventHandler);
+    this.events.set(node.id, active);
+    this.bridge.setEventEnabled(node.id, event, true);
   }
 }
