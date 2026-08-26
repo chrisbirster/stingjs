@@ -18,7 +18,7 @@
     "benchmark:ios-jsc-control": "bash scripts/collect-ios-jsc-control.sh",
     "benchmark:results": "node benchmarks/results/tool.mjs",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs",
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
