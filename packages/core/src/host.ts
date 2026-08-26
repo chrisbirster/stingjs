@@ -18,6 +18,11 @@ export interface HostNode {
 
 type EventHandler = (payload: NativeValue) => void;
 
+// Native registries retain retired node identities for stale-callback and
+// ghost-node protection. IDs therefore belong to the JavaScript runtime
+// lifetime, not to an individual StingHost instance.
+let nextNativeNodeId = 1;
+
 function eventNameFromProperty(name: string): string | null {
   if (!name.startsWith('on') || name.length <= 2) return null;
   const raw = name.slice(2);
@@ -36,7 +41,6 @@ export class StingHost {
     textValue: null,
   };
 
-  private nextNodeId = 1;
   private readonly events = new Map<number, Map<string, EventHandler>>();
 
   constructor(readonly bridge: StingNativeBridge) {}
@@ -149,7 +153,7 @@ export class StingHost {
 
   private createHostNode(type: string, isText: boolean, textValue: string | null): HostNode {
     return {
-      id: this.nextNodeId++,
+      id: nextNativeNodeId++,
       type,
       isText,
       parent: null,

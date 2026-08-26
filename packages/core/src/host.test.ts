@@ -29,6 +29,16 @@ function makeBridge(): StingNativeBridge {
 afterEach(() => resetNativeBridgeForTests());
 
 describe('StingHost', () => {
+  it('never reuses native node ids across host instances', () => {
+    const firstHost = new StingHost(makeBridge());
+    const firstNode = firstHost.createElement('view');
+
+    const secondHost = new StingHost(makeBridge());
+    const secondNode = secondHost.createElement('view');
+
+    expect(secondNode.id).toBeGreaterThan(firstNode.id);
+  });
+
   it('keeps structural renderer queries in the JS shadow tree', () => {
     const bridge = makeBridge();
     const host = new StingHost(bridge);
