@@ -115,6 +115,35 @@ describe('StingHost', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('reactivates descendant events when keyed reconciliation reinserts the same subtree', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const container = host.createElement('view');
+    const row = host.createElement('view');
+    const button = host.createElement('button');
+    const onPress = vi.fn();
+
+    host.insertNode(host.root, container);
+    host.insertNode(row, button);
+    host.setProperty(button, 'onPress', onPress);
+    host.insertNode(container, row);
+
+    const eventTransitions: boolean[] = [];
+    bridge.setEventEnabled = vi.fn((_id, event, enabled) => {
+      if (event === 'press') eventTransitions.push(enabled);
+    });
+
+    host.removeNode(container, row);
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+    expect(onPress).not.toHaveBeenCalled();
+
+    host.insertNode(container, row);
+    globalThis.__stingDispatchEvent?.(button.id, 'press', 'null');
+
+    expect(eventTransitions).toEqual([false, true]);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects an incompatible native bridge before rendering begins', () => {
     const bridge = makeBridge();
     bridge.getRuntimeInfo = vi.fn(() => JSON.stringify({
