@@ -360,8 +360,6 @@ export function RealContactsApp(props: RealAppProps) {
     const nextName = draftName();
     const request = activeSave;
     setOptimisticName(nextName);
-    setSaveError('');
-    setSaveState('saving');
 
     try {
       yield request.promise;
@@ -420,7 +418,11 @@ export function RealContactsApp(props: RealAppProps) {
       prepareRefresh();
       reset();
     },
-    saveDraft() { void saveSelected(); },
+    saveDraft() {
+      setSaveError('');
+      setSaveState('saving');
+      void saveSelected();
+    },
     callHaptics() {
       getHost().callModuleSync('Haptics', 'impact', ['medium']);
       setHapticCount(value => value + 1);
