@@ -27,6 +27,25 @@ The mobile applications must implement equivalent user-visible behavior and data
 
 See `docs/performance.md` for the required workloads and engine-decision gate.
 
+## Native measurement boundaries
+
+The iOS JavaScriptCore control host has an opt-in `StingPerformanceDiagnostics` recorder. It uses `DispatchTime`'s monotonic native clock and records nothing unless diagnostics are explicitly enabled when creating the runtime/host.
+
+Current iOS metrics are:
+
+- `runtime.bundle-evaluate` — JavaScriptCore bundle evaluation including synchronous initial Sting native work triggered during evaluation.
+- `bridge.create-element`
+- `bridge.create-text-node`
+- `bridge.replace-text`
+- `bridge.set-property`
+- `bridge.insert-node`
+- `bridge.remove-node`
+- `bridge.set-event-enabled`
+- `bridge.call-module-sync`
+- `event.<event>-round-trip` — native event dispatch through JavaScript/Solid and all synchronous native work completed before the JavaScript event call returns.
+
+These metrics intentionally surround actual native bridge/view/module operations. They are useful boundaries, but they do not by themselves complete the engine decision: startup phases outside bundle evaluation, process RSS/leaks, rendered frame pacing, binary size, and equivalent physical-device instrumentation for each production-engine candidate and the React Native/Hermes baseline are still required.
+
 ## First implementation order
 
 1. Keep the existing JavaScriptCore hello-world path as the semantic control.
