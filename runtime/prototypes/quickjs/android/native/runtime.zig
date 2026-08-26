@@ -1,9 +1,12 @@
 const c = @cImport({
     @cInclude("quickjs.h");
-    @cInclude("stdlib.h");
-    @cInclude("string.h");
     @cInclude("sting_quickjs_android.h");
 });
+
+extern fn malloc(size: usize) ?*anyopaque;
+extern fn free(ptr: ?*anyopaque) void;
+extern fn strcmp(left: [*c]const u8, right: [*c]const u8) c_int;
+extern fn strdup(source: [*c]const u8) [*c]u8;
 
 const bridge_bootstrap =
     \\if (typeof globalThis.queueMicrotask !== "function") {
@@ -80,7 +83,7 @@ fn jsHostCall(
     if (operation == null) return fail(ctx, "Sting host operation is not a string");
     defer c.JS_FreeCString(ctx, operation);
 
-    if (c.strcmp(operation, "getRuntimeInfo") == 0) {
+    if (strcmp(operation, "getRuntimeInfo") == 0) {
         const callback = state.host.get_runtime_info orelse return bridgeCallFailed(ctx);
         const value = callback(state.host.context);
         if (value == null) return bridgeCallFailed(ctx);
@@ -88,7 +91,7 @@ fn jsHostCall(
         return c.JS_NewString(ctx, value);
     }
 
-    if (c.strcmp(operation, "createElement") == 0) {
+    if (strcmp(operation, "createElement") == 0) {
         if (argc < 3) return fail(ctx, "createElement requires id and type");
         const id = readInt32(ctx, argv[1]) orelse return fail(ctx, "createElement id is invalid");
         const element_type = c.JS_ToCString(ctx, argv[2]);
@@ -99,14 +102,14 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "createTextNode") == 0 or c.strcmp(operation, "replaceText") == 0) {
+    if (strcmp(operation, "createTextNode") == 0 or strcmp(operation, "replaceText") == 0) {
         if (argc < 3) return fail(ctx, "text mutation requires id and value");
         const id = readInt32(ctx, argv[1]) orelse return fail(ctx, "text mutation id is invalid");
         const value = c.JS_ToCString(ctx, argv[2]);
         if (value == null) return fail(ctx, "text mutation value is invalid");
         defer c.JS_FreeCString(ctx, value);
 
-        if (c.strcmp(operation, "createTextNode") == 0) {
+        if (strcmp(operation, "createTextNode") == 0) {
             const callback = state.host.create_text_node orelse return bridgeCallFailed(ctx);
             if (callback(state.host.context, id, value) == 0) return bridgeCallFailed(ctx);
         } else {
@@ -116,7 +119,7 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "setProperty") == 0) {
+    if (strcmp(operation, "setProperty") == 0) {
         if (argc < 4) return fail(ctx, "setProperty requires id, name, and value");
         const id = readInt32(ctx, argv[1]) orelse return fail(ctx, "setProperty id is invalid");
         const name = c.JS_ToCString(ctx, argv[2]);
@@ -130,7 +133,7 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "insertNode") == 0) {
+    if (strcmp(operation, "insertNode") == 0) {
         if (argc < 4) return fail(ctx, "insertNode requires parent, node, and anchor ids");
         const parent_id = readInt32(ctx, argv[1]) orelse return fail(ctx, "insertNode parent id is invalid");
         const node_id = readInt32(ctx, argv[2]) orelse return fail(ctx, "insertNode node id is invalid");
@@ -140,7 +143,7 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "removeNode") == 0) {
+    if (strcmp(operation, "removeNode") == 0) {
         if (argc < 3) return fail(ctx, "removeNode requires parent and node ids");
         const parent_id = readInt32(ctx, argv[1]) orelse return fail(ctx, "removeNode parent id is invalid");
         const node_id = readInt32(ctx, argv[2]) orelse return fail(ctx, "removeNode node id is invalid");
@@ -149,7 +152,7 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "setEventEnabled") == 0) {
+    if (strcmp(operation, "setEventEnabled") == 0) {
         if (argc < 4) return fail(ctx, "setEventEnabled requires id, event, and enabled");
         const id = readInt32(ctx, argv[1]) orelse return fail(ctx, "setEventEnabled id is invalid");
         const event = c.JS_ToCString(ctx, argv[2]);
@@ -162,7 +165,7 @@ fn jsHostCall(
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "callModuleSync") == 0) {
+    if (strcmp(operation, "callModuleSync") == 0) {
         if (argc < 4) return fail(ctx, "callModuleSync requires module, method, and args");
         const module_name = c.JS_ToCString(ctx, argv[1]);
         if (module_name == null) return fail(ctx, "callModuleSync module is invalid");
@@ -189,9 +192,9 @@ fn copyException(ctx: *c.JSContext) [*c]u8 {
     defer c.JS_FreeValue(ctx, exception);
 
     const message = c.JS_ToCString(ctx, exception);
-    if (message == null) return c.strdup("Unknown JavaScript exception");
+    if (message == null) return strdup("Unknown JavaScript exception");
     defer c.JS_FreeCString(ctx, message);
-    return c.strdup(message);
+    return strdup(message);
 }
 
 fn drainPendingJobs(state: *RuntimeState) [*c]u8 {
@@ -248,7 +251,7 @@ export fn sting_qjs_android_create(
         return null;
     };
 
-    const raw_state = c.malloc(@sizeOf(RuntimeState)) orelse {
+    const raw_state = malloc(@sizeOf(RuntimeState)) orelse {
         c.JS_FreeContext(ctx);
         c.JS_FreeRuntime(runtime);
         return null;
@@ -271,11 +274,11 @@ export fn sting_qjs_android_create(
         "sting-quickjs-android-bridge.js",
     );
     if (bootstrap_error != null) {
-        c.free(bootstrap_error);
+        free(@ptrCast(bootstrap_error));
         c.JS_SetContextOpaque(ctx, null);
         c.JS_FreeContext(ctx);
         c.JS_FreeRuntime(runtime);
-        c.free(state);
+        free(@ptrCast(state));
         return null;
     }
 
@@ -287,8 +290,8 @@ export fn sting_qjs_android_evaluate(
     source: [*c]const u8,
     source_len: usize,
 ) [*c]u8 {
-    const state = stateFromHandle(handle) orelse return c.strdup("QuickJS runtime handle is null");
-    if (source == null) return c.strdup("JavaScript source is null");
+    const state = stateFromHandle(handle) orelse return strdup("QuickJS runtime handle is null");
+    if (source == null) return strdup("JavaScript source is null");
     return evaluateSource(state, source, source_len, "sting-app.js");
 }
 
@@ -298,8 +301,8 @@ export fn sting_qjs_android_dispatch_event(
     event: [*c]const u8,
     payload_json: [*c]const u8,
 ) [*c]u8 {
-    const state = stateFromHandle(handle) orelse return c.strdup("QuickJS runtime handle is null");
-    if (event == null or payload_json == null) return c.strdup("Sting event payload is null");
+    const state = stateFromHandle(handle) orelse return strdup("QuickJS runtime handle is null");
+    if (event == null or payload_json == null) return strdup("Sting event payload is null");
 
     const global = c.JS_GetGlobalObject(state.context);
     defer c.JS_FreeValue(state.context, global);
@@ -307,7 +310,7 @@ export fn sting_qjs_android_dispatch_event(
     defer c.JS_FreeValue(state.context, dispatch);
 
     if (c.JS_IsFunction(state.context, dispatch) == 0) {
-        return c.strdup("__stingDispatchEvent is not installed");
+        return strdup("__stingDispatchEvent is not installed");
     }
 
     var args = [_]c.JSValue{
@@ -336,9 +339,9 @@ export fn sting_qjs_android_destroy(handle: ?*anyopaque) void {
     c.JS_SetContextOpaque(state.context, null);
     c.JS_FreeContext(state.context);
     c.JS_FreeRuntime(state.runtime);
-    c.free(state);
+    free(@ptrCast(state));
 }
 
 export fn sting_qjs_android_free_error(error_message: [*c]u8) void {
-    if (error_message != null) c.free(error_message);
+    if (error_message != null) free(@ptrCast(error_message));
 }
