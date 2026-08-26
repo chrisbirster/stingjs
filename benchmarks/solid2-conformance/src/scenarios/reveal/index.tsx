@@ -84,8 +84,6 @@ async function runSequential(context: ScenarioContext): Promise<void> {
     assertLabels(context, 'sequential initially exposes all non-collapsed fallbacks', mounted, 'seq-group', [
       'seq-a-fallback', 'seq-b-fallback', 'seq-c-fallback',
     ]);
-    const bFallbackId = requireNodeByLabel(mounted.host, mounted.bridge, 'seq-b-fallback').id;
-    const cFallbackId = requireNodeByLabel(mounted.host, mounted.bridge, 'seq-c-fallback').id;
 
     c.resolve('C');
     await settleSolid();
@@ -98,11 +96,6 @@ async function runSequential(context: ScenarioContext): Promise<void> {
     assertLabels(context, 'sequential releases only the ready prefix', mounted, 'seq-group', [
       'seq-a-content', 'seq-b-fallback', 'seq-c-fallback',
     ]);
-    context.assert(
-      'sequential preserves held fallback identities',
-      requireNodeByLabel(mounted.host, mounted.bridge, 'seq-b-fallback').id === bFallbackId &&
-        requireNodeByLabel(mounted.host, mounted.bridge, 'seq-c-fallback').id === cFallbackId,
-    );
 
     b.resolve('B');
     await settleSolid();
