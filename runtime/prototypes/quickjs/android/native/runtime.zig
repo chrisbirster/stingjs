@@ -34,13 +34,13 @@ const RuntimeState = struct {
 };
 
 fn stateFromContext(ctx: *c.JSContext) ?*RuntimeState {
-    const opaque = c.JS_GetContextOpaque(ctx) orelse return null;
-    return @ptrCast(@alignCast(opaque));
+    const raw_ptr = c.JS_GetContextOpaque(ctx) orelse return null;
+    return @ptrCast(@alignCast(raw_ptr));
 }
 
 fn stateFromHandle(handle: ?*anyopaque) ?*RuntimeState {
-    const opaque = handle orelse return null;
-    return @ptrCast(@alignCast(opaque));
+    const raw_ptr = handle orelse return null;
+    return @ptrCast(@alignCast(raw_ptr));
 }
 
 fn fail(ctx: *c.JSContext, message: [*:0]const u8) c.JSValue {
