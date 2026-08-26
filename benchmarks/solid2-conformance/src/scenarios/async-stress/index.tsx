@@ -1,3 +1,5 @@
+import { createRenderer as debugCreateRenderer } from '@solidjs/universal';
+import { Errored as debugErrored } from 'solid-js';
 import type { ScenarioContext, ScenarioDefinition } from '../../harness/types.js';
 import { runBenchmarks } from './benchmarks.js';
 import {
@@ -15,6 +17,9 @@ import {
 import { instrumentHost } from './instrumentation.js';
 
 async function runAsyncStress(context: ScenarioContext): Promise<void> {
+  console.log(`STING_DEBUG_UNIVERSAL_CREATE_RENDERER=${String(debugCreateRenderer)}`);
+  console.log(`STING_DEBUG_SOLID_ERRORED=${String(debugErrored)}`);
+
   const instrumentation = instrumentHost();
   try {
     await testMultipleSubscribers(context, instrumentation);
