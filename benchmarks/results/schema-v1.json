@@ -84,7 +84,26 @@
         "notes": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "system": {
+                "const": "react-native"
+              }
+            },
+            "required": ["system"]
+          },
+          "then": {
+            "properties": {
+              "engine": {
+                "const": "hermes"
+              }
+            }
+          }
+        }
+      ]
     },
     "measurement": {
       "type": "object",
