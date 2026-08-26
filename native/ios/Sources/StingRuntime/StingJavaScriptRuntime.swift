@@ -4,18 +4,26 @@ import UIKit
 
 public final class StingJavaScriptRuntime {
     public let context: JSContext
+    public let performanceDiagnostics: StingPerformanceDiagnostics?
 
     private let nodes: StingNodeRegistry
     private let modules: StingModuleRegistry
     private var bridge: StingJavaScriptBridge?
     private var lastException: String?
 
-    public init(rootView: UIView, modules nativeModules: [any StingNativeModule] = []) throws {
+    public init(
+        rootView: UIView,
+        modules nativeModules: [any StingNativeModule] = [],
+        collectPerformanceDiagnostics: Bool = false
+    ) throws {
         guard let context = JSContext() else {
             throw StingRuntimeError("Unable to create JavaScriptCore context")
         }
 
         self.context = context
+        self.performanceDiagnostics = collectPerformanceDiagnostics
+            ? StingPerformanceDiagnostics()
+            : nil
         self.nodes = StingNodeRegistry(rootView: rootView)
         self.modules = try StingModuleRegistry(modules: nativeModules)
 
@@ -31,6 +39,7 @@ public final class StingJavaScriptRuntime {
         let bridge = StingJavaScriptBridge(
             nodes: nodes,
             modules: modules,
+            performanceDiagnostics: performanceDiagnostics,
             reportError: { [weak context] error in
                 context?.exception = JSValue(newErrorFromMessage: error.localizedDescription, in: context)
             }
@@ -38,19 +47,37 @@ public final class StingJavaScriptRuntime {
         self.bridge = bridge
         context.setObject(bridge, forKeyedSubscript: "__stingNativeBridge" as NSString)
 
-        nodes.eventSink = { [weak context] nodeId, event, payloadJSON in
-            context?.objectForKeyedSubscript("__stingDispatchEvent")?.call(
-                withArguments: [nodeId, event, payloadJSON]
-            )
+        let performanceDiagnostics = self.performanceDiagnostics
+        nodes.eventSink = { [weak context, weak performanceDiagnostics] nodeId, event, payloadJSON in
+            let dispatch = {
+                context?.objectForKeyedSubscript("__stingDispatchEvent")?.call(
+                    withArguments: [nodeId, event, payloadJSON]
+                )
+            }
+
+            if let performanceDiagnostics {
+                performanceDiagnostics.measure("event.\(event)-round-trip", operation: dispatch)
+            } else {
+                dispatch()
+            }
         }
     }
 
     public func evaluate(bundle: String, sourceURL: URL? = nil) throws {
         lastException = nil
-        if let sourceURL {
-            context.evaluateScript(bundle, withSourceURL: sourceURL)
+
+        let evaluateBundle = {
+            if let sourceURL {
+                self.context.evaluateScript(bundle, withSourceURL: sourceURL)
+            } else {
+                self.context.evaluateScript(bundle)
+            }
+        }
+
+        if let performanceDiagnostics {
+            performanceDiagnostics.measure("runtime.bundle-evaluate", operation: evaluateBundle)
         } else {
-            context.evaluateScript(bundle)
+            evaluateBundle()
         }
 
         if let lastException {
