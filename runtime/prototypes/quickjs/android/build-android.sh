@@ -19,18 +19,32 @@ if [[ "$(zig version 2>/dev/null || true)" != "0.16.0" ]]; then
   exit 1
 fi
 
-if [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
+if [[ -n "${ANDROID_SDK_ROOT:-}" && -d "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" ]]; then
+  NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+elif [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
   NDK_ROOT="${ANDROID_NDK_HOME}"
 elif [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
   NDK_ROOT="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 else
-  echo "error: ANDROID_NDK_HOME or ANDROID_SDK_ROOT must point to an Android SDK/NDK" >&2
+  echo "error: ANDROID_SDK_ROOT or ANDROID_NDK_HOME must point to an Android SDK/NDK" >&2
   exit 1
 fi
 readonly NDK_ROOT
 
 if [[ ! -d "${NDK_ROOT}" ]]; then
   echo "error: Android NDK ${NDK_VERSION} was not found at ${NDK_ROOT}" >&2
+  exit 1
+fi
+
+readonly NDK_SOURCE_PROPERTIES="${NDK_ROOT}/source.properties"
+if [[ ! -f "${NDK_SOURCE_PROPERTIES}" ]]; then
+  echo "error: Android NDK source.properties was not found at ${NDK_SOURCE_PROPERTIES}" >&2
+  exit 1
+fi
+
+ndk_revision="$(sed -n 's/^Pkg\.Revision[[:space:]]*=[[:space:]]*//p' "${NDK_SOURCE_PROPERTIES}" | head -n 1)"
+if [[ "${ndk_revision}" != "${NDK_VERSION}" ]]; then
+  echo "error: Android NDK ${NDK_VERSION} is required; found ${ndk_revision:-unknown} at ${NDK_ROOT}" >&2
   exit 1
 fi
 
@@ -98,6 +112,7 @@ build_abi() {
     -fPIC \
     -target "${zig_target}" \
     -OReleaseFast \
+    -lc \
     -I"${SOURCE_DIR}" \
     -I"${NATIVE_DIR}" \
     -I"${SYSROOT}/usr/include" \
