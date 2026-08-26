@@ -2,12 +2,17 @@ import UIKit
 
 open class StingHostViewController: UIViewController {
     public let nativeModules: [any StingNativeModule]
+    public let collectPerformanceDiagnostics: Bool
     public private(set) var runtime: StingJavaScriptRuntime?
 
     private let rootStack = UIStackView()
 
-    public init(nativeModules: [any StingNativeModule] = []) {
+    public init(
+        nativeModules: [any StingNativeModule] = [],
+        collectPerformanceDiagnostics: Bool = false
+    ) {
         self.nativeModules = nativeModules
+        self.collectPerformanceDiagnostics = collectPerformanceDiagnostics
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -34,7 +39,11 @@ open class StingHostViewController: UIViewController {
         ])
 
         do {
-            runtime = try StingJavaScriptRuntime(rootView: rootStack, modules: nativeModules)
+            runtime = try StingJavaScriptRuntime(
+                rootView: rootStack,
+                modules: nativeModules,
+                collectPerformanceDiagnostics: collectPerformanceDiagnostics
+            )
         } catch {
             presentRuntimeError(error)
         }
