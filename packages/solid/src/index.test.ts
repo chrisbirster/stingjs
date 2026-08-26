@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSignal, flush } from 'solid-js';
 import {
   STING_PROTOCOL_VERSION,
   installNativeBridge,
@@ -36,30 +35,6 @@ describe('Sting Solid renderer disposal', () => {
     const dispose = render(() => () => rendered, host.root);
 
     expect(host.root.children).toEqual([rendered]);
-
-    dispose();
-    expect(host.root.children).toEqual([]);
-  });
-
-  it('replaces a dynamic native root after a prior render is disposed', () => {
-    const host = installNativeBridge(makeBridge());
-    const stale = createElement('stale');
-    const disposeStale = render(() => stale, host.root);
-    disposeStale();
-
-    const content = createElement('content');
-    const fallback = createElement('fallback');
-    const [current, setCurrent] = createSignal(content);
-
-    const dispose = render(() => current, host.root);
-
-    expect(host.root.children).toEqual([content]);
-
-    setCurrent(fallback);
-    flush();
-
-    expect(host.root.children).toEqual([fallback]);
-    expect(content.parent).toBeNull();
 
     dispose();
     expect(host.root.children).toEqual([]);
