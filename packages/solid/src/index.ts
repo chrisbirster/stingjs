@@ -166,7 +166,33 @@ function requireHostNode(value: unknown): HostNode {
  * boundary before passing the value to @solidjs/universal.
  */
 export function render(code: () => unknown, root: HostNode): () => void {
-  return universalRender(() => requireHostNode(code()), root);
+  const host = getHost();
+  const baselineChildren = new Set(root.children);
+  const disposeSolid = universalRender(() => requireHostNode(code()), root);
+  let disposed = false;
+
+  return () => {
+    if (disposed) return;
+    disposed = true;
+
+    try {
+      // Tear down Solid ownership first so descendant reactive cleanups run
+      // before their native subtree is detached.
+      disposeSolid();
+    } finally {
+      // @solidjs/universal 2.0.0-rc.0 replaces the base renderer's render()
+      // implementation to schedule the initial mount, but that wrapper returns
+      // the reactive disposer without the base renderer's mounted-node cleanup.
+      // Remove only direct children introduced by this render so repeated
+      // renders cannot leave stale root nodes that corrupt later replacement
+      // operations such as <Errored> swapping content for its fallback.
+      for (const child of [...root.children]) {
+        if (!baselineChildren.has(child) && child.parent === root) {
+          host.removeNode(root, child);
+        }
+      }
+    }
+  };
 }
 
 export function renderApp(code: () => unknown): () => void {
