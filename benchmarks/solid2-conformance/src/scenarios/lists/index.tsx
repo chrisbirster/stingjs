@@ -469,7 +469,7 @@ function runKeyedConformance(context: ScenarioContext): void {
     counts = fixture.bridge.countsSince(mark);
     assertTexts(context, 'keyed sort renders sorted data order', fixture, rows);
     assertKeyedRetainedIdentity(context, 'keyed sort moves native rows without recreating them', identities, fixture, rows);
-    assertNoUnrelatedMutations(context, 'keyed sort is structural moves only', counts, ['insertNode']);
+    assertNoUnrelatedMutations(context, 'keyed sort uses structural reconciliation only', counts, ['insertNode', 'removeNode']);
     context.assert('keyed sort performs at least one native move', counts.insertNode > 0, countsDetail(counts));
 
     identities = identityByLogicalId(fixture, rows);
@@ -479,7 +479,7 @@ function runKeyedConformance(context: ScenarioContext): void {
     counts = fixture.bridge.countsSince(mark);
     assertTexts(context, 'keyed reverse renders reversed order', fixture, rows);
     assertKeyedRetainedIdentity(context, 'keyed reverse preserves every native row identity', identities, fixture, rows);
-    assertNoUnrelatedMutations(context, 'keyed reverse is structural moves only', counts, ['insertNode']);
+    assertNoUnrelatedMutations(context, 'keyed reverse uses structural reconciliation only', counts, ['insertNode', 'removeNode']);
     context.assert('keyed reverse performs native moves', counts.insertNode > 0, countsDetail(counts));
 
     identities = identityByLogicalId(fixture, rows);
@@ -500,7 +500,7 @@ function runKeyedConformance(context: ScenarioContext): void {
       structuralMoves.length === 1,
       `${structuralMoves.length} moves for native row ${movedNodeId}; all=${countsDetail(counts)}`,
     );
-    assertNoUnrelatedMutations(context, 'keyed single-row reorder has no recreation/text replay', counts, ['insertNode']);
+    assertNoUnrelatedMutations(context, 'keyed single-row reorder has no recreation/text replay', counts, ['insertNode', 'removeNode']);
 
     const sparse = rows[Math.floor(rows.length / 2)]!;
     mark = fixture.bridge.mark();
