@@ -7,5 +7,6 @@ coverage/
 DerivedData/
 .gradle/
 .idea/
+.artifacts/
 native/ios/Tests/StingRuntimeTests/Fixtures/sting-app.js
 native/ios/Tests/StingRuntimeTests/Fixtures/sting-benchmark.js
