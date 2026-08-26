@@ -244,7 +244,8 @@ export async function testErrorAndRetryRace(context: ScenarioContext, instrument
   resetBoundary?.();
   flush();
   await drainAsync();
-  context.assert('retry: boundary returns to loading state', hasText(instrumentation.host.root, 'error-race:loading'));
+  context.assert('retry: stale winner returns while retry is pending', hasText(instrumentation.host.root, 'error-race:winner-value'));
+  context.assert('retry: error fallback is cleared on reset', !hasTextContaining(instrumentation.host.root, 'active boom'));
   requests.get('retry')?.resolve('recovered');
   await drainAsync();
   context.assert('retry: recovered value renders', hasText(instrumentation.host.root, 'error-race:recovered'));
