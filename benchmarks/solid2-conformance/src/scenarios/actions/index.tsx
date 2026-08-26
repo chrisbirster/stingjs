@@ -175,11 +175,15 @@ async function runConcurrentAndOptimisticSignals(context: ScenarioContext): Prom
   context.assert('multiple concurrent actions expose both optimistic values', left() === 1 && right() === 10);
   rightGate.resolve(undefined);
   await rightPending;
-  flush();
-  context.assert('one concurrent action can settle while the other remains pending', left() === 1 && right() === 0);
+  await settleMicrotasks();
+  context.assert(
+    'one concurrent action can settle while the other remains pending',
+    left() === 1 && right() === 0,
+    `left=${left()} right=${right()}`,
+  );
   leftGate.resolve(undefined);
   await leftPending;
-  flush();
+  await settleMicrotasks();
   context.assert('concurrent optimistic values revert after both actions settle', left() === 0 && right() === 0);
 
   const scalarGate = deferred<void>();
@@ -193,7 +197,7 @@ async function runConcurrentAndOptimisticSignals(context: ScenarioContext): Prom
   context.assert('optimistic scalar applies while pending', scalar() === 9);
   scalarGate.resolve(undefined);
   await scalarPending;
-  flush();
+  await settleMicrotasks();
   context.assert('optimistic scalar rolls back on successful settlement without correction', scalar() === 4);
 
   const objectGate = deferred<void>();
@@ -207,7 +211,7 @@ async function runConcurrentAndOptimisticSignals(context: ScenarioContext): Prom
   context.assert('optimistic object state applies atomically', profile().name === 'Grace' && profile().score === 7);
   objectGate.resolve(undefined);
   await objectPending;
-  flush();
+  await settleMicrotasks();
   context.assert('optimistic object state rolls back atomically', profile().name === 'Ada' && profile().score === 1);
 }
 
@@ -227,7 +231,7 @@ async function runOptimisticStores(context: ScenarioContext): Promise<void> {
   context.assert('createOptimisticStore applies nested object mutation', state.user.name === 'Grace' && state.saving);
   objectGate.resolve(undefined);
   await objectPending;
-  flush();
+  await settleMicrotasks();
   context.assert('createOptimisticStore rolls nested object mutation back', state.user.name === 'Ada' && !state.saving);
 
   const arrayGate = deferred<void>();
@@ -241,7 +245,7 @@ async function runOptimisticStores(context: ScenarioContext): Promise<void> {
   context.assert('optimistic array mutation appends temporary row', todos.length === 2 && todos[1]?.id === -1);
   arrayGate.resolve(undefined);
   await arrayPending;
-  flush();
+  await settleMicrotasks();
   context.assert('optimistic array rollback removes ghost row', todos.length === 1 && todos[0]?.id === 1);
 
   const firstGate = deferred<void>();
@@ -259,11 +263,14 @@ async function runOptimisticStores(context: ScenarioContext): Promise<void> {
   );
   secondGate.resolve(undefined);
   await second;
-  flush();
-  context.assert('settling one overlap preserves the other', todos.some(todo => todo.id === -1) && !todos.some(todo => todo.id === -2));
+  await settleMicrotasks();
+  context.assert(
+    'settling one overlap preserves the other',
+    todos.some(todo => todo.id === -1) && !todos.some(todo => todo.id === -2),
+  );
   firstGate.resolve(undefined);
   await first;
-  flush();
+  await settleMicrotasks();
   context.assert('overlapping optimistic mutations fully clean up', todos.length === 1 && todos[0]?.id === 1);
 }
 
@@ -375,7 +382,7 @@ async function runNativeMutationConformance(context: ScenarioContext): Promise<v
   correction.gate.resolve(14);
   const corrected = correction.pending();
   if (corrected) context.assert('correction action returns authoritative value', (await corrected) === 14);
-  flush();
+  await settleMicrotasks();
   assertSingleTextMutation(context, 'optimistic correction', correction.bridge, correction.text, 'Value: 14');
   context.assert('correction preserves native text/button identity', correction.text === correctionText && correction.button === correctionButton);
   context.assert(
@@ -395,8 +402,11 @@ async function runNativeMutationConformance(context: ScenarioContext): Promise<v
   const expected = new Error('rollback requested');
   rollback.gate.reject(expected);
   const rollbackPending = rollback.pending();
-  context.assert('action error propagates through native event-started action', rollbackPending ? (await rejectedError(rollbackPending)) === expected : false);
-  flush();
+  context.assert(
+    'action error propagates through native event-started action',
+    rollbackPending ? (await rejectedError(rollbackPending)) === expected : false,
+  );
+  await settleMicrotasks();
   assertSingleTextMutation(context, 'optimistic rollback', rollback.bridge, rollback.text, 'Value: 10');
   context.assert('rollback restores accessor value', rollback.value() === 10);
   context.assert('rollback preserves native identity', rollback.text === rollbackText && rollback.button === rollbackButton);
@@ -431,7 +441,7 @@ async function runDisposalWhilePending(context: ScenarioContext): Promise<void> 
   fixture.dispose();
   gate.resolve(undefined);
   await pending;
-  flush();
+  await settleMicrotasks();
   context.assert('disposed owner receives no stale rollback callback', fixture.bridge.count('replaceText') === 0);
   context.assert('disposed owner receives no unrelated native replay', fixture.bridge.unrelatedMutationCount() === 0);
 }
@@ -460,7 +470,7 @@ async function runBenchmark(context: ScenarioContext): Promise<void> {
     const pending = fixture.roundTrip(sample + 1);
     flush();
     await pending;
-    flush();
+    await settleMicrotasks();
     durations.push(context.now() - start);
     mutationCounts.push(fixture.bridge.count('replaceText'));
     unrelated += fixture.bridge.unrelatedMutationCount();
