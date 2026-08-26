@@ -8,6 +8,8 @@ const c = @cImport({
 
 const async_source = @embedFile("sting-async-native.js");
 const async_semantics_source = @embedFile("sting-async-semantics.js");
+const conformance_source = @embedFile("sting-solid2-conformance.js");
+const conformance_semantics_source = @embedFile("sting-conformance-semantics.js");
 
 const runtime_info_json =
     "{\"protocolVersion\":1,\"platform\":\"ios\",\"modules\":{\"Haptics\":\"0.1.0\"}}";
@@ -45,7 +47,7 @@ fn dumpException(ctx: *c.JSContext) void {
     defer c.JS_FreeValue(ctx, exception);
     const message = c.JS_ToCString(ctx, exception);
     if (message != null) {
-        _ = c.fputs("QuickJS async Sting smoke exception: ", c.stderr);
+        _ = c.fputs("QuickJS Sting semantic smoke exception: ", c.stderr);
         _ = c.fputs(message, c.stderr);
         _ = c.fputc('\n', c.stderr);
         c.JS_FreeCString(ctx, message);
@@ -115,4 +117,16 @@ pub fn main() !void {
     try evaluate(ctx, "globalThis.__stingAsyncProbe.assertPassed();", "sting-async-verify.js");
 
     std.debug.print("QuickJS Solid 2 async semantics passed: promise/loading/pending/error/recovery stream action/optimistic\n", .{});
+
+    // Reset to the plain host bridge before loading the independent conformance
+    // bundle. The async probe intentionally wraps the bridge with its own tree.
+    try evaluate(ctx, bridge_bootstrap, "sting-quickjs-conformance-bridge.js");
+    try evaluate(ctx, conformance_source, "sting-solid2-conformance.js");
+    try evaluate(ctx, conformance_semantics_source, "sting-conformance-semantics.js");
+    try runPendingJobs(runtime, ctx);
+    try evaluate(ctx, "globalThis.__stingConformanceProbe.run();", "sting-conformance-run.js");
+    try runPendingJobs(runtime, ctx);
+    try evaluate(ctx, "globalThis.__stingConformanceProbe.assertPassed();", "sting-conformance-verify.js");
+
+    std.debug.print("QuickJS Solid 2 conformance suite passed\n", .{});
 }
