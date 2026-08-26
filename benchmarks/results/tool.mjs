@@ -14,6 +14,7 @@ const METADATA_REQUIRED_KEYS = new Set([
   'benchmarkCommit',
   'recordedAt',
   'platform',
+  'environment',
   'device',
   'osVersion',
   'build',
@@ -145,6 +146,11 @@ export function validateResult(result, source = '<memory>') {
     }
 
     assertEnum(metadata.platform, PLATFORMS, 'result.metadata.platform', errors);
+
+    if (metadata.environment !== 'physical-device') {
+      errors.push('result.metadata.environment must equal "physical-device" for decision evidence');
+    }
+
     assertNonEmptyString(metadata.device, 'result.metadata.device', errors);
     assertNonEmptyString(metadata.osVersion, 'result.metadata.osVersion', errors);
 
