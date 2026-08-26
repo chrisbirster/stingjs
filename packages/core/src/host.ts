@@ -18,6 +18,11 @@ export interface HostNode {
 
 type EventHandler = (payload: NativeValue) => void;
 
+// Native registries retain retired node identities for stale-callback and
+// ghost-node protection. IDs therefore belong to the JavaScript runtime
+// lifetime, not to an individual StingHost instance.
+let nextNativeNodeId = 1;
+
 function eventNameFromProperty(name: string): string | null {
   if (!name.startsWith('on') || name.length <= 2) return null;
   const raw = name.slice(2);
@@ -36,8 +41,14 @@ export class StingHost {
     textValue: null,
   };
 
-  private nextNodeId = 1;
+  // `events` contains only handlers that are currently dispatchable. Solid's
+  // keyed universal reconciler may temporarily remove an existing node and
+  // later reinsert the same identity while reordering an array. Keep the source
+  // handlers in a WeakMap so such structural moves can reactivate them without
+  // retaining permanently removed nodes forever.
   private readonly events = new Map<number, Map<string, EventHandler>>();
+  private readonly retainedEvents = new WeakMap<HostNode, Map<string, EventHandler>>();
+  private readonly deactivatedNodes = new WeakSet<HostNode>();
 
   constructor(readonly bridge: StingNativeBridge) {}
 
@@ -97,6 +108,7 @@ export class StingHost {
     node.parent = parent;
 
     this.bridge.insertNode(parent.id, node.id, anchor?.id ?? -1);
+    this.reactivateEventsForSubtree(node);
   }
 
   removeNode(parent: HostNode, node: HostNode): void {
@@ -107,6 +119,13 @@ export class StingHost {
 
     parent.children.splice(index, 1);
     node.parent = null;
+
+    // Universal keyed reconciliation can express a move as remove + later
+    // reinsert of the same host identity. Disable dispatch before the native
+    // detach, but retain the source handlers weakly so reinsert can restore
+    // them. A permanently removed subtree remains non-dispatchable, and the
+    // WeakMap does not keep it alive after Solid releases the node objects.
+    this.deactivateEventsForSubtree(node);
     this.bridge.removeNode(parent.id, node.id);
   }
 
@@ -144,7 +163,7 @@ export class StingHost {
 
   private createHostNode(type: string, isText: boolean, textValue: string | null): HostNode {
     return {
-      id: this.nextNodeId++,
+      id: nextNativeNodeId++,
       type,
       isText,
       parent: null,
@@ -153,12 +172,46 @@ export class StingHost {
     };
   }
 
+  private deactivateEventsForSubtree(node: HostNode): void {
+    for (const child of node.children) this.deactivateEventsForSubtree(child);
+
+    this.deactivatedNodes.add(node);
+    const handlers = this.events.get(node.id);
+    if (!handlers) return;
+
+    // Delete first so even a re-entrant native callback during disable cannot
+    // observe a handler for a subtree Solid has already detached.
+    this.events.delete(node.id);
+    for (const event of handlers.keys()) {
+      this.bridge.setEventEnabled(node.id, event, false);
+    }
+  }
+
+  private reactivateEventsForSubtree(node: HostNode): void {
+    this.deactivatedNodes.delete(node);
+
+    const retained = this.retainedEvents.get(node);
+    if (retained && retained.size > 0 && !this.events.has(node.id)) {
+      this.events.set(node.id, retained);
+      for (const event of retained.keys()) {
+        this.bridge.setEventEnabled(node.id, event, true);
+      }
+    }
+
+    for (const child of node.children) this.reactivateEventsForSubtree(child);
+  }
+
   private setEventProperty(node: HostNode, event: string, value: unknown): void {
-    const handlers = this.events.get(node.id) ?? new Map<string, EventHandler>();
+    const retained = this.retainedEvents.get(node) ?? new Map<string, EventHandler>();
 
     if (value == null) {
-      handlers.delete(event);
-      if (handlers.size === 0) this.events.delete(node.id);
+      retained.delete(event);
+      if (retained.size === 0) this.retainedEvents.delete(node);
+      else this.retainedEvents.set(node, retained);
+
+      const active = this.events.get(node.id);
+      active?.delete(event);
+      if (active?.size === 0) this.events.delete(node.id);
       this.bridge.setEventEnabled(node.id, event, false);
       return;
     }
@@ -167,8 +220,17 @@ export class StingHost {
       throw new TypeError(`Event property on${event[0]?.toUpperCase() ?? ''}${event.slice(1)} must be a function`);
     }
 
-    handlers.set(event, value as EventHandler);
-    this.events.set(node.id, handlers);
+    retained.set(event, value as EventHandler);
+    this.retainedEvents.set(node, retained);
+
+    // A node removed by keyed reconciliation remains deliberately inactive
+    // until it is inserted again. Newly created nodes preserve the existing
+    // Sting behavior of registering event capability before first insertion.
+    if (this.deactivatedNodes.has(node)) return;
+
+    const active = this.events.get(node.id) ?? new Map<string, EventHandler>();
+    active.set(event, value as EventHandler);
+    this.events.set(node.id, active);
     this.bridge.setEventEnabled(node.id, event, true);
   }
 }
