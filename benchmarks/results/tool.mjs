@@ -7,6 +7,7 @@ const SYSTEMS = new Set(['sting', 'react-native']);
 const ENGINES = new Set(['quickjs', 'quickjs-ng', 'hermes']);
 const UNITS = new Set(['ms', 'bytes', 'count', 'fps', 'percent']);
 const DIRECTIONS = new Set(['lower-is-better', 'higher-is-better', 'neutral']);
+const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const TOP_LEVEL_KEYS = new Set(['schemaVersion', 'metadata', 'measurement']);
 const METADATA_REQUIRED_KEYS = new Set([
@@ -137,6 +138,7 @@ export function validateResult(result, source = '<memory>') {
 
     if (
       typeof metadata.recordedAt !== 'string' ||
+      !ISO_DATE_TIME.test(metadata.recordedAt) ||
       Number.isNaN(Date.parse(metadata.recordedAt))
     ) {
       errors.push('result.metadata.recordedAt must be a valid ISO-8601 date-time string');
