@@ -17,6 +17,8 @@ readonly APP_BUNDLE="${REPO_ROOT}/examples/hello-world/dist/sting-app.js"
 readonly BENCHMARK_BUNDLE="${REPO_ROOT}/benchmarks/sting-benchmark/dist/sting-benchmark.js"
 readonly ASYNC_BUNDLE="${REPO_ROOT}/examples/async-native/dist/sting-async-native.js"
 readonly ASYNC_SEMANTICS="${REPO_ROOT}/runtime/prototypes/shared/async_semantics.js"
+readonly CONFORMANCE_BUNDLE="${REPO_ROOT}/benchmarks/solid2-conformance/dist/sting-solid2-conformance.js"
+readonly CONFORMANCE_SEMANTICS="${REPO_ROOT}/runtime/prototypes/shared/conformance_semantics.js"
 
 if ! command -v zig >/dev/null 2>&1; then
   echo "error: Zig 0.16.0 is required for this prototype" >&2
@@ -74,6 +76,7 @@ cd "${REPO_ROOT}"
 npm run build --workspace @stingjs/example-hello-world
 npm run build --workspace @stingjs/benchmark-native
 npm run build --workspace @stingjs/example-async-native
+npm run build --workspace @stingjs/solid2-conformance
 
 mkdir -p "${STAGED_SOURCE_DIR}"
 cp "${PROTOTYPE_DIR}/src/main.zig" "${STAGED_SOURCE_DIR}/main.zig"
@@ -84,6 +87,8 @@ cp "${APP_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-app.js"
 cp "${BENCHMARK_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-benchmark.js"
 cp "${ASYNC_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-async-native.js"
 cp "${ASYNC_SEMANTICS}" "${STAGED_SOURCE_DIR}/sting-async-semantics.js"
+cp "${CONFORMANCE_BUNDLE}" "${STAGED_SOURCE_DIR}/sting-solid2-conformance.js"
+cp "${CONFORMANCE_SEMANTICS}" "${STAGED_SOURCE_DIR}/sting-conformance-semantics.js"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   sed -i '' 's/c\.stderr/c.stderr()/g' \

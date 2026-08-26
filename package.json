@@ -10,7 +10,8 @@
     "packages/native",
     "packages/modules/*",
     "examples/*",
-    "benchmarks/sting-benchmark"
+    "benchmarks/sting-benchmark",
+    "benchmarks/solid2-conformance"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
@@ -23,7 +24,7 @@
     "vitest": "4.1.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "license": "MIT"
 }

@@ -8,6 +8,8 @@ const c = @cImport({
 
 const async_source = @embedFile("sting-async-native.js");
 const async_semantics_source = @embedFile("sting-async-semantics.js");
+const conformance_source = @embedFile("sting-solid2-conformance.js");
+const conformance_semantics_source = @embedFile("sting-conformance-semantics.js");
 
 const runtime_info_json =
     "{\"protocolVersion\":1,\"platform\":\"ios\",\"modules\":{\"Haptics\":\"0.1.0\"}}";
@@ -61,7 +63,7 @@ fn runSource(
     source_url: [*:0]const u8,
 ) HermesSmokeError!void {
     if (c.sting_hermes_runtime_run(runtime, source.ptr, source.len, source_url) != 0) {
-        _ = c.fputs("Hermes async Sting smoke adapter error: ", c.stderr);
+        _ = c.fputs("Hermes Sting semantic smoke adapter error: ", c.stderr);
         _ = c.fputs(c.sting_hermes_runtime_last_error(runtime), c.stderr);
         _ = c.fputc('\n', c.stderr);
         return HermesSmokeError.EvaluationFailed;
@@ -83,4 +85,12 @@ pub fn main() !void {
     try runSource(runtime, "globalThis.__stingAsyncProbe.assertPassed();", "sting-async-verify.js");
 
     std.debug.print("Hermes Solid 2 async semantics passed: promise/loading/pending/error/recovery stream action/optimistic\n", .{});
+
+    try runSource(runtime, bridge_bootstrap, "sting-hermes-conformance-bridge.js");
+    try runSource(runtime, conformance_source, "sting-solid2-conformance.js");
+    try runSource(runtime, conformance_semantics_source, "sting-conformance-semantics.js");
+    try runSource(runtime, "globalThis.__stingConformanceProbe.run();", "sting-conformance-run.js");
+    try runSource(runtime, "globalThis.__stingConformanceProbe.assertPassed();", "sting-conformance-verify.js");
+
+    std.debug.print("Hermes Solid 2 conformance suite passed\n", .{});
 }

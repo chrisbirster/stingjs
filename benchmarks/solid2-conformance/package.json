@@ -1,10 +1,11 @@
 {
-  "name": "@stingjs/example-async-native",
+  "name": "@stingjs/solid2-conformance",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "test": "vitest run --environment node",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
