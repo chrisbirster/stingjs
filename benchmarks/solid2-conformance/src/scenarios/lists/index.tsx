@@ -1,4 +1,4 @@
-import { createSignal, flush } from 'solid-js';
+import { createSignal, flush, type Component } from 'solid-js';
 import {
   STING_PROTOCOL_VERSION,
   installNativeBridge,
@@ -127,21 +127,17 @@ function makeRows(count: number, start = 0): Row[] {
   return Array.from({ length: count }, (_, index) => makeRow(start + index));
 }
 
-function KeyedRow(props: { row: Row }): HostNode {
-  return (
-    <View>
-      <Text>{() => props.row.label()}</Text>
-    </View>
-  );
-}
+const KeyedRow: Component<{ row: Row }> = props => (
+  <View>
+    <Text>{() => props.row.label()}</Text>
+  </View>
+);
 
-function PositionalRow(props: { row: () => Row }): HostNode {
-  return (
-    <View>
-      <Text>{() => props.row().label()}</Text>
-    </View>
-  );
-}
+const PositionalRow: Component<{ row: () => Row }> = props => (
+  <View>
+    <Text>{() => props.row().label()}</Text>
+  </View>
+);
 
 function mountList(mode: 'keyed' | 'positional', initialRows: readonly Row[]): ListFixture {
   resetNativeBridgeForTests();
