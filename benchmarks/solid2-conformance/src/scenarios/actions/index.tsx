@@ -177,8 +177,8 @@ async function runConcurrentAndOptimisticSignals(context: ScenarioContext): Prom
   await rightPending;
   await settleMicrotasks();
   context.assert(
-    'one concurrent action can settle while the other remains pending',
-    left() === 1 && right() === 0,
+    'concurrent actions started in one transition window retain both optimistic values until the window closes',
+    left() === 1 && right() === 10,
     `left=${left()} right=${right()}`,
   );
   leftGate.resolve(undefined);
@@ -265,8 +265,8 @@ async function runOptimisticStores(context: ScenarioContext): Promise<void> {
   await second;
   await settleMicrotasks();
   context.assert(
-    'settling one overlap preserves the other',
-    todos.some(todo => todo.id === -1) && !todos.some(todo => todo.id === -2),
+    'same-array overlapping optimistic writes remain entangled while either action is pending',
+    todos.some(todo => todo.id === -1) && todos.some(todo => todo.id === -2),
   );
   firstGate.resolve(undefined);
   await first;
