@@ -314,8 +314,8 @@ export function RealContactsApp(props: RealAppProps) {
   const [draftName, setDraftName] = createSignal(state.records[selectedId()]?.name ?? '');
   const [editRevision, setEditRevision] = createSignal(0);
   const [detailVisible, setDetailVisible] = createSignal(true);
-  const [saveState, setSaveState] = createSignal<SaveState>('idle');
-  const [saveError, setSaveError] = createSignal('');
+  const [committedSaveState, setCommittedSaveState] = createSignal<SaveState>('idle');
+  const [committedSaveError, setCommittedSaveError] = createSignal('');
   const [optimisticName, setOptimisticName] = createOptimistic<string | null>(null);
   const [hapticCount, setHapticCount] = createSignal(0);
   const [refreshGeneration, setRefreshGeneration] = createSignal(0);
@@ -339,6 +339,8 @@ export function RealContactsApp(props: RealAppProps) {
     filtered.sort((left, right) => direction === 'id-asc' ? left.id - right.id : right.id - left.id);
     return filtered;
   });
+  const saveState = createMemo<SaveState>(() => optimisticName() !== null ? 'saving' : committedSaveState());
+  const saveError = createMemo(() => optimisticName() !== null ? '' : committedSaveError());
   const effectiveName = createMemo(() => optimisticName() ?? selectedRecord()?.name ?? '');
 
   function updateRecordName(id: number, name: string): void {
@@ -365,10 +367,11 @@ export function RealContactsApp(props: RealAppProps) {
       yield request.promise;
       updateRecordName(id, saveResolution);
       setDraftName(saveResolution);
-      setSaveState('saved');
+      setCommittedSaveError('');
+      setCommittedSaveState('saved');
     } catch (error) {
-      setSaveError(String(error));
-      setSaveState('error');
+      setCommittedSaveError(String(error));
+      setCommittedSaveState('error');
     }
   });
 
@@ -397,8 +400,8 @@ export function RealContactsApp(props: RealAppProps) {
       if (!record) return;
       setSelectedId(id);
       setDraftName(record.name);
-      setSaveError('');
-      setSaveState('idle');
+      setCommittedSaveError('');
+      setCommittedSaveState('idle');
     },
     toggleSearch() { setSearch(current => current ? '' : SEARCH_QUERY); },
     toggleFilter() { setFilter(current => current === 'all' ? 'active' : 'all'); },
@@ -407,8 +410,8 @@ export function RealContactsApp(props: RealAppProps) {
       const nextRevision = editRevision() + 1;
       setEditRevision(nextRevision);
       setDraftName(`${selectedRecord()?.name ?? 'missing'} / edit ${nextRevision}`);
-      setSaveError('');
-      setSaveState('idle');
+      setCommittedSaveError('');
+      setCommittedSaveState('idle');
     },
     toggleDetail() { setDetailVisible(value => !value); },
     beginRefresh() { prepareRefresh(); },
@@ -418,11 +421,7 @@ export function RealContactsApp(props: RealAppProps) {
       prepareRefresh();
       reset();
     },
-    saveDraft() {
-      setSaveError('');
-      setSaveState('saving');
-      void saveSelected();
-    },
+    saveDraft() { void saveSelected(); },
     callHaptics() {
       getHost().callModuleSync('Haptics', 'impact', ['medium']);
       setHapticCount(value => value + 1);
@@ -474,8 +473,8 @@ export function RealContactsApp(props: RealAppProps) {
     },
     setDraftForBenchmark(value) {
       setDraftName(value);
-      setSaveError('');
-      setSaveState('idle');
+      setCommittedSaveError('');
+      setCommittedSaveState('idle');
     },
   });
 
