@@ -6,7 +6,7 @@ import {
   resetNativeBridgeForTests,
   type StingNativeBridge,
 } from '@stingjs/core';
-import { createComponent, createElement, render } from './index.js';
+import { createElement, render } from './index.js';
 
 function makeBridge(): StingNativeBridge {
   return {
@@ -52,7 +52,7 @@ describe('Sting Solid renderer disposal', () => {
     const [failed, setFailed] = createSignal(false);
 
     const dispose = render(
-      () => createComponent(Errored, {
+      () => Errored({
         get children() {
           if (failed()) throw new Error('boom');
           return content;
