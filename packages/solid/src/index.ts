@@ -1,5 +1,14 @@
 import { createRenderer } from '@solidjs/universal';
-import { createRenderEffect, flush } from 'solid-js';
+import {
+  createMemo,
+  createRenderEffect,
+  flush,
+  omit,
+  untrack,
+  type ComponentProps,
+  type Element as SolidElement,
+  type ValidComponent,
+} from 'solid-js';
 import { getHost, type HostNode } from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
@@ -61,6 +70,64 @@ export const {
   applyRef,
   ref,
 } = renderer;
+
+export type StingDynamicComponent = ValidComponent | string;
+
+type StingDynamicComponentProps<T extends StingDynamicComponent> =
+  T extends ValidComponent ? ComponentProps<T> : Record<string, unknown>;
+
+export type DynamicProps<
+  T extends StingDynamicComponent,
+  P = StingDynamicComponentProps<T>,
+> = {
+  [K in keyof P]: P[K];
+} & {
+  component: T | undefined;
+};
+
+type DynamicElement = SolidElement | HostNode;
+
+/**
+ * Universal/native counterpart to Solid 2's renderer-specific Dynamic helper.
+ *
+ * Solid keeps Dynamic in renderer packages because intrinsic element creation is
+ * platform-specific. This mirrors the current Solid 2 control-flow behavior but
+ * routes string intrinsics through Sting's @solidjs/universal renderer instead
+ * of importing the DOM-oriented @solidjs/web implementation.
+ */
+export function createDynamic<T extends StingDynamicComponent>(
+  component: () => T | undefined,
+  props: StingDynamicComponentProps<T>,
+): DynamicElement {
+  const cached = createMemo<Function | string | undefined>(
+    () => component() as Function | string | undefined,
+  );
+
+  return createMemo(() => {
+    const selected = cached();
+    switch (typeof selected) {
+      case 'function':
+        return untrack(() => selected(props));
+      case 'string': {
+        const element = createElement(selected);
+        spread(element, props as object);
+        return element;
+      }
+      default:
+        return undefined;
+    }
+  }) as unknown as DynamicElement;
+}
+
+export function Dynamic<T extends StingDynamicComponent>(
+  props: DynamicProps<T>,
+): DynamicElement {
+  const others = omit(props, 'component');
+  return createDynamic(
+    () => props.component,
+    others as StingDynamicComponentProps<T>,
+  );
+}
 
 /**
  * Bind one existing Sting host text node to a Solid computation.
