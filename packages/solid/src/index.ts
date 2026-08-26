@@ -55,8 +55,9 @@ const renderer = createRenderer<HostNode>({
   },
 });
 
+const { render: universalRender } = renderer;
+
 export const {
-  render,
   effect,
   memo,
   createComponent,
@@ -156,6 +157,18 @@ function requireHostNode(value: unknown): HostNode {
   return value as HostNode;
 }
 
+/**
+ * Render Solid JSX into an explicit Sting host root.
+ *
+ * Solid 2 types JSX expressions as `Element`, which is intentionally wider than
+ * Sting's concrete HostNode. Keep that upstream type detail out of application
+ * and conformance code, then validate the renderer invariant at the Sting
+ * boundary before passing the value to @solidjs/universal.
+ */
+export function render(code: () => unknown, root: HostNode): () => void {
+  return universalRender(() => requireHostNode(code()), root);
+}
+
 export function renderApp(code: () => unknown): () => void {
   const host = getHost();
   const dispatchWithoutFlush = globalThis.__stingDispatchEvent;
@@ -172,7 +185,7 @@ export function renderApp(code: () => unknown): () => void {
     flush();
   };
 
-  const dispose = render(() => requireHostNode(code()), host.root);
+  const dispose = render(code, host.root);
   return () => {
     globalThis.__stingDispatchEvent = dispatchWithoutFlush;
     dispose();
