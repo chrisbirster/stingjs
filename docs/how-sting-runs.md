@@ -674,6 +674,122 @@ That is a central StingJS performance goal.
 
 ---
 
+# Where Solid reactivity actually runs
+
+Solid's reactive system does **not** get translated into native signal, memo, or effect objects.
+
+`createSignal`, `createMemo`, `createEffect`, `createRenderEffect`, ownership, dependency tracking, and cleanup all remain ordinary Solid JavaScript running inside the active JavaScript engine. In the current iOS proof that engine is JavaScriptCore. In the QuickJS and QuickJS-NG runtime prototypes, the same Solid graph runs inside those engines.
+
+The native runtime therefore does not know what a Solid signal or effect is. It only sees the concrete host operations produced after Solid decides that a dependent computation needs to run.
+
+For a dynamic text binding, the conceptual relationship is:
+
+```ts
+createRenderEffect(
+  () => count(),
+  value => {
+    getHost().replaceText(textNode, `Count: ${value}`);
+  },
+);
+```
+
+The exact generated/bound code can differ, but the ownership boundary is the important part:
+
+```text
+Solid signal / memo / effect
+        │
+        │ stays inside JavaScript
+        ▼
+Solid dependency graph decides what changed
+        │
+        ▼
+@solidjs/universal + @stingjs/solid
+        │
+        ▼
+StingHost concrete mutation
+        │
+        ├── replaceText
+        ├── setProperty
+        ├── insertNode
+        └── removeNode
+        │
+        ▼
+JavaScript/native boundary
+```
+
+For the QuickJS prototype, a text update travels conceptually through:
+
+```text
+Solid computation inside QuickJS
+        ↓
+@stingjs/solid
+        ↓
+StingHost.replaceText(...)
+        ↓
+__stingNativeBridge.replaceText(...)
+        ↓
+__stingHostCall("replaceText", ...)
+        ↓
+QuickJS C API
+        ↓
+Zig host
+        ↓
+platform native mutation path
+```
+
+The current verified UIKit path has the same Solid-side semantics but a different engine embedding:
+
+```text
+Solid computation inside JavaScriptCore
+        ↓
+@stingjs/solid
+        ↓
+StingHost.replaceText(...)
+        ↓
+__stingNativeBridge.replaceText(...)
+        ↓
+Swift StingJavaScriptBridge
+        ↓
+StingNodeRegistry
+        ↓
+UILabel / UIButton / UIView
+```
+
+This is why changing JavaScript engines should not change application-level Solid semantics. The engine executes the JavaScript and Solid reactive graph; Sting owns the narrow host contract below it.
+
+Native events make the loop run in the opposite direction first:
+
+```text
+native button press
+        ↓
+__stingDispatchEvent
+        ↓
+Solid event handler inside JavaScript
+        ↓
+setSignal(...)
+        ↓
+Solid marks only dependent computations dirty
+        ↓
+flush / batch settlement
+        ↓
+render effect applies the changed value
+        ↓
+precise native mutation
+```
+
+Sting's `renderApp()` establishes the native-event flush boundary because Solid 2 batches writes. A native event can update several signals, Solid settles the affected graph, and only the resulting concrete mutations cross the bridge.
+
+This distinction is central to Sting's architecture:
+
+```text
+Solid reactivity stays in the JavaScript engine.
+Native receives mutations, not Solid's reactive graph.
+```
+
+That is what allows a one-row change in a 10,000-row Solid graph to remain one native `replaceText` instead of becoming a broad component rerender or virtual-tree reconciliation pass.
+
+---
+
 # Phase 12: the JavaScript host keeps a shadow tree
 
 `@stingjs/core` creates host-node records similar to:
