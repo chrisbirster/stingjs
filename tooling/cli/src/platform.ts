@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 export type DevicePlatform = 'android' | 'ios';
 export type DeviceKind = 'physical' | 'emulator' | 'simulator';
@@ -48,6 +49,24 @@ function checkCommand(name: string, command: string, args: string[], required: b
   return { name, ok: result.ok, detail, required };
 }
 
+function checkAndroidSdk(): DoctorCheck {
+  const sdkRoot = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
+  if (!sdkRoot) {
+    return {
+      name: 'android sdk',
+      ok: false,
+      detail: 'ANDROID_SDK_ROOT or ANDROID_HOME is not set',
+      required: false,
+    };
+  }
+  return {
+    name: 'android sdk',
+    ok: existsSync(sdkRoot),
+    detail: existsSync(sdkRoot) ? sdkRoot : `${sdkRoot} does not exist`,
+    required: false,
+  };
+}
+
 export function collectDoctorChecks(
   platform = process.platform,
   options: DoctorOptions = {},
@@ -72,6 +91,7 @@ export function collectDoctorChecks(
   }
 
   checks.push(checkCommand('java', 'java', ['-version'], false));
+  checks.push(checkAndroidSdk());
   checks.push(checkCommand('adb', 'adb', ['version'], false));
 
   if (platform === 'darwin') {
