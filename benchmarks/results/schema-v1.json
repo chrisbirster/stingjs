@@ -16,6 +16,7 @@
         "benchmarkCommit",
         "recordedAt",
         "platform",
+        "environment",
         "device",
         "osVersion",
         "build",
@@ -37,6 +38,9 @@
         },
         "platform": {
           "enum": ["ios", "android"]
+        },
+        "environment": {
+          "const": "physical-device"
         },
         "device": {
           "type": "string",

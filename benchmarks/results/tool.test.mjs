@@ -15,6 +15,7 @@ function makeResult(overrides = {}) {
       benchmarkCommit: '0123456789abcdef0123456789abcdef01234567',
       recordedAt: '2026-08-26T20:00:00.000Z',
       platform: 'ios',
+      environment: 'physical-device',
       device: 'Test Device',
       deviceArchitecture: 'arm64',
       osVersion: 'Test OS 1.0',
@@ -55,6 +56,17 @@ function makeResult(overrides = {}) {
 test('accepts valid release physical-device evidence shape', () => {
   const result = makeResult();
   assert.equal(validateResult(result), result);
+});
+
+test('rejects simulator or emulator evidence', () => {
+  const result = makeResult({
+    metadata: { environment: 'simulator' },
+  });
+
+  assert.throws(
+    () => validateResult(result),
+    /environment must equal "physical-device"/,
+  );
 });
 
 test('rejects debug evidence and sample-count mismatches', () => {

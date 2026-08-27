@@ -19,6 +19,9 @@ benchmarks/results/
   schema-v1.json
   tool.mjs
   tool.test.mjs
+  candidate-capture.mjs
+  candidate-capture.test.mjs
+  candidate-evidence-cli.mjs
   raw/               # checked-in physical-device result JSON files
   summaries/         # generated summaries derived from raw files
 ```
@@ -36,6 +39,7 @@ Each raw JSON file represents one measured metric and contains the complete raw 
     "benchmarkCommit": "0123456789abcdef0123456789abcdef01234567",
     "recordedAt": "2026-08-26T20:00:00.000Z",
     "platform": "ios",
+    "environment": "physical-device",
     "device": "iPhone model",
     "deviceArchitecture": "arm64",
     "osVersion": "iOS version",
@@ -66,15 +70,54 @@ The example above is illustrative only; it is not benchmark evidence.
 Required invariants enforced by `tool.mjs`:
 
 - `benchmarkCommit` is a full 40-character Git commit SHA.
+- `environment` is exactly `"physical-device"`; simulator/emulator captures are rejected.
 - published evidence is from `build: "release"` only.
 - `sampleCount` exactly matches the retained raw sample count.
 - all samples are finite, non-negative numbers.
 - React Native evidence uses Hermes.
 - Sting evidence uses one of `quickjs`, `quickjs-ng`, or `hermes`.
+- JavaScriptCore control captures are not accepted as decision evidence.
 - platform, system, engine, units, and metric direction use stable enums.
 - timestamps must be valid ISO-8601 values.
 
 Optional `toolchain`, `tags`, and `notes` fields may retain benchmark-specific context without changing the core schema.
+
+## Import candidate-host captures
+
+Candidate mobile hosts should first produce a capture document with shared metadata plus one or more raw measurements. The document must declare:
+
+```json
+{
+  "captureDocumentVersion": 1,
+  "role": "decision-evidence",
+  "metadata": {
+    "environment": "physical-device",
+    "build": "release",
+    "system": "sting",
+    "engine": "quickjs-ng"
+  },
+  "captures": []
+}
+```
+
+The remaining metadata fields match the raw result contract above except `sampleCount`, which is derived separately for every capture.
+
+Convert the document into one schema-v1 evidence file per metric:
+
+```bash
+npm run benchmark:import-evidence -- .artifacts/benchmarks/candidate-capture.json benchmarks/results/raw
+```
+
+The importer validates every generated result before writing it and refuses to overwrite an existing evidence filename. It rejects:
+
+- `javascriptcore` as decision evidence,
+- simulator/emulator provenance,
+- debug builds,
+- React Native with a non-Hermes engine,
+- malformed or empty raw sample sets,
+- duplicate scenario/metric filenames.
+
+This import path is deliberately stricter than copying profiler output by hand.
 
 ## Validate evidence
 
@@ -125,16 +168,6 @@ A benchmark is not complete merely because JavaScript timers produce numbers. St
 
 ## Naming convention
 
-Use stable, sortable filenames such as:
-
-```text
-<date>-<platform>-<device-slug>-<system>-<engine>-<scenario>-<metric>.json
-```
-
-For example:
-
-```text
-2026-09-01-ios-iphone15pro-sting-quickjs-ng-sparse10k-visible-latency.json
-```
+The candidate importer writes stable filenames from system, engine, platform, scenario, and metric. Checked-in evidence may additionally be organized under dated/device-specific subdirectories when multiple comparable runs are retained.
 
 Do not put device serial numbers, account identifiers, or other unnecessary machine/user identifiers in checked-in evidence.
