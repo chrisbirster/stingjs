@@ -8,7 +8,7 @@ const c = @cImport({
 });
 
 const benchmark_source = @embedFile("transport-bench.js");
-const engine_name = "__STING_ENGINE__";
+const engine_name: [:0]const u8 = "__STING_ENGINE__";
 const iterations: u32 = 5000;
 const warmups: u32 = 5;
 const samples: u32 = 30;
@@ -22,7 +22,7 @@ const BenchError = error{
 };
 
 const Scenario = struct {
-    name: []const u8,
+    name: [:0]const u8,
     json_script: []const u8,
     typed_script: []const u8,
 };
@@ -97,6 +97,17 @@ fn mixString(ctx: *c.JSContext, value: c.JSValueConst) void {
     transport_checksum = (transport_checksum *% 1099511628211) ^ @as(u64, @intCast(c.strlen(raw)));
 }
 
+fn requestFromJSON(slice: []const u8) i32 {
+    const marker = "\"request\":";
+    const marker_index = std.mem.indexOf(u8, slice, marker) orelse return 0;
+    var index = marker_index + marker.len;
+    var result: i32 = 0;
+    while (index < slice.len and slice[index] >= '0' and slice[index] <= '9') : (index += 1) {
+        result = result * 10 + @as(i32, slice[index] - '0');
+    }
+    return result;
+}
+
 fn jsTransportJSON(
     maybe_ctx: ?*c.JSContext,
     this_value: c.JSValueConst,
@@ -118,15 +129,12 @@ fn jsTransportJSON(
     };
     defer parsed.deinit();
 
+    // Retain an observable dependency on the parsed input while keeping the
+    // benchmark agnostic to std.json.Value's internal tagged-union layout.
     transport_checksum = (transport_checksum *% 1099511628211) ^ @as(u64, @intCast(len));
 
     if (std.mem.indexOf(u8, slice, "\"asyncResult\"") != null) {
-        var request: i32 = 0;
-        if (parsed.value == .object) {
-            if (parsed.value.object.get("request")) |value| {
-                if (value == .integer) request = @intCast(value.integer);
-            }
-        }
+        const request = requestFromJSON(slice);
         var buffer: [64]u8 = undefined;
         const response = std.fmt.bufPrint(&buffer, "{{\"ok\":true,\"value\":{d}}}", .{request + 1}) catch {
             return c.JS_NewString(ctx, "{\"ok\":false,\"value\":0}");
@@ -256,7 +264,13 @@ fn monotonicNs() BenchError!u64 {
     return @as(u64, @intCast(ts.tv_sec)) * 1_000_000_000 + @as(u64, @intCast(ts.tv_nsec));
 }
 
-fn runSamples(ctx: *c.JSContext, runtime: *c.JSRuntime, scenario: Scenario, mode: []const u8, script: []const u8) !void {
+fn runSamples(
+    ctx: *c.JSContext,
+    runtime: *c.JSRuntime,
+    scenario: Scenario,
+    mode: [:0]const u8,
+    script: []const u8,
+) !void {
     for (0..warmups) |_| {
         try evaluate(ctx, runtime, script, "sting-transport-warmup.js");
     }
