@@ -23,80 +23,98 @@ Therefore:
 
 This is deliberately stricter than pretending simulator numbers are comparable to phone hardware.
 
-## iOS JavaScriptCore control capture
+## One-command Android collection
 
-When a physical iPhone is available, the existing JSC control collector can validate UIKit timing boundaries on-device. Without physical iPhone hardware, use the normal iOS simulator CI/runtime tests as compatibility evidence instead.
-
-The control capture, when used on a physical phone, runs with:
+Connect one real Android phone with Developer Options and USB debugging enabled, authorize the development machine, and confirm it appears as `device` in:
 
 ```bash
-npm run benchmark:ios-jsc-control
+adb devices
 ```
 
-and produces a document marked:
+Local prerequisites:
 
-```json
-{
-  "role": "semantic-control",
-  "engine": "javascriptcore"
-}
+- Node.js 22+ and npm;
+- Android SDK with platform/build tools 36;
+- Android NDK `28.2.13676358`;
+- `ANDROID_SDK_ROOT` set;
+- Zig `0.16.0`;
+- Gradle available on `PATH` for the Sting Android project;
+- exactly one authorized Android device connected;
+- a clean Git worktree on the exact commit being measured.
+
+Run:
+
+```bash
+npm run benchmark:physical:android
 ```
 
-Do not copy this control document into `benchmarks/results/raw/` and do not convert it into production-engine evidence.
+The wrapper refuses emulators and dirty worktrees. It then:
+
+1. builds the shared Sting benchmark bundle;
+2. builds a signed **Release** Sting APK containing both pinned QuickJS-family candidates;
+3. installs the Release app and instrumentation APK on the connected phone;
+4. captures Sting + official QuickJS sparse/dense samples;
+5. captures Sting + QuickJS-NG sparse/dense samples;
+6. generates the pinned bare React Native 0.87 + Hermes baseline;
+7. builds and installs its Release app/instrumentation APK;
+8. captures the equivalent RN/Hermes sparse/dense native-event-to-native-mutation samples;
+9. pulls all three capture documents from the phone;
+10. converts them into schema-v1 evidence, validates them, and writes a deterministic summary.
+
+Output is placed under:
+
+```text
+.artifacts/benchmarks/android-physical/<benchmark-commit>/
+  captures/
+  evidence/
+  summary.json
+```
+
+The wrapper does **not** automatically commit evidence. Review the generated files first, then copy the reviewed schema-v1 files into `benchmarks/results/raw/` on the evidence/decision branch.
 
 ## Sparse workload
 
 The benchmark mounts 10,000 logical/native rows and repeatedly updates row 4,281.
 
-The capture requires, for each measured sample:
+For Sting, each measured sample requires:
 
-- one native button event;
+- one actual native Android button event;
 - one Solid fine-grained row computation;
 - exactly one `replaceText` native mutation;
 - no element/text creation, property replay, insert/remove churn, or event-registration churn;
-- one native event -> JS/Solid -> native commit round-trip sample.
+- one `native-event-to-native-mutation-latency` sample.
+
+For React Native, instrumentation starts at the same native control interaction and ends when the actual native row `TextView` text property changes.
 
 Current capture policy:
 
 - 5 warmup iterations;
 - 30 retained samples;
-- raw round-trip samples retained;
-- raw native mutation durations retained;
-- mutation count asserted before the capture is emitted.
+- raw latency samples retained;
+- Sting native mutation count asserted before the capture is emitted.
 
 ## Dense workload
 
-The same 10,000-row tree updates 100 deterministic row IDs per sample.
+The same 10,000-row tree updates the same 100 deterministic row IDs per sample.
 
-The capture requires:
+For Sting the capture requires exactly 100 `replaceText` mutations and no structural/native replay outside those text mutations. For React Native the native observer waits until all 100 target native row views have committed their new text before ending the sample.
 
-- one native event per sample;
-- exactly 100 `replaceText` mutations per sample;
-- no structural/native replay outside those text mutations;
-- 30 retained round-trip samples and all underlying native mutation durations.
+This records dense cost directly rather than extrapolating it from the sparse case.
 
-This deliberately records the dense cost rather than extrapolating it from the sparse case.
+The v0.1 comparison metric is **`native-event-to-native-mutation-latency`**. Its endpoint is the actual Android native text-property mutation. It does **not** claim that the display compositor has presented a frame. Frame presentation and frame pacing remain separate performance measurements.
 
-## v0.1 production engine evidence
+## Evidence cohort rules
 
-Final engine-selection files belong under `benchmarks/results/raw/` and must validate with:
+`npm run release:check:v0.1` requires all three systems to provide both sparse and dense `native-event-to-native-mutation-latency` evidence and verifies that the comparison cohort shares:
 
-```bash
-npm run benchmark:results -- validate benchmarks/results/raw
-```
+- exact benchmark Git commit;
+- physical Android device model;
+- device architecture;
+- Android OS version;
+- active display refresh rate;
+- Release build provenance.
 
-For v0.1, direct performance comparisons must use:
-
-- the same physical Android device;
-- the same Android OS version;
-- the same active refresh rate;
-- release builds;
-- the same benchmark commit;
-- the same workload/data sizes;
-- retained raw samples;
-- pinned engine/framework versions.
-
-Required physical Android runs:
+Required physical Android systems:
 
 - Sting + official QuickJS;
 - Sting + QuickJS-NG;
@@ -110,9 +128,19 @@ The iOS simulator remains release-blocking for correctness, not performance rank
 
 Simulator measurements may be kept under `.artifacts/` for diagnostics, but they must be labeled as simulator data and never imported through `benchmark:import-evidence` into `benchmarks/results/raw/`.
 
-## Candidate capture import
+## iOS JavaScriptCore control capture
 
-Once an Android candidate host produces raw physical-device samples, convert them into schema-v1 evidence with:
+When a physical iPhone is available later, the existing JSC control collector can validate UIKit timing boundaries on-device:
+
+```bash
+npm run benchmark:ios-jsc-control
+```
+
+It produces a document marked `role: semantic-control` and `engine: javascriptcore`; never convert that control document into production-engine evidence.
+
+## Import and validate reviewed captures
+
+The one-command wrapper already creates schema-v1 evidence in its artifact directory. For any separately produced candidate capture, the strict importer remains available:
 
 ```bash
 npm run benchmark:import-evidence -- \
@@ -120,14 +148,10 @@ npm run benchmark:import-evidence -- \
   benchmarks/results/raw
 ```
 
-The importer rejects simulator/emulator provenance, debug builds, JavaScriptCore decision evidence, malformed samples, and invalid React Native engine combinations.
-
-## What the user needs to run for v0.1
-
-The target end-state is one command with the Android phone connected that collects all three required systems:
+Validate checked-in evidence with:
 
 ```bash
-npm run benchmark:physical:android
+npm run benchmark:results -- validate benchmarks/results/raw
 ```
 
-That command should build/run Sting + QuickJS, Sting + QuickJS-NG, and RN + Hermes in Release mode on the connected phone and emit importable capture documents. Until that wrapper exists, physical collection is still repository implementation work rather than a manual benchmark procedure the user is expected to assemble.
+The importer rejects simulator/emulator provenance, debug builds, JavaScriptCore decision evidence, malformed samples, and invalid React Native engine combinations.

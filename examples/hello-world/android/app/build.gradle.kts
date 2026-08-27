@@ -15,9 +15,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    testBuildType = "release"
+
+    buildTypes {
+        getByName("release") {
+            // Physical benchmark installs need a signed APK. The debug signing
+            // identity is intentionally reused; code generation remains the
+            // Release variant and no debug tooling is enabled.
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+        }
+    }
+
     sourceSets {
         getByName("main") {
             assets.srcDir("../../dist")
+            assets.srcDir("../../../../benchmarks/sting-benchmark/dist")
         }
     }
 
@@ -31,6 +44,7 @@ dependencies {
     implementation(project(":sting-runtime"))
     implementation(project(":sting-haptics"))
     implementation(project(":sting-runtime-quickjs-candidate"))
+    implementation(project(":sting-runtime-quickjs-ng-candidate"))
 
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

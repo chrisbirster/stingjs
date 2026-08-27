@@ -5,6 +5,10 @@ import { validateResult } from '../benchmarks/results/tool.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const expectedVersion = '0.1.0';
+const requiredScenarioMetric = [
+  ['sparse-10k-row-update', 'native-event-to-native-mutation-latency'],
+  ['dense-10k-100-row-update', 'native-event-to-native-mutation-latency'],
+];
 
 function fail(message) {
   throw new Error(`v0.1 release gate: ${message}`);
@@ -53,9 +57,9 @@ const decision = await readText(decisionPath);
 if (!/^- Status:\s*accepted\s*$/im.test(decision)) {
   fail('production JavaScript engine ADR must be accepted before release');
 }
-const engineMatch = decision.match(/^- Engine:\s*(quickjs|quickjs-ng|hermes)\s*$/im);
+const engineMatch = decision.match(/^- Engine:\s*(quickjs|quickjs-ng)\s*$/im);
 if (!engineMatch) {
-  fail('production JavaScript engine ADR must name Engine: quickjs, quickjs-ng, or hermes');
+  fail('production JavaScript engine ADR must name Engine: quickjs or quickjs-ng');
 }
 
 const evidenceFiles = await collectJsonFiles(join(root, 'benchmarks/results/raw'));
@@ -63,30 +67,58 @@ if (evidenceFiles.length === 0) {
   fail('no checked-in physical-device evidence exists under benchmarks/results/raw');
 }
 
-const coverage = new Set();
+const evidence = [];
 for (const file of evidenceFiles) {
   const result = JSON.parse(await readText(file));
   validateResult(result, file);
-  const { platform, system, engine, environment, build } = result.metadata;
+  const { platform, environment, build } = result.metadata;
   if (environment !== 'physical-device' || build !== 'release') {
     fail(`${file} is not release physical-device evidence`);
   }
-  coverage.add(`${platform}:${system}:${engine}`);
+  if (platform !== 'android') {
+    fail(`${file} is checked-in v0.1 decision evidence but platform is not android`);
+  }
+  evidence.push({ file, result });
 }
 
-// v0.1 has access to a physical Android device but not physical iPhone hardware.
-// Performance ranking therefore uses release physical-device Android evidence.
-// iOS remains release-blocking for semantic/native compatibility through the
-// simulator/UIKit software matrix, but simulator timing must never be promoted
-// into benchmarks/results/raw or presented as physical iPhone performance.
-// Hermes V1 is disqualified as a Sting candidate but remains the RN baseline.
-const requiredCoverage = [
-  'android:sting:quickjs',
-  'android:sting:quickjs-ng',
-  'android:react-native:hermes',
+const requiredSystems = [
+  ['sting', 'quickjs'],
+  ['sting', 'quickjs-ng'],
+  ['react-native', 'hermes'],
 ];
-for (const key of requiredCoverage) {
-  if (!coverage.has(key)) fail(`missing physical Android evidence coverage: ${key}`);
+
+for (const [system, engine] of requiredSystems) {
+  for (const [scenario, metric] of requiredScenarioMetric) {
+    const match = evidence.find(({ result }) =>
+      result.metadata.system === system &&
+      result.metadata.engine === engine &&
+      result.measurement.scenario === scenario &&
+      result.measurement.metric === metric,
+    );
+    if (!match) {
+      fail(`missing physical Android evidence: ${system}:${engine}:${scenario}:${metric}`);
+    }
+  }
+}
+
+// The production comparison is only meaningful when all three systems were
+// measured as one cohort: exact repository commit, same physical phone, same
+// OS, architecture, and active display refresh rate.
+const cohortKeys = new Set(
+  evidence
+    .filter(({ result }) => requiredSystems.some(([system, engine]) =>
+      result.metadata.system === system && result.metadata.engine === engine,
+    ))
+    .map(({ result }) => JSON.stringify({
+      benchmarkCommit: result.metadata.benchmarkCommit,
+      device: result.metadata.device,
+      deviceArchitecture: result.metadata.deviceArchitecture ?? null,
+      osVersion: result.metadata.osVersion,
+      displayRefreshHz: result.metadata.displayRefreshHz,
+    })),
+);
+if (cohortKeys.size !== 1) {
+  fail('QuickJS, QuickJS-NG, and RN/Hermes evidence must share one Android device/OS/refresh-rate/benchmark-commit cohort');
 }
 
 process.stdout.write(
