@@ -1,6 +1,8 @@
 package run.stingjs.modules.filesystem
 
 import android.content.Context
+import android.system.Os
+import android.system.OsConstants
 import java.io.File
 import java.util.concurrent.Executors
 import run.stingjs.runtime.StingNativeModule
@@ -76,7 +78,7 @@ class FilesystemModule(context: Context) : StingNativeModule {
             val target = target(arguments, pathIndex = 0, directoryIndex = 1)
             if (!target.exists()) throw notFound(target)
             try {
-                if (!target.deleteRecursively()) {
+                if (!deleteWithoutFollowingSymlinks(target)) {
                     throw StingNativeModuleError(
                         code = "E_IO",
                         message = "Unable to delete path",
@@ -203,6 +205,19 @@ class FilesystemModule(context: Context) : StingNativeModule {
                 details = mapOf("path" to (parent?.path ?: target.path)),
             )
         }
+    }
+
+    private fun deleteWithoutFollowingSymlinks(target: File): Boolean {
+        val mode = Os.lstat(target.path).st_mode
+        if (OsConstants.S_ISLNK(mode) || !target.isDirectory) {
+            return target.delete()
+        }
+
+        val children = target.listFiles() ?: return false
+        for (child in children) {
+            if (!deleteWithoutFollowingSymlinks(child)) return false
+        }
+        return target.delete()
     }
 
     private fun invalidArgument(message: String) = StingNativeModuleError(
