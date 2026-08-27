@@ -20,6 +20,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import run.stingjs.runtime.StingMutationCounts
@@ -55,6 +56,11 @@ class PhysicalEvidenceInstrumentedTest {
     fun captureSparseAndDenseReleaseEvidence() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val arguments = InstrumentationRegistry.getArguments()
+        assumeTrue(
+            "physical evidence capture is opt-in and must not run on emulator CI",
+            arguments.getString("stingPhysicalEvidence") == "1",
+        )
+
         val engine = arguments.getString("stingEngine")
             ?: error("-e stingEngine quickjs|quickjs-ng is required")
         val benchmarkCommit = arguments.getString("benchmarkCommit")
