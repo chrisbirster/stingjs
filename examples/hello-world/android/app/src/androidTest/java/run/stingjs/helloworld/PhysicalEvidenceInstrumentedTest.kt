@@ -3,10 +3,11 @@ package run.stingjs.helloworld
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.LinearLayout
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -34,9 +35,7 @@ class PhysicalEvidenceInstrumentedTest {
         fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String)
     }
 
-    private class OfficialQuickJsRuntime(
-        bridge: StingNativeBridge,
-    ) : CandidateRuntime {
+    private class OfficialQuickJsRuntime(bridge: StingNativeBridge) : CandidateRuntime {
         private val runtime = OfficialQuickJsCandidateRuntime(bridge)
         override fun evaluate(source: String) = runtime.evaluate(source)
         override fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String) =
@@ -44,9 +43,7 @@ class PhysicalEvidenceInstrumentedTest {
         override fun close() = runtime.close()
     }
 
-    private class QuickJsNgRuntime(
-        bridge: StingNativeBridge,
-    ) : CandidateRuntime {
+    private class QuickJsNgRuntime(bridge: StingNativeBridge) : CandidateRuntime {
         private val runtime = QuickJsNgCandidateRuntime(bridge)
         override fun evaluate(source: String) = runtime.evaluate(source)
         override fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String) =
@@ -86,17 +83,13 @@ class PhysicalEvidenceInstrumentedTest {
             )
         }
 
-        val document = capture
-        assertNotNull("candidate capture document should be produced", document)
-        val outputDirectory = File(
-            targetContext.getExternalFilesDir(null),
-            "sting-benchmarks",
-        )
+        assertNotNull("candidate capture document should be produced", capture)
+        val outputDirectory = File(targetContext.getExternalFilesDir(null), "sting-benchmarks")
         check(outputDirectory.mkdirs() || outputDirectory.isDirectory) {
             "Unable to create ${outputDirectory.absolutePath}"
         }
         val output = File(outputDirectory, "sting-${engine}-android.json")
-        output.writeText(document!!.toString(2) + "\n")
+        output.writeText(capture!!.toString(2) + "\n")
         println("STING_PHYSICAL_EVIDENCE=${output.absolutePath}")
     }
 
@@ -126,28 +119,19 @@ class PhysicalEvidenceInstrumentedTest {
             runtime.evaluate(benchmarkSource)
             runtime.evaluate("globalThis.__stingBenchmark.mountRows();")
 
-            repeat(WARMUP_COUNT) {
-                runMeasuredUpdate(runtime, bridge, "globalThis.__stingBenchmark.updateSparse();", 1)
-            }
+            val sparseButton = findButton(root, "Update row 4,281")
+            val denseButton = findButton(root, "Update 100 rows")
+            assertNotNull("native sparse benchmark Button", sparseButton)
+            assertNotNull("native dense benchmark Button", denseButton)
+
+            repeat(WARMUP_COUNT) { runMeasuredPress(sparseButton!!, bridge, 1) }
             val sparse = DoubleArray(SAMPLE_COUNT) {
-                runMeasuredUpdate(
-                    runtime,
-                    bridge,
-                    "globalThis.__stingBenchmark.updateSparse();",
-                    1,
-                )
+                runMeasuredPress(sparseButton!!, bridge, 1)
             }
 
-            repeat(WARMUP_COUNT) {
-                runMeasuredUpdate(runtime, bridge, "globalThis.__stingBenchmark.updateDense();", 100)
-            }
+            repeat(WARMUP_COUNT) { runMeasuredPress(denseButton!!, bridge, 100) }
             val dense = DoubleArray(SAMPLE_COUNT) {
-                runMeasuredUpdate(
-                    runtime,
-                    bridge,
-                    "globalThis.__stingBenchmark.updateDense();",
-                    100,
-                )
+                runMeasuredPress(denseButton!!, bridge, 100)
             }
 
             nodes.eventSink = null
@@ -164,18 +148,27 @@ class PhysicalEvidenceInstrumentedTest {
         }
     }
 
-    private fun runMeasuredUpdate(
-        runtime: CandidateRuntime,
+    private fun runMeasuredPress(
+        button: Button,
         bridge: StingNativeBridge,
-        source: String,
         expectedReplaceText: Int,
     ): Double {
         bridge.resetMutationCounts()
         val started = SystemClock.elapsedRealtimeNanos()
-        runtime.evaluate(source)
+        assertTrue("benchmark native Button should dispatch press", button.performClick())
         val finished = SystemClock.elapsedRealtimeNanos()
         assertOnlyTextMutations(bridge.mutationCounts, expectedReplaceText)
         return (finished - started) / 1_000_000.0
+    }
+
+    private fun findButton(root: View, text: String): Button? {
+        if (root is Button && root.text?.toString() == text) return root
+        if (root !is ViewGroup) return null
+        for (index in 0 until root.childCount) {
+            val match = findButton(root.getChildAt(index), text)
+            if (match != null) return match
+        }
+        return null
     }
 
     private fun assertOnlyTextMutations(counts: StingMutationCounts, expected: Int) {
@@ -191,7 +184,7 @@ class PhysicalEvidenceInstrumentedTest {
     private fun measurement(scenario: String, samples: DoubleArray): JSONObject =
         JSONObject()
             .put("scenario", scenario)
-            .put("metric", "state-to-native-visible-latency")
+            .put("metric", "native-event-to-visible-update-latency")
             .put("unit", "ms")
             .put("direction", "lower-is-better")
             .put("samples", JSONArray().apply { samples.forEach { put(it) } })
@@ -199,11 +192,9 @@ class PhysicalEvidenceInstrumentedTest {
     @Suppress("DEPRECATION")
     private fun metadata(context: Context, engine: String, benchmarkCommit: String): JSONObject {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val refreshRate = windowManager.defaultDisplay.refreshRate.toDouble()
         val recordedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date())
-
         return JSONObject()
             .put("benchmarkCommit", benchmarkCommit)
             .put("recordedAt", recordedAt)
@@ -220,7 +211,7 @@ class PhysicalEvidenceInstrumentedTest {
                 if (engine == "quickjs") "2026-06-04" else "v0.16.1@954dc53628e36891f93c359aa60895c2ae3dac6b",
             )
             .put("frameworkVersion", "StingJS 0.1.0 / Solid 2.0.0-rc.1")
-            .put("displayRefreshHz", refreshRate)
+            .put("displayRefreshHz", windowManager.defaultDisplay.refreshRate.toDouble())
     }
 
     private companion object {
