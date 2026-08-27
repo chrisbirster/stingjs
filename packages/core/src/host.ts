@@ -252,19 +252,22 @@ export class StingHost {
     }
 
     let eventsForModule = this.moduleEvents.get(module);
-    if (!eventsForModule) {
-      eventsForModule = new Map<string, Set<ModuleEventHandler>>();
-      this.moduleEvents.set(module, eventsForModule);
-    }
+    let listeners = eventsForModule?.get(event);
 
-    let listeners = eventsForModule.get(event);
     if (!listeners) {
       this.setNativeModuleEventEnabled(module, event, true);
+      if (!eventsForModule) {
+        eventsForModule = new Map<string, Set<ModuleEventHandler>>();
+        this.moduleEvents.set(module, eventsForModule);
+      }
       listeners = new Set<ModuleEventHandler>();
       eventsForModule.set(event, listeners);
     }
 
-    listeners.add(handler);
+    // Wrap each subscription so repeated addListener() calls with the same
+    // callback remain independent removable handles.
+    const subscriptionHandler: ModuleEventHandler = (payload) => handler(payload);
+    listeners.add(subscriptionHandler);
     let removed = false;
 
     return () => {
@@ -275,7 +278,7 @@ export class StingHost {
       const currentListeners = currentEvents?.get(event);
       if (!currentListeners) return;
 
-      currentListeners.delete(handler);
+      currentListeners.delete(subscriptionHandler);
       if (currentListeners.size > 0) return;
 
       // Remove JS dispatchability before asking native to stop observation so a
