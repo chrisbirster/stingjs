@@ -107,8 +107,17 @@ build_abi() {
     exit 1
   fi
 
+  # QuickJS-NG intentionally changes a few predicate return types from int to
+  # bool while retaining the same embedding API shape. Keep the authoritative
+  # Sting Zig host shared, but normalize only those predicate checks into a
+  # generated candidate-local source file before compiling against NG headers.
+  sed \
+    -e 's/c\.JS_IsException(result) != 0/c.JS_IsException(result)/g' \
+    -e 's/c\.JS_IsFunction(state.context, dispatch) == 0/!c.JS_IsFunction(state.context, dispatch)/g' \
+    "${SHARED_NATIVE_DIR}/runtime.zig" > "${work}/runtime_quickjs_ng.zig"
+
   zig build-lib \
-    "${SHARED_NATIVE_DIR}/runtime.zig" \
+    "${work}/runtime_quickjs_ng.zig" \
     -static \
     -fPIC \
     -target "${zig_target}" \
