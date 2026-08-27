@@ -11,6 +11,7 @@
 		C6EEAE6949EFFEBCE64D10AA /* StingRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = E2D8B8A10A86EBA7B5677B48 /* StingRuntime */; };
 		27B208B622A75737A1C8A141 /* StingHaptics in Frameworks */ = {isa = PBXBuildFile; productRef = 6BC3D47E47F41246F27D871C /* StingHaptics */; };
 		A1B2C3D4E5F60718293A4B5C /* StingClipboard in Frameworks */ = {isa = PBXBuildFile; productRef = C1D2E3F40516273849A5B6C7 /* StingClipboard */; };
+		D1E2F3041526374859A6B7C8 /* StingDevice in Frameworks */ = {isa = PBXBuildFile; productRef = F10213243546576879A8B9C0 /* StingDevice */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 				C6EEAE6949EFFEBCE64D10AA /* StingRuntime in Frameworks */,
 				27B208B622A75737A1C8A141 /* StingHaptics in Frameworks */,
 				A1B2C3D4E5F60718293A4B5C /* StingClipboard in Frameworks */,
+				D1E2F3041526374859A6B7C8 /* StingDevice in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +79,7 @@
 				E2D8B8A10A86EBA7B5677B48 /* StingRuntime */,
 				6BC3D47E47F41246F27D871C /* StingHaptics */,
 				C1D2E3F40516273849A5B6C7 /* StingClipboard */,
+				F10213243546576879A8B9C0 /* StingDevice */,
 			);
 			productName = StingHelloWorld;
 			productReference = 9F40D502873010DB593F0939 /* StingHelloWorld.app */;
@@ -110,6 +113,7 @@
 				C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */,
 				E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */,
 				B1C2D3E4F5061728394A5B6C /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */,
+				E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */,
 			);
 			productRefGroup = AC876CFCF861F50461261C2E /* Products */;
 			projectDirPath = "";
@@ -255,6 +259,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../../packages/modules/clipboard;
 		};
+		E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/device;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -272,6 +280,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = B1C2D3E4F5061728394A5B6C /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */;
 			productName = StingClipboard;
+		};
+		F10213243546576879A8B9C0 /* StingDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */;
+			productName = StingDevice;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -58,7 +58,7 @@ Run `npm run modules:validate` to validate all first-party manifests and require
 
 The v0.1 module transport currently supports synchronous functions through `StingNativeModule.callSync` and `StingModuleRegistry`. This is intentionally honest: modules must not simulate asynchronous native work by wrapping a synchronous native call in `Promise.resolve()`.
 
-Haptics and Clipboard are the reference synchronous modules.
+Haptics, Clipboard, and Device are the reference synchronous modules. Device also proves a structured object can round-trip through the shared module contract while keeping platform-specific environment detection in Swift/Kotlin.
 
 ## Modules-core capability roadmap
 

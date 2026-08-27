@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import run.stingjs.modules.clipboard.ClipboardModule
+import run.stingjs.modules.device.DeviceModule
 import run.stingjs.runtime.StingModuleRegistry
 
 @RunWith(AndroidJUnit4::class)
@@ -42,5 +43,19 @@ class ModulesInstrumentedTest {
         } finally {
             scenario.close()
         }
+    }
+
+    @Test
+    fun deviceReportsAndroidEnvironmentThroughModuleRegistry() {
+        val modules = StingModuleRegistry(listOf(DeviceModule()))
+        @Suppress("UNCHECKED_CAST")
+        val info = modules.callSync("Device", "getInfo", emptyList()) as Map<String, Any?>
+
+        assertEquals("android", info["platform"])
+        assertEquals("Android", info["osName"])
+        assertTrue((info["model"] as String).isNotBlank())
+        assertTrue((info["manufacturer"] as String).isNotBlank())
+        assertTrue((info["osVersion"] as String).isNotBlank())
+        assertFalse(info["isPhysicalDevice"] as Boolean)
     }
 }

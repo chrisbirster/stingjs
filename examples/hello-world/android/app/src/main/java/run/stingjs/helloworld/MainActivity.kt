@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import run.stingjs.modules.clipboard.ClipboardModule
+import run.stingjs.modules.device.DeviceModule
 import run.stingjs.modules.haptics.HapticsModule
 import run.stingjs.runtime.StingModuleRegistry
 import run.stingjs.runtime.StingMutationCounts
@@ -36,6 +37,7 @@ class MainActivity : Activity() {
                 listOf(
                     HapticsModule(this),
                     ClipboardModule(this),
+                    DeviceModule(),
                 ),
             ),
         )
