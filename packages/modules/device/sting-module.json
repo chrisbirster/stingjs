@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "Device",
+  "package": "@stingjs/device",
+  "version": "0.1.0",
+  "ios": {
+    "module": "DeviceModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.device.DeviceModule",
+    "permissions": []
+  },
+  "capabilities": ["sync-functions"]
+}
