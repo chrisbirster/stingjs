@@ -114,6 +114,8 @@ build_abi() {
   sed \
     -e 's/c\.JS_IsException(result) != 0/c.JS_IsException(result)/g' \
     -e 's/c\.JS_IsFunction(state.context, dispatch) == 0/!c.JS_IsFunction(state.context, dispatch)/g' \
+    -e 's/c\.JS_IsFunction(state.context, resolve) == 0/!c.JS_IsFunction(state.context, resolve)/g' \
+    -e 's/c\.JS_IsFunction(state.context, dispose) == 0/!c.JS_IsFunction(state.context, dispose)/g' \
     -e 's/c\.JS_IsJobPending(state.runtime) != 0/c.JS_IsJobPending(state.runtime)/g' \
     "${SHARED_NATIVE_DIR}/runtime.zig" > "${work}/runtime_quickjs_ng.zig"
 
