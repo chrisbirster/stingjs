@@ -27,6 +27,7 @@ class OfficialQuickJsCandidateRuntime(
 
     init {
         bridge.asyncResultSink = ::deliverModuleCompletion
+        bridge.moduleEventSink = ::deliverModuleEvent
     }
 
     fun evaluate(source: String) {
@@ -52,6 +53,7 @@ class OfficialQuickJsCandidateRuntime(
 
         handle = 0L
         bridge.detachAsyncResultSink()
+        bridge.detachModuleEventSink()
         nativeDestroy(current)
     }
 
@@ -76,6 +78,27 @@ class OfficialQuickJsCandidateRuntime(
         }
     }
 
+    private fun deliverModuleEvent(module: String, event: String, payloadJSON: String) {
+        if (Looper.myLooper() === ownerLooper) {
+            dispatchModuleEventOnOwnerThread(module, event, payloadJSON)
+            return
+        }
+
+        ownerHandler.post {
+            dispatchModuleEventOnOwnerThread(module, event, payloadJSON)
+        }
+    }
+
+    private fun dispatchModuleEventOnOwnerThread(module: String, event: String, payloadJSON: String) {
+        val current = handle
+        if (current == 0L) return
+
+        val error = nativeDispatchModuleEvent(current, module, event, payloadJSON)
+        if (error != null) {
+            throw StingRuntimeException("Official QuickJS module event dispatch failed: $error")
+        }
+    }
+
     private fun requireOwnerThread(operation: String) {
         if (Looper.myLooper() !== ownerLooper) {
             throw StingRuntimeException(
@@ -96,6 +119,12 @@ class OfficialQuickJsCandidateRuntime(
         handle: Long,
         requestId: Int,
         responseJSON: String,
+    ): String?
+    private external fun nativeDispatchModuleEvent(
+        handle: Long,
+        module: String,
+        event: String,
+        payloadJSON: String,
     ): String?
     private external fun nativeDestroy(handle: Long)
 
