@@ -106,7 +106,7 @@ class StingNodeRegistryInstrumentedTest {
             assertEquals("Ada", input.text.toString())
             assertEquals("Name", input.hint.toString())
             assertTrue(input.isEnabled)
-            assertNotNull(findDescendant<android.widget.ScrollView>(scroll))
+            assertNotNull(findDescendant(scroll, android.widget.ScrollView::class.java))
 
             val events = mutableListOf<Triple<Int, String, String>>()
             nodes.eventSink = { nodeId, event, payload ->
@@ -122,15 +122,15 @@ class StingNodeRegistryInstrumentedTest {
             assertEquals(1, events.size)
 
             bridge.setProperty(1, "horizontal", "true")
-            assertNotNull(findDescendant<HorizontalScrollView>(scroll))
+            assertNotNull(findDescendant(scroll, HorizontalScrollView::class.java))
         }
     }
 
-    private inline fun <reified T : View> findDescendant(root: View): T? {
-        if (root is T) return root
+    private fun <T : View> findDescendant(root: View, type: Class<T>): T? {
+        if (type.isInstance(root)) return type.cast(root)
         if (root !is ViewGroup) return null
         for (index in 0 until root.childCount) {
-            val match = findDescendant<T>(root.getChildAt(index))
+            val match = findDescendant(root.getChildAt(index), type)
             if (match != null) return match
         }
         return null
