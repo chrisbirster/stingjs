@@ -45,7 +45,7 @@ final class StingPrimitiveParityTests: XCTestCase {
         nodes.eventSink = { events.append(($0, $1, $2)) }
         try nodes.setEventEnabled(id: 4, event: "changeText", enabled: true)
         input.text = "Grace"
-        input.sendActions(for: .editingChanged)
+        input.handleEditingChanged()
         XCTAssertEqual(events.count, 1)
         XCTAssertEqual(events.first?.0, 4)
         XCTAssertEqual(events.first?.1, "changeText")
