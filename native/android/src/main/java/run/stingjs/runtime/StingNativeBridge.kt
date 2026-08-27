@@ -127,7 +127,7 @@ class StingNativeBridge(
             } else {
                 val removed = synchronized(moduleEventLock) { activeModuleEvents.remove(key) }
                 if (removed) {
-                    modules.setEventEnabled(module, event, false) { }
+                    modules.setEventEnabled(module, event, false) { _ -> }
                 }
             }
 
@@ -155,7 +155,7 @@ class StingNativeBridge(
 
         for (key in observations) {
             try {
-                modules.setEventEnabled(key.module, key.event, false) { }
+                modules.setEventEnabled(key.module, key.event, false) { _ -> }
             } catch (_: Throwable) {
                 // Teardown must continue for every observation. JS/native bridge
                 // state is already detached, so later emissions are stale no-ops.
