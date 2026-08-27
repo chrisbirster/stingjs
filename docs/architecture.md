@@ -64,33 +64,31 @@ The runtime owns actual native objects, applies mutations, dispatches native eve
 
 ## JavaScript engine strategy
 
-JavaScript-engine choice is an implementation decision behind the Sting runtime contract, not part of the public application API.
+JavaScript-engine choice is an implementation decision behind the Sting runtime contract, not part of the public application API. Normal Sting applications do not choose an engine.
 
-The first verified iOS native proof uses Apple's JavaScriptCore framework because it is built into iOS and allowed us to prove the renderer → native event → Solid signal → precise native mutation loop without first introducing a large runtime dependency.
+StingJS v0.1 uses **official QuickJS `2026-06-04`** as the production JavaScript engine. New runtime and native-module capabilities should target that path first.
 
-The runtime-engine evaluation now also exercises three candidate embeddings against the same real Solid/Sting semantic workload:
+The first verified iOS native proof used Apple's JavaScriptCore framework because it is built into iOS and allowed Sting to prove the renderer → native event → Solid signal → precise native mutation loop before introducing a portable runtime dependency. JavaScriptCore/UIKit remains an independent iOS semantic/native reference lane rather than the v0.1 production runtime.
 
-- official QuickJS,
-- QuickJS-NG,
-- Hermes V1 matching the React Native 0.87 Hermes generation.
+The engine-evaluation work also produced independent hosts for official QuickJS, QuickJS-NG, and Hermes. That historical work remains useful evidence, but the lanes are now intentionally asymmetric:
 
-All three candidate hosts have successfully run the current semantic gates on macOS:
+- official QuickJS `2026-06-04` — production runtime,
+- QuickJS-NG — temporary independent conformance/performance lane and guard against accidentally relying on an official-QuickJS-specific quirk,
+- React Native 0.87 + Hermes — external competitor/reference baseline,
+- JavaScriptCore + UIKit — independent iOS semantic/native reference lane.
 
-```text
-counter press       → exactly 1 replaceText + Haptics medium
-10k sparse update   → exactly 1 replaceText
-10k dense update    → exactly 100 replaceText
-```
+The pinned Hermes V1 Sting candidate built successfully behind the isolated Hermes/JSI → C++ adapter → C ABI → Zig path, but it failed a generic ECMAScript preflight for per-iteration `for (let ...)` lexical closure semantics before SolidJS-specific behavior became decisive. That exact candidate is therefore disqualified for v0.1. This must not be generalized into a claim that SolidJS 2 does not work with Hermes; a future Hermes version can be reconsidered if it passes the complete JavaScript and Solid/Sting conformance suite and offers a compelling benefit.
 
-This establishes compatibility with the current Sting renderer semantics. It does **not** select the production engine.
-
-Engine selection still requires comparable release-build evidence for startup, memory, native-event latency, module-call latency, list/frame behavior, lifecycle, bundle/binary size, and physical-device p50/p95/p99 measurements. See [`performance.md`](performance.md).
+Physical Android evidence still measures startup, memory, event/native-update latency, module overhead, frame behavior, binary size, and other representative workloads. That evidence validates and characterizes the accepted QuickJS direction. A severe correctness or performance blocker can reopen the decision, but normal architecture work no longer preserves engine indecision while waiting for every benchmark result. See [`performance.md`](performance.md) and [`decisions/0004-production-javascript-engine.md`](decisions/0004-production-javascript-engine.md).
 
 The embedding architecture remains intentionally narrow:
 
-- QuickJS and QuickJS-NG can be driven through their C APIs from Zig,
-- Hermes can sit behind a small isolated C++/JSI adapter with a C ABI,
-- application packages and the renderer must not import engine-specific APIs.
+- official QuickJS is driven through its C API from the Zig-centered portable runtime,
+- QuickJS-NG may use the equivalent C embedding shape while the secondary lane remains inexpensive to retain,
+- the historical Hermes prototype stays behind a small isolated C++/JSI adapter with a C ABI,
+- application packages, renderer APIs, and native modules must not import engine-specific public types.
+
+Do not create a permanent public multi-engine abstraction merely because multiple evaluation lanes exist.
 
 ## Renderer model
 
@@ -132,23 +130,27 @@ v0.1 defines runtime-created, app-mounted, foreground/background, and runtime-de
 
 ## Current implementation versus target architecture
 
-Contributors should distinguish the verified implementation from the longer-term portability target.
+Contributors should distinguish the verified reference lanes from the production portability target.
 
-The current native iOS proof is:
+The v0.1 production path is:
 
 ```text
 Solid / TypeScript
        ↓
 Sting JS contracts
        ↓
-Swift JavaScriptCore host
+official QuickJS
        ↓
-UIKit
+Zig-centered Sting runtime
+      ↙       ↘
+   Swift     Kotlin
+     ↓         ↓
+   UIKit   Android Views
 ```
 
-The runtime-engine prototypes are establishing how the portable runtime can own alternative engines, including direct Zig/C paths for QuickJS-family engines and a narrow C ABI around Hermes' C++/JSI API.
+JavaScriptCore/UIKit remains the independent iOS semantic/native control. QuickJS-NG remains a secondary compatibility/performance lane while it provides useful independent evidence at low maintenance cost. The historical Hermes prototype remains evidence for the isolated-adapter architecture and for the generic JavaScript preflight failure that disqualified that tested candidate.
 
-Do not prematurely introduce a public multi-engine abstraction merely because benchmark prototypes exist. The engine should remain an internal runtime choice until evidence justifies the production architecture.
+Public application APIs remain engine-independent even though the v0.1 implementation is deliberately converging on one production engine.
 
 ## Deliberately deferred
 
@@ -159,6 +161,5 @@ Do not prematurely introduce a public multi-engine abstraction merely because be
 - production dev client
 - app-store deployment
 - generalized C++ core
-- final production JavaScript-engine selection
 
 Those become priorities only as the native renderer/event/module loop and measured runtime foundation mature.
