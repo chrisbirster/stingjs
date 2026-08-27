@@ -16,7 +16,11 @@ final class StingTextInput: UITextField {
         }
     }
 
-    @objc private func handleEditingChanged() {
+    // Internal so the unhosted StingRuntime XCTest target can prove the same
+    // event-routing callback without requiring UIApplication to dispatch a
+    // UIControl action. Production UIKit still reaches this selector through
+    // .editingChanged.
+    @objc func handleEditingChanged() {
         onChangeText?(nodeId, text ?? "")
     }
 }
