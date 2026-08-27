@@ -8,17 +8,19 @@ The minimum product goal is:
 
 StingJS does not need to win every JavaScript microbenchmark. It does need to avoid a meaningful application-level performance penalty for choosing SolidJS and the Sting runtime.
 
-## Current baseline
+## Current baseline and engine lanes
 
-As of August 2026, the reference baseline is React Native 0.87 in release mode with its default Hermes V1 runtime. React Native 0.84 made Hermes V1 the default; 0.87 is the current active release when this benchmark program was created.
+As of August 2026, the external reference baseline is React Native 0.87 in release mode with its default Hermes V1 runtime. React Native 0.84 made Hermes V1 the default; 0.87 is the active release used when this benchmark program was created.
 
-The Sting candidates are:
+The current Sting engine lanes are intentionally asymmetric:
 
-1. official QuickJS 2026-06-04,
-2. QuickJS-NG (current tested release must be pinned by commit/tag in benchmark metadata),
-3. Hermes V1 from the same React Native/Hermes generation used by the baseline.
+1. **official QuickJS `2026-06-04`** — v0.1 production runtime,
+2. **QuickJS-NG** — temporary secondary conformance/performance lane; the tested release must be pinned by commit/tag in benchmark metadata,
+3. **historical Sting/Hermes V1 prototype** — retained as implementation/conformance evidence, but disqualified for v0.1 after failing a generic ECMAScript per-iteration lexical-closure preflight,
+4. **JavaScriptCore/UIKit** — independent iOS semantic/native reference lane,
+5. **React Native 0.87 + Hermes** — external competitor/reference baseline.
 
-JavaScriptCore is allowed to remain in the repository as the first iOS semantic proof. It is not the production runtime decision and does not satisfy this comparison.
+The Hermes result is specific to the tested Sting candidate. It must not be summarized as a general claim that SolidJS 2 cannot run on Hermes.
 
 ## Central hypothesis
 
@@ -42,13 +44,13 @@ signal mutation
 
 Sting must not add a virtual DOM or React-style component-tree reconciliation layer to make the bridge easier to implement.
 
-## Engine-prototype rule
+## Engine-lane rule
 
-The QuickJS, QuickJS-NG, and Hermes integrations are evaluation prototypes until the decision ADR is accepted.
+ADR 0004 selects official QuickJS `2026-06-04` as the StingJS v0.1 production engine. Normal Sting applications do not choose an engine, and benchmark lanes must not become a permanent public `JavaScriptEngine` abstraction.
 
-Do not build a generalized public `JavaScriptEngine` abstraction merely because three prototypes exist. The prototypes may duplicate small amounts of glue while we learn what the real common boundary should be.
+New runtime and module capabilities target official QuickJS first. Keep QuickJS-NG compatible when doing so is inexpensive because it provides an independent conformance/performance signal and helps catch accidental reliance on an official-QuickJS-specific quirk. Reevaluate that lane after v0.1 stabilizes rather than treating dual-engine support as a product requirement.
 
-The product runtime remains Zig-centered. For QuickJS and QuickJS-NG, Zig may call the C embedding API directly. For Hermes, a small C++ adapter is acceptable:
+The historical Hermes prototype used this contained architecture:
 
 ```text
 Hermes / JSI
@@ -58,7 +60,7 @@ Hermes / JSI
      -> Swift / Kotlin host
 ```
 
-C++ must not become the owner of Sting renderer, module, lifecycle, or platform-neutral runtime semantics.
+That architecture remains valid evidence, but the pinned Hermes V1 candidate itself is not a v0.1 Sting production contender after its generic ECMAScript preflight failure. C++ must not become the owner of Sting renderer, module, lifecycle, or platform-neutral runtime semantics.
 
 ## Measurement principles
 
@@ -70,7 +72,7 @@ C++ must not become the owner of Sting renderer, module, lifecycle, or platform-
 - Prefer distributions over averages: p50, p95, and p99 for latency metrics where sample counts are sufficient.
 - Store raw samples when practical so statistics can be recalculated.
 - Do not tune the React Native reference implementation to be artificially slow.
-- Do not use pure JavaScript throughput as the engine-selection criterion by itself.
+- Do not use pure JavaScript throughput as the production-engine validation criterion by itself.
 
 ## Frame budgets
 
@@ -92,7 +94,7 @@ Measure separately:
 3. bundle evaluated -> first native view committed,
 4. process launch -> application interactive.
 
-Run for QuickJS, QuickJS-NG, Sting/Hermes, and React Native/Hermes.
+Run for Sting/QuickJS, Sting/QuickJS-NG, and React Native/Hermes. Historical Sting/Hermes results may remain for reference where already available, but new v0.1 production work does not depend on that disqualified candidate.
 
 ### 2. Memory
 
@@ -195,7 +197,7 @@ Use the same JavaScript source where engine differences permit:
 - common immutable and mutable data transforms,
 - Solid reactive computation creation/propagation.
 
-These measurements explain engine behavior; they do not choose the winner by themselves.
+These measurements explain engine behavior; they do not override correctness or application-level evidence.
 
 ## Critical Solid-vs-React benchmark
 
@@ -257,45 +259,52 @@ Every checked-in result must include at least:
 }
 ```
 
-Do not check in simulator/emulator numbers as evidence for the final engine choice. They are useful for regression testing only.
+Do not check in simulator/emulator numbers as physical-device performance evidence. They remain useful for semantic, compatibility, build, and regression testing where appropriate.
 
-## Engine decision gate
+## Production QuickJS validation gate
 
-No production engine ADR can be accepted until:
+ADR 0004 is already accepted. The following evidence validates and characterizes that decision rather than acting as a prerequisite for keeping unrelated architecture work moving:
 
-1. all three Sting engine prototypes can evaluate the same representative bundle/workload contract,
-2. the React Native/Hermes baseline is runnable on the same physical iOS and Android devices,
-3. startup, memory, event round-trip, native-module, sparse/dense reactivity, list, and JS CPU results have been collected,
-4. p50/p95/p99 are available for latency-sensitive workloads,
-5. binary/bundle size and debugging/tooling implications are recorded,
-6. leaks/lifetime issues have been exercised,
-7. the result matrix is reviewed without assuming a predetermined winner.
+1. official QuickJS runs the representative Solid/Sting bundle/workload contract across the production host paths,
+2. QuickJS-NG remains available as an independent secondary lane while it is inexpensive to maintain,
+3. React Native/Hermes remains runnable on the same physical Android device for external comparison,
+4. startup, memory, event round-trip, native-module, sparse/dense reactivity, list, and JS CPU results are collected for the required release lanes,
+5. p50/p95/p99 are available for latency-sensitive workloads where sample counts support them,
+6. binary/bundle size and debugging/tooling implications are recorded,
+7. leaks/lifetime issues are exercised,
+8. the result matrix is reviewed for severe QuickJS correctness or performance blockers.
 
-## Runtime decision matrix
+A severe blocker that materially threatens v0.1 can reopen ADR 0004. Otherwise, optimize and harden the accepted QuickJS path rather than returning to an open-ended engine bake-off.
+
+## Runtime validation matrix
 
 Fill this with measured values and evidence rather than adjectives where possible.
 
-| Criterion | QuickJS | QuickJS-NG | Hermes |
+| Criterion | QuickJS | QuickJS-NG | Historical Sting/Hermes |
 | --- | --- | --- | --- |
-| Zig integration | TBD | TBD | TBD |
+| v0.1 role | production | secondary validation lane | disqualified candidate |
+| ECMAScript preflight | pass | pass | fail: per-iteration lexical closure |
+| Zig integration | direct C API | direct C API | isolated C++/JSI -> C ABI |
 | C++ dependency | no | no | yes, isolated adapter |
-| startup | TBD | TBD | TBD |
-| memory | TBD | TBD | TBD |
-| native binary size | TBD | TBD | TBD |
-| bundle/bytecode size | TBD | TBD | TBD |
-| JS throughput | TBD | TBD | TBD |
-| Solid sparse-update latency | TBD | TBD | TBD |
-| Solid dense-update latency | TBD | TBD | TBD |
-| native-call latency | TBD | TBD | TBD |
-| native-event latency | TBD | TBD | TBD |
-| list frame pacing | TBD | TBD | TBD |
-| debugging / inspector | TBD | TBD | TBD |
-| source maps | TBD | TBD | TBD |
-| iOS support | TBD | TBD | TBD |
-| Android support | TBD | TBD | TBD |
-| maintenance | TBD | TBD | TBD |
+| startup | TBD | TBD | historical/reference only |
+| memory | TBD | TBD | historical/reference only |
+| native binary size | TBD | TBD | historical/reference only |
+| bundle/bytecode size | TBD | TBD | historical/reference only |
+| JS throughput | TBD | TBD | historical/reference only |
+| Solid sparse-update latency | TBD | TBD | historical/reference only |
+| Solid dense-update latency | TBD | TBD | historical/reference only |
+| native-call latency | TBD | TBD | historical/reference only |
+| native-event latency | TBD | TBD | historical/reference only |
+| list frame pacing | TBD | TBD | historical/reference only |
+| debugging / inspector | TBD | TBD | historical/reference only |
+| source maps | TBD | TBD | historical/reference only |
+| iOS support | TBD | TBD | historical/reference only |
+| Android support | TBD | TBD | historical/reference only |
+| maintenance | TBD | TBD | historical/reference only |
 | licensing | MIT | MIT | MIT |
-| ecosystem / production history | TBD | TBD | TBD |
+| ecosystem / production history | TBD | TBD | historical/reference only |
+
+The React Native 0.87 + Hermes baseline is an external comparison and should be reported beside Sting results even though it is not a Sting production-engine candidate.
 
 ## Release rule
 

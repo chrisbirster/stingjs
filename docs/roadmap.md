@@ -14,12 +14,14 @@ Implementation order:
 6. button event round-trip and reactive text update
 7. minimal style/layout subset
 8. Haptics native module
-9. Android JS-engine decision and host
+9. official QuickJS production-engine decision and portable host
 10. Android native primitives and parity proof
 11. `Image`, `TextInput`, and `ScrollView`
 12. cross-platform smoke example and release hardening
 
 `Image`, `TextInput`, and `ScrollView` are v0.1 features, but they are deliberately after the first three-component event proof.
+
+Official QuickJS `2026-06-04` is the accepted v0.1 production JavaScript engine. QuickJS-NG remains a temporary secondary conformance/performance lane; React Native + Hermes remains the external competitor/reference baseline; JavaScriptCore/UIKit remains the independent iOS semantic/native reference lane. Physical Android evidence validates and characterizes the accepted QuickJS direction and can reopen the decision only if it exposes a severe blocker.
 
 ## v0.2 — developer experience
 
