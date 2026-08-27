@@ -15,11 +15,15 @@ The surviving Sting candidates are therefore:
 - official QuickJS `2026-06-04`,
 - QuickJS-NG `v0.16.1`.
 
+For v0.1, physical benchmark hardware is available for Android but not for iOS. The decision must therefore distinguish physical performance evidence from iOS simulator compatibility evidence instead of pretending simulator timings represent an iPhone.
+
 ## Decision gate
 
-This ADR must not be changed to `Status: accepted` until checked-in schema-v1 evidence includes release physical-device coverage for both surviving candidates and the React Native/Hermes baseline on iOS and Android.
+This ADR must not be changed to `Status: accepted` until checked-in schema-v1 evidence includes release physical-device Android coverage for both surviving Sting candidates and the React Native/Hermes baseline on the same Android device.
 
-At minimum the decision review must cover:
+The selected runtime must also remain green through the iOS simulator/UIKit software matrix. iOS simulator timing may be retained as diagnostic data, but it must not be promoted into `benchmarks/results/raw/`, used to rank mobile hardware performance, or described as physical iPhone evidence.
+
+At minimum the decision review must cover on physical Android hardware:
 
 - cold/warm startup,
 - resident memory and leak-sensitive lifecycle loops,
@@ -35,7 +39,9 @@ At minimum the decision review must cover:
 - debugging/tooling,
 - build and maintenance burden.
 
-Raw results live under `benchmarks/results/raw/` and are validated by `npm run benchmark:results -- validate ...`. The v0.1 release gate independently requires physical-device provenance and cross-platform coverage.
+Cross-platform correctness additionally requires the selected runtime path and public native primitives to remain compatible with the iOS simulator/UIKit host before v0.1 release.
+
+Raw physical results live under `benchmarks/results/raw/` and are validated by `npm run benchmark:results -- validate ...`. Physical iPhone performance validation is deferred until suitable hardware is available and must be added as follow-up evidence rather than retroactively representing simulator numbers as device measurements.
 
 ## Current decision
 
@@ -43,7 +49,7 @@ No production engine is selected yet. Do not infer a winner from CI smoke timing
 
 ## Acceptance edit
 
-When the matrix is complete, replace the header with:
+When the Android physical matrix is complete, replace the header with:
 
 ```text
 - Status: accepted
@@ -51,4 +57,4 @@ When the matrix is complete, replace the header with:
 - Engine: quickjs | quickjs-ng
 ```
 
-and append the measured decision matrix plus rationale below this section. The accepted decision must link the exact raw evidence files used.
+and append the measured decision matrix plus rationale below this section. The accepted decision must link the exact Android physical evidence files used and explicitly note that physical iPhone performance validation remains deferred.
