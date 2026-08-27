@@ -191,11 +191,12 @@ class StingNativeBridge(
     }
 
     private fun emitModuleEvent(key: StingModuleEventKey, payload: Any?) {
-        val payloadJSON = JSONObject.valueToString(wrapJSON(payload))
-        synchronized(moduleEventLock) {
+        val payloadJSON = encodeJSONValue(payload)
+        val sink = synchronized(moduleEventLock) {
             if (!activeModuleEvents.contains(key)) return
-            moduleEventSink?.invoke(key.module, key.event, payloadJSON)
+            moduleEventSink
         }
+        sink?.invoke(key.module, key.event, payloadJSON)
     }
 
     private fun decodeArguments(argsJSON: String): List<Any?> {
@@ -220,6 +221,14 @@ class StingNativeBridge(
         }
 
         return JSONObject().put("ok", false).put("error", nativeError).toString()
+    }
+
+    private fun encodeJSONValue(value: Any?): String {
+        // Android's org.json implementation does not expose JSONObject.valueToString.
+        // A single-element JSONArray gives us the same standards-compliant JSON
+        // fragment encoding for null, strings, numbers, booleans, objects, and arrays.
+        val encoded = JSONArray().put(wrapJSON(value)).toString()
+        return encoded.substring(1, encoded.length - 1)
     }
 
     private fun perform(operation: () -> Unit) {
