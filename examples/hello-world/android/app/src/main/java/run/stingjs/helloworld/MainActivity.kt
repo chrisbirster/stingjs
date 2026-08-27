@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import run.stingjs.modules.clipboard.ClipboardModule
 import run.stingjs.modules.haptics.HapticsModule
 import run.stingjs.runtime.StingModuleRegistry
 import run.stingjs.runtime.StingMutationCounts
@@ -31,7 +32,12 @@ class MainActivity : Activity() {
         nodes = StingNodeRegistry(root)
         bridge = StingNativeBridge(
             nodes = nodes,
-            modules = StingModuleRegistry(listOf(HapticsModule(this))),
+            modules = StingModuleRegistry(
+                listOf(
+                    HapticsModule(this),
+                    ClipboardModule(this),
+                ),
+            ),
         )
 
         val bundleSource = assets.open("sting-app.js").bufferedReader().use { it.readText() }

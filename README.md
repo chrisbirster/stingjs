@@ -34,23 +34,24 @@ The v0.1 software foundation now includes:
 - `View`, `Text`, `Button`, `Image`, controlled `TextInput`, and `ScrollView`,
 - a small shared style/layout contract,
 - native button -> Solid signal -> native text mutation,
-- the Haptics native module,
+- the Sting Modules SDK foundation with Haptics and Clipboard reference modules,
 - broad Solid 2 conformance and realistic composed-app coverage,
 - official QuickJS, QuickJS-NG, and isolated Hermes evaluation hosts,
 - a bare React Native 0.87 + Hermes reference baseline,
 - native performance instrumentation and physical-device evidence tooling,
 - iOS and Android CI build/instrumentation gates.
 
-The production JavaScript engine is intentionally **not selected by convenience**. The pinned Hermes V1 Sting candidate was semantically disqualified by the conformance preflight; official QuickJS and QuickJS-NG remain under comparison. The final v0.1 release is blocked until ADR 0004 is accepted from checked-in release-build physical-device evidence on iOS and Android.
+The production JavaScript engine is intentionally **not selected by convenience**. The pinned Hermes V1 Sting candidate was semantically disqualified by the conformance preflight; official QuickJS and QuickJS-NG remain under comparison. The final v0.1 production-engine ranking uses checked-in Release evidence from the same physical Android device, with iOS Simulator/UIKit remaining a release-blocking compatibility/semantic gate until physical iPhone hardware is available.
 
-See [`docs/primitives.md`](docs/primitives.md), [`docs/getting-started-ios.md`](docs/getting-started-ios.md), [`docs/getting-started-android.md`](docs/getting-started-android.md), [`docs/performance.md`](docs/performance.md), and [`docs/decisions/0004-production-javascript-engine.md`](docs/decisions/0004-production-javascript-engine.md).
+See [`docs/primitives.md`](docs/primitives.md), [`docs/modules.md`](docs/modules.md), [`docs/getting-started-ios.md`](docs/getting-started-ios.md), [`docs/getting-started-android.md`](docs/getting-started-android.md), [`docs/performance.md`](docs/performance.md), and [`docs/decisions/0004-production-javascript-engine.md`](docs/decisions/0004-production-javascript-engine.md).
 
 ## Packages
 
 - `@stingjs/core` — renderer/runtime contracts that do not depend on Solid.
 - `@stingjs/solid` — the only layer coupled to Solid's universal renderer API.
 - `@stingjs/native` — native UI primitives.
-- `@stingjs/*` modules — platform capabilities such as haptics.
+- `@stingjs/modules-core` — shared JavaScript authoring boundary for native modules.
+- `@stingjs/haptics`, `@stingjs/clipboard`, and future `@stingjs/*` modules — platform capabilities.
 - future `@stingjs/cli` — local developer tooling after the v0.1 runtime milestone.
 
 ## Example

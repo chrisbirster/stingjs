@@ -1,5 +1,5 @@
 {
-  "name": "@stingjs/haptics",
+  "name": "@stingjs/modules-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,9 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@stingjs/modules-core": "0.1.0"
+    "@stingjs/core": "0.1.0"
   }
 }

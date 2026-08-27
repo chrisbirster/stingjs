@@ -77,6 +77,7 @@ const SmokeError = error{
 
 const SmokeState = struct {
     button_id: i32 = -1,
+    add_text_id: i32 = -1,
     count_text_id: i32 = -1,
     benchmark_target_text_id: i32 = -1,
     saw_initial_count: bool = false,
@@ -142,22 +143,40 @@ fn jsHostCall(
 
     if (c.strcmp(operation, "createElement") == 0) {
         smoke_state.unrelated_mutation_count += 1;
+        return c.JS_NewInt32(ctx, 0);
+    }
+
+    if (c.strcmp(operation, "createTextNode") == 0) {
+        smoke_state.unrelated_mutation_count += 1;
         if (argc >= 3) {
             const id = readInt32(ctx, argv[1]);
-            const element_type = c.JS_ToCString(ctx, argv[2]);
-            if (element_type != null) {
-                defer c.JS_FreeCString(ctx, element_type);
-                if (id != null and c.strcmp(element_type, "button") == 0) {
-                    smoke_state.button_id = id.?;
+            const value = c.JS_ToCString(ctx, argv[2]);
+            if (value != null) {
+                defer c.JS_FreeCString(ctx, value);
+                if (id != null and c.strcmp(value, "Add") == 0) {
+                    smoke_state.add_text_id = id.?;
                 }
             }
         }
         return c.JS_NewInt32(ctx, 0);
     }
 
-    if (c.strcmp(operation, "createTextNode") == 0 or
-        c.strcmp(operation, "setProperty") == 0 or
-        c.strcmp(operation, "insertNode") == 0 or
+    if (c.strcmp(operation, "insertNode") == 0) {
+        smoke_state.unrelated_mutation_count += 1;
+        if (argc >= 3) {
+            const parent_id = readInt32(ctx, argv[1]);
+            const node_id = readInt32(ctx, argv[2]);
+            if (parent_id != null and
+                node_id != null and
+                node_id.? == smoke_state.add_text_id)
+            {
+                smoke_state.button_id = parent_id.?;
+            }
+        }
+        return c.JS_NewInt32(ctx, 0);
+    }
+
+    if (c.strcmp(operation, "setProperty") == 0 or
         c.strcmp(operation, "removeNode") == 0 or
         c.strcmp(operation, "setEventEnabled") == 0)
     {
@@ -310,7 +329,7 @@ pub fn main() !void {
     try runPendingJobs(runtime, ctx);
 
     if (smoke_state.button_id < 0) {
-        std.debug.print("QuickJS Sting smoke failed: native Button was not created\n", .{});
+        std.debug.print("QuickJS Sting smoke failed: native Add Button was not identified\n", .{});
         return SmokeError.InitialMountFailed;
     }
     if (!smoke_state.saw_initial_count or smoke_state.count_text_id < 0) {

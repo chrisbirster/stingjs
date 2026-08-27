@@ -27,8 +27,8 @@ final class StingRuntimeIntegrationTests: XCTestCase {
             XCTFail("Solid/Sting should mount a native UILabel")
             return
         }
-        guard let button = firstSubview(of: StingButton.self, in: rootView) else {
-            XCTFail("Solid/Sting should mount a native StingButton")
+        guard let button = firstButton(titled: "Add", in: rootView) else {
+            XCTFail("Solid/Sting should mount the native Add button")
             return
         }
 

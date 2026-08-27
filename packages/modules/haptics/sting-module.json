@@ -4,9 +4,12 @@
   "package": "@stingjs/haptics",
   "version": "0.1.0",
   "ios": {
-    "module": "HapticsModule"
+    "module": "HapticsModule",
+    "permissions": []
   },
   "android": {
-    "module": "com.stingjs.haptics.HapticsModule"
-  }
+    "module": "run.stingjs.modules.haptics.HapticsModule",
+    "permissions": ["android.permission.VIBRATE"]
+  },
+  "capabilities": ["sync-functions"]
 }

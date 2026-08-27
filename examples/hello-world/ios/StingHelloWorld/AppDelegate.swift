@@ -1,3 +1,4 @@
+import StingClipboard
 import StingHaptics
 import StingRuntime
 import UIKit
@@ -10,7 +11,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        let host = StingHostViewController(nativeModules: [HapticsModule()])
+        let host = StingHostViewController(
+            nativeModules: [
+                HapticsModule(),
+                ClipboardModule(),
+            ]
+        )
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = host
         window.makeKeyAndVisible()
