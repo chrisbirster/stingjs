@@ -310,18 +310,28 @@ describe('StingHost', () => {
     )).toBe(false);
   });
 
-  it('never reuses asynchronous request ids across host instances', () => {
+  it('never reuses asynchronous request ids across host instances', async () => {
     const firstBridge = makeBridge();
     const firstHost = new StingHost(firstBridge);
-    void firstHost.callModuleAsync('AsyncTest', 'first');
+    const firstPending = firstHost.callModuleAsync('AsyncTest', 'first');
     const firstId = vi.mocked(firstBridge.callModuleAsync).mock.calls.at(-1)?.[3];
 
     const secondBridge = makeBridge();
     const secondHost = new StingHost(secondBridge);
-    void secondHost.callModuleAsync('AsyncTest', 'second');
+    const secondPending = secondHost.callModuleAsync('AsyncTest', 'second');
     const secondId = vi.mocked(secondBridge.callModuleAsync).mock.calls.at(-1)?.[3];
 
     expect(secondId).toBeGreaterThan(firstId!);
+    expect(firstHost.completeModuleAsync(
+      firstId!,
+      JSON.stringify({ ok: true, value: null }),
+    )).toBe(true);
+    expect(secondHost.completeModuleAsync(
+      secondId!,
+      JSON.stringify({ ok: true, value: null }),
+    )).toBe(true);
+    await expect(firstPending).resolves.toBeNull();
+    await expect(secondPending).resolves.toBeNull();
 
     firstHost.dispose();
     secondHost.dispose();
