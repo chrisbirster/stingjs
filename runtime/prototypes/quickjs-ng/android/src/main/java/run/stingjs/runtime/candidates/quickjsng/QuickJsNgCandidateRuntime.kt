@@ -5,7 +5,7 @@ import run.stingjs.runtime.StingRuntimeException
 
 /** Android bring-up wrapper for the pinned QuickJS-NG candidate. */
 class QuickJsNgCandidateRuntime(
-    bridge: StingNativeBridge,
+    private val bridge: StingNativeBridge,
 ) : AutoCloseable {
     private var handle: Long = nativeCreate(bridge).also {
         if (it == 0L) {
@@ -31,7 +31,11 @@ class QuickJsNgCandidateRuntime(
         val current = handle
         if (current == 0L) return
         handle = 0L
-        nativeDestroy(current)
+        try {
+            nativeDestroy(current)
+        } finally {
+            bridge.disposeNativeObjects()
+        }
     }
 
     private external fun nativeCreate(bridge: StingNativeBridge): Long
