@@ -5,9 +5,10 @@ import type { NativeCallResponse, NativeValue, StingRuntimeInfo } from './types.
  * Complex values are encoded as JSON so JavaScriptCore, Hermes, QuickJS, and
  * test bridges can implement the same contract without leaking engine types.
  *
- * Async module calls are an additive protocol-v1 capability. Sync-only hosts
- * remain valid StingNativeBridge implementations; callAsync() checks for this
- * optional entrypoint and fails clearly instead of falling back to callSync().
+ * Async module calls and module events are additive protocol-v1 capabilities.
+ * Older sync-only hosts remain valid StingNativeBridge implementations; the
+ * higher-level host checks optional entrypoints and fails clearly instead of
+ * emulating async/event behavior through synchronous calls.
  */
 export interface StingNativeBridge {
   getRuntimeInfo(): string;
@@ -20,6 +21,7 @@ export interface StingNativeBridge {
   setEventEnabled(id: number, event: string, enabled: boolean): void;
   callModuleSync(module: string, method: string, argsJSON: string): string;
   callModuleAsync?(module: string, method: string, argsJSON: string, requestId: number): void;
+  setModuleEventEnabled?(module: string, event: string, enabled: boolean): string;
 }
 
 export function encodeNativeValue(value: unknown): string {
