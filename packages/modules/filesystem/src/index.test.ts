@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({
-  nativeFilesystem: {
+const mocks = vi.hoisted(() => {
+  const nativeFilesystem = {
     isAvailable: vi.fn(),
     callAsync: vi.fn(),
-  },
-  createNativeModule: vi.fn(),
-}));
+  };
 
-mocks.createNativeModule.mockReturnValue(mocks.nativeFilesystem);
+  return {
+    nativeFilesystem,
+    createNativeModule: vi.fn(() => nativeFilesystem),
+  };
+});
 
 vi.mock('@stingjs/modules-core', () => ({
   createNativeModule: mocks.createNativeModule,
