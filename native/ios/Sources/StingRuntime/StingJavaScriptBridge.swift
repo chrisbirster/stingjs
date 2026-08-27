@@ -12,6 +12,12 @@ import JavaScriptCore
     func setEventEnabled(_ id: Int, _ event: String, _ enabled: Bool)
     func callModuleSync(_ module: String, _ method: String, _ argsJSON: String) -> String
     func callModuleAsync(_ module: String, _ method: String, _ argsJSON: String, _ requestId: Int)
+    func setModuleEventEnabled(_ module: String, _ event: String, _ enabled: Bool) -> String
+}
+
+private struct StingModuleEventKey: Hashable {
+    let module: String
+    let event: String
 }
 
 struct StingBridgeMutationCounts: Equatable {
@@ -31,8 +37,11 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
     private let reportError: (Error) -> Void
     private let asyncLock = NSLock()
     private var activeAsyncRequestIds: Set<Int> = []
+    private let moduleEventLock = NSLock()
+    private var activeModuleEvents: Set<StingModuleEventKey> = []
 
     var asyncResultSink: ((Int, String) -> Void)?
+    var moduleEventSink: ((String, String, String) -> Void)?
     private(set) var mutationCounts = StingBridgeMutationCounts()
 
     init(
@@ -151,11 +160,74 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
         }
     }
 
+    func setModuleEventEnabled(_ module: String, _ event: String, _ enabled: Bool) -> String {
+        let key = StingModuleEventKey(module: module, event: event)
+
+        do {
+            if enabled {
+                moduleEventLock.lock()
+                let inserted = activeModuleEvents.insert(key).inserted
+                moduleEventLock.unlock()
+
+                if inserted {
+                    do {
+                        try modules.setEventEnabled(
+                            module: module,
+                            event: event,
+                            enabled: true
+                        ) { [weak self] payload in
+                            self?.emitModuleEvent(key: key, payload: payload)
+                        }
+                    } catch {
+                        moduleEventLock.lock()
+                        activeModuleEvents.remove(key)
+                        moduleEventLock.unlock()
+                        throw error
+                    }
+                }
+            } else {
+                moduleEventLock.lock()
+                let removed = activeModuleEvents.remove(key) != nil
+                moduleEventLock.unlock()
+
+                if removed {
+                    try modules.setEventEnabled(
+                        module: module,
+                        event: event,
+                        enabled: false,
+                        emit: { _ in }
+                    )
+                }
+            }
+
+            return encodeJSON(["ok": true, "value": NSNull()])
+        } catch {
+            return encodeErrorResponse(error, module: module, method: "addListener:\(event)")
+        }
+    }
+
     func detachAsyncResultSink() {
         asyncResultSink = nil
         asyncLock.lock()
         activeAsyncRequestIds.removeAll(keepingCapacity: false)
         asyncLock.unlock()
+    }
+
+    func detachModuleEventSink() {
+        moduleEventLock.lock()
+        let observations = Array(activeModuleEvents)
+        activeModuleEvents.removeAll(keepingCapacity: false)
+        moduleEventSink = nil
+        moduleEventLock.unlock()
+
+        for key in observations {
+            try? modules.setEventEnabled(
+                module: key.module,
+                event: key.event,
+                enabled: false,
+                emit: { _ in }
+            )
+        }
     }
 
     private func callModuleSyncUnmeasured(
@@ -198,6 +270,27 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
                     durationNanoseconds: performanceDiagnostics.elapsedNanoseconds(since: completionStart)
                 )
             }
+        }
+
+        if Thread.isMainThread {
+            deliver()
+        } else {
+            DispatchQueue.main.async(execute: deliver)
+        }
+    }
+
+    private func emitModuleEvent(key: StingModuleEventKey, payload: Any?) {
+        let payloadJSON = encodeJSONValue(payload)
+        let deliver = { [weak self] in
+            guard let self else { return }
+
+            self.moduleEventLock.lock()
+            let active = self.activeModuleEvents.contains(key)
+            let sink = self.moduleEventSink
+            self.moduleEventLock.unlock()
+
+            guard active else { return }
+            sink?(key.module, key.event, payloadJSON)
         }
 
         if Thread.isMainThread {
@@ -264,6 +357,16 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
               let data = try? JSONSerialization.data(withJSONObject: object),
               let string = String(data: data, encoding: .utf8) else {
             return "{}"
+        }
+        return string
+    }
+
+    private func encodeJSONValue(_ value: Any?) -> String {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: value ?? NSNull(),
+            options: [.fragmentsAllowed]
+        ), let string = String(data: data, encoding: .utf8) else {
+            return "null"
         }
         return string
     }
