@@ -8,6 +8,12 @@ class StingNativeBridge(
     private val modules: StingModuleRegistry = StingModuleRegistry(),
     private val reportError: (Throwable) -> Unit = { throw it },
 ) {
+    private val asyncLock = Any()
+    private val activeAsyncRequestIds = mutableSetOf<Int>()
+
+    @Volatile
+    var asyncResultSink: ((Int, String) -> Unit)? = null
+
     var mutationCounts = StingMutationCounts()
         private set
 
@@ -58,38 +64,90 @@ class StingNativeBridge(
 
     fun callModuleSync(module: String, method: String, argsJSON: String): String {
         return try {
-            val args = JSONArray(argsJSON)
-            val arguments = buildList {
-                for (index in 0 until args.length()) {
-                    val value = args.get(index)
-                    add(if (value == JSONObject.NULL) null else value)
-                }
-            }
             JSONObject()
                 .put("ok", true)
-                .put("value", wrapJSON(modules.callSync(module, method, arguments)))
+                .put("value", wrapJSON(modules.callSync(module, method, decodeArguments(argsJSON))))
                 .toString()
-        } catch (error: StingNativeModuleError) {
-            val nativeError = JSONObject()
-                .put("code", error.code)
-                .put("message", error.message)
-                .put("module", module)
-                .put("method", method)
-            error.details?.let { nativeError.put("details", wrapJSON(it)) }
-            JSONObject().put("ok", false).put("error", nativeError).toString()
         } catch (error: Throwable) {
-            JSONObject()
-                .put("ok", false)
-                .put(
-                    "error",
-                    JSONObject()
-                        .put("code", "E_NATIVE_CALL")
-                        .put("message", error.message ?: error::class.java.simpleName)
-                        .put("module", module)
-                        .put("method", method),
-                )
-                .toString()
+            encodeErrorResponse(error, module, method)
         }
+    }
+
+    fun callModuleAsync(module: String, method: String, argsJSON: String, requestId: Int) {
+        val inserted = synchronized(asyncLock) { activeAsyncRequestIds.add(requestId) }
+        if (!inserted) {
+            reportError(
+                StingNativeModuleError(
+                    code = "E_DUPLICATE_REQUEST",
+                    message = "Asynchronous native request $requestId is already pending",
+                ),
+            )
+            return
+        }
+
+        try {
+            modules.callAsync(module, method, decodeArguments(argsJSON)) { result ->
+                completeModuleAsync(requestId, module, method, result)
+            }
+        } catch (error: Throwable) {
+            completeModuleAsync(
+                requestId,
+                module,
+                method,
+                StingNativeModuleResult.Failure(error),
+            )
+        }
+    }
+
+    fun detachAsyncResultSink() {
+        asyncResultSink = null
+        synchronized(asyncLock) { activeAsyncRequestIds.clear() }
+    }
+
+    private fun completeModuleAsync(
+        requestId: Int,
+        module: String,
+        method: String,
+        result: StingNativeModuleResult,
+    ) {
+        val claimed = synchronized(asyncLock) { activeAsyncRequestIds.remove(requestId) }
+        if (!claimed) return
+
+        val response = when (result) {
+            is StingNativeModuleResult.Success -> JSONObject()
+                .put("ok", true)
+                .put("value", wrapJSON(result.value))
+                .toString()
+
+            is StingNativeModuleResult.Failure ->
+                encodeErrorResponse(result.error, module, method)
+        }
+
+        asyncResultSink?.invoke(requestId, response)
+    }
+
+    private fun decodeArguments(argsJSON: String): List<Any?> {
+        val args = JSONArray(argsJSON)
+        return buildList {
+            for (index in 0 until args.length()) {
+                val value = args.get(index)
+                add(if (value == JSONObject.NULL) null else value)
+            }
+        }
+    }
+
+    private fun encodeErrorResponse(error: Throwable, module: String, method: String): String {
+        val nativeError = JSONObject()
+            .put("code", if (error is StingNativeModuleError) error.code else "E_NATIVE_CALL")
+            .put("message", error.message ?: error::class.java.simpleName)
+            .put("module", module)
+            .put("method", method)
+
+        if (error is StingNativeModuleError) {
+            error.details?.let { nativeError.put("details", wrapJSON(it)) }
+        }
+
+        return JSONObject().put("ok", false).put("error", nativeError).toString()
     }
 
     private fun perform(operation: () -> Unit) {

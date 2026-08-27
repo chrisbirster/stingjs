@@ -11,6 +11,7 @@ import JavaScriptCore
     func removeNode(_ parentId: Int, _ nodeId: Int)
     func setEventEnabled(_ id: Int, _ event: String, _ enabled: Bool)
     func callModuleSync(_ module: String, _ method: String, _ argsJSON: String) -> String
+    func callModuleAsync(_ module: String, _ method: String, _ argsJSON: String, _ requestId: Int)
 }
 
 struct StingBridgeMutationCounts: Equatable {
@@ -28,6 +29,10 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
     private let modules: StingModuleRegistry
     private let performanceDiagnostics: StingPerformanceDiagnostics?
     private let reportError: (Error) -> Void
+    private let asyncLock = NSLock()
+    private var activeAsyncRequestIds: Set<Int> = []
+
+    var asyncResultSink: ((Int, String) -> Void)?
     private(set) var mutationCounts = StingBridgeMutationCounts()
 
     init(
@@ -106,17 +111,121 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
         return callModuleSyncUnmeasured(module, method, argsJSON)
     }
 
+    func callModuleAsync(_ module: String, _ method: String, _ argsJSON: String, _ requestId: Int) {
+        guard registerAsyncRequest(requestId) else {
+            reportError(StingNativeModuleError(
+                code: "E_DUPLICATE_REQUEST",
+                message: "Asynchronous native request \(requestId) is already pending"
+            ))
+            return
+        }
+
+        let completionStart = performanceDiagnostics?.timestampNanoseconds()
+        let dispatch = {
+            do {
+                let arguments = try self.decodeArguments(argsJSON)
+                self.modules.callAsync(module: module, method: method, arguments: arguments) { [weak self] result in
+                    self?.completeModuleAsync(
+                        requestId: requestId,
+                        module: module,
+                        method: method,
+                        result: result,
+                        completionStart: completionStart
+                    )
+                }
+            } catch {
+                self.completeModuleAsync(
+                    requestId: requestId,
+                    module: module,
+                    method: method,
+                    result: .failure(error),
+                    completionStart: completionStart
+                )
+            }
+        }
+
+        if let performanceDiagnostics {
+            performanceDiagnostics.measure("bridge.call-module-async-dispatch", operation: dispatch)
+        } else {
+            dispatch()
+        }
+    }
+
+    func detachAsyncResultSink() {
+        asyncResultSink = nil
+        asyncLock.lock()
+        activeAsyncRequestIds.removeAll(keepingCapacity: false)
+        asyncLock.unlock()
+    }
+
     private func callModuleSyncUnmeasured(
         _ module: String,
         _ method: String,
         _ argsJSON: String
     ) -> String {
         do {
-            let data = Data(argsJSON.utf8)
-            let arguments = try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+            let arguments = try decodeArguments(argsJSON)
             let value = try modules.callSync(module: module, method: method, arguments: arguments)
             return encodeJSON(["ok": true, "value": value ?? NSNull()])
-        } catch let error as StingNativeModuleError {
+        } catch {
+            return encodeErrorResponse(error, module: module, method: method)
+        }
+    }
+
+    private func completeModuleAsync(
+        requestId: Int,
+        module: String,
+        method: String,
+        result: Result<Any?, Error>,
+        completionStart: UInt64?
+    ) {
+        guard claimAsyncRequest(requestId) else { return }
+
+        let response: String
+        switch result {
+        case .success(let value):
+            response = encodeJSON(["ok": true, "value": value ?? NSNull()])
+        case .failure(let error):
+            response = encodeErrorResponse(error, module: module, method: method)
+        }
+
+        let deliver = { [weak self] in
+            guard let self else { return }
+            self.asyncResultSink?(requestId, response)
+            if let completionStart, let performanceDiagnostics = self.performanceDiagnostics {
+                performanceDiagnostics.record(
+                    "bridge.call-module-async-completion",
+                    durationNanoseconds: performanceDiagnostics.elapsedNanoseconds(since: completionStart)
+                )
+            }
+        }
+
+        if Thread.isMainThread {
+            deliver()
+        } else {
+            DispatchQueue.main.async(execute: deliver)
+        }
+    }
+
+    private func registerAsyncRequest(_ requestId: Int) -> Bool {
+        asyncLock.lock()
+        defer { asyncLock.unlock() }
+        return activeAsyncRequestIds.insert(requestId).inserted
+    }
+
+    private func claimAsyncRequest(_ requestId: Int) -> Bool {
+        asyncLock.lock()
+        defer { asyncLock.unlock() }
+        return activeAsyncRequestIds.remove(requestId) != nil
+    }
+
+    private func decodeArguments(_ argsJSON: String) throws -> [Any] {
+        let data = Data(argsJSON.utf8)
+        return try JSONSerialization.jsonObject(with: data) as? [Any] ?? []
+    }
+
+    private func encodeErrorResponse(_ error: Error, module: String, method: String) -> String {
+        if let error = error as? StingNativeModuleError {
             var nativeError: [String: Any] = [
                 "code": error.code,
                 "message": error.message,
@@ -125,17 +234,17 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
             ]
             if let details = error.details { nativeError["details"] = details }
             return encodeJSON(["ok": false, "error": nativeError])
-        } catch {
-            return encodeJSON([
-                "ok": false,
-                "error": [
-                    "code": "E_NATIVE_CALL",
-                    "message": error.localizedDescription,
-                    "module": module,
-                    "method": method
-                ]
-            ])
         }
+
+        return encodeJSON([
+            "ok": false,
+            "error": [
+                "code": "E_NATIVE_CALL",
+                "message": error.localizedDescription,
+                "module": module,
+                "method": method
+            ]
+        ])
     }
 
     private func perform(metric: String, _ operation: () throws -> Void) {

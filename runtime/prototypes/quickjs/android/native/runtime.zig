@@ -26,7 +26,8 @@ const bridge_bootstrap =
     \\  insertNode(parentId, nodeId, anchorId) { globalThis.__stingHostCall("insertNode", parentId, nodeId, anchorId); },
     \\  removeNode(parentId, nodeId) { globalThis.__stingHostCall("removeNode", parentId, nodeId); },
     \\  setEventEnabled(id, event, enabled) { globalThis.__stingHostCall("setEventEnabled", id, event, enabled); },
-    \\  callModuleSync(module, method, argsJSON) { return globalThis.__stingHostCall("callModuleSync", module, method, argsJSON); }
+    \\  callModuleSync(module, method, argsJSON) { return globalThis.__stingHostCall("callModuleSync", module, method, argsJSON); },
+    \\  callModuleAsync(module, method, argsJSON, requestId) { globalThis.__stingHostCall("callModuleAsync", module, method, argsJSON, requestId); }
     \\};
 ;
 
@@ -184,6 +185,26 @@ fn jsHostCall(
         return c.JS_NewString(ctx, response);
     }
 
+    if (strcmp(operation, "callModuleAsync") == 0) {
+        if (argc < 5) return fail(ctx, "callModuleAsync requires module, method, args, and request id");
+        const module_name = c.JS_ToCString(ctx, argv[1]);
+        if (module_name == null) return fail(ctx, "callModuleAsync module is invalid");
+        defer c.JS_FreeCString(ctx, module_name);
+        const method_name = c.JS_ToCString(ctx, argv[2]);
+        if (method_name == null) return fail(ctx, "callModuleAsync method is invalid");
+        defer c.JS_FreeCString(ctx, method_name);
+        const args_json = c.JS_ToCString(ctx, argv[3]);
+        if (args_json == null) return fail(ctx, "callModuleAsync args are invalid");
+        defer c.JS_FreeCString(ctx, args_json);
+        const request_id = readInt32(ctx, argv[4]) orelse return fail(ctx, "callModuleAsync request id is invalid");
+
+        const callback = state.host.call_module_async orelse return bridgeCallFailed(ctx);
+        if (callback(state.host.context, module_name, method_name, args_json, request_id) == 0) {
+            return bridgeCallFailed(ctx);
+        }
+        return c.JS_NewInt32(ctx, 0);
+    }
+
     return fail(ctx, "Unknown Sting host operation");
 }
 
@@ -233,7 +254,7 @@ fn installHostCall(ctx: *c.JSContext) void {
         ctx,
         jsHostCall,
         "__stingHostCall",
-        4,
+        5,
         c.JS_CFUNC_generic,
         0,
     );
@@ -264,7 +285,7 @@ export fn sting_qjs_android_create(
     };
 
     c.JS_SetContextOpaque(ctx, state);
-    c.JS_SetRuntimeInfo(runtime, "stingjs-official-quickjs-android-candidate");
+    c.JS_SetRuntimeInfo(runtime, "stingjs-official-quickjs-android");
     installHostCall(ctx);
 
     const bootstrap_error = evaluateSource(
@@ -329,6 +350,59 @@ export fn sting_qjs_android_dispatch_event(
         @intCast(args.len),
         &args[0],
     );
+    defer c.JS_FreeValue(state.context, result);
+    if (c.JS_IsException(result) != 0) return copyException(state.context);
+    return drainPendingJobs(state);
+}
+
+export fn sting_qjs_android_complete_module_call(
+    handle: ?*anyopaque,
+    request_id: c_int,
+    response_json: [*c]const u8,
+) [*c]u8 {
+    const state = stateFromHandle(handle) orelse return strdup("QuickJS runtime handle is null");
+    if (response_json == null) return strdup("Sting async module response is null");
+
+    const global = c.JS_GetGlobalObject(state.context);
+    defer c.JS_FreeValue(state.context, global);
+    const resolve = c.JS_GetPropertyStr(state.context, global, "__stingResolveModuleCall");
+    defer c.JS_FreeValue(state.context, resolve);
+
+    if (c.JS_IsFunction(state.context, resolve) == 0) {
+        return strdup("__stingResolveModuleCall is not installed");
+    }
+
+    var args = [_]c.JSValue{
+        c.JS_NewInt32(state.context, request_id),
+        c.JS_NewString(state.context, response_json),
+    };
+    defer {
+        for (&args) |*arg| c.JS_FreeValue(state.context, arg.*);
+    }
+
+    const result = c.JS_Call(
+        state.context,
+        resolve,
+        global,
+        @intCast(args.len),
+        &args[0],
+    );
+    defer c.JS_FreeValue(state.context, result);
+    if (c.JS_IsException(result) != 0) return copyException(state.context);
+    return drainPendingJobs(state);
+}
+
+export fn sting_qjs_android_dispose_runtime(handle: ?*anyopaque) [*c]u8 {
+    const state = stateFromHandle(handle) orelse return strdup("QuickJS runtime handle is null");
+
+    const global = c.JS_GetGlobalObject(state.context);
+    defer c.JS_FreeValue(state.context, global);
+    const dispose = c.JS_GetPropertyStr(state.context, global, "__stingDisposeRuntime");
+    defer c.JS_FreeValue(state.context, dispose);
+
+    if (c.JS_IsFunction(state.context, dispose) == 0) return null;
+
+    const result = c.JS_Call(state.context, dispose, global, 0, null);
     defer c.JS_FreeValue(state.context, result);
     if (c.JS_IsException(result) != 0) return copyException(state.context);
     return drainPendingJobs(state);
