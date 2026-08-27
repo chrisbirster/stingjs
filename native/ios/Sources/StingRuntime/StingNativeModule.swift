@@ -1,6 +1,7 @@
 import Foundation
 
 public typealias StingNativeModuleCompletion = (Result<Any?, Error>) -> Void
+public typealias StingNativeModuleEventEmitter = (Any?) -> Void
 
 public protocol StingNativeModule: AnyObject {
     var name: String { get }
@@ -12,6 +13,11 @@ public protocol StingNativeModule: AnyObject {
         arguments: [Any],
         completion: @escaping StingNativeModuleCompletion
     )
+    func setEventEnabled(
+        event: String,
+        enabled: Bool,
+        emit: @escaping StingNativeModuleEventEmitter
+    ) throws
 }
 
 public extension StingNativeModule {
@@ -24,6 +30,17 @@ public extension StingNativeModule {
             code: "E_METHOD_NOT_FOUND",
             message: "\(name) does not implement asynchronous method \(method)"
         )))
+    }
+
+    func setEventEnabled(
+        event: String,
+        enabled: Bool,
+        emit: @escaping StingNativeModuleEventEmitter
+    ) throws {
+        throw StingNativeModuleError(
+            code: "E_EVENT_NOT_FOUND",
+            message: "\(name) does not implement native event \(event)"
+        )
     }
 }
 

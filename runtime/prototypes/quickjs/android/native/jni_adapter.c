@@ -18,6 +18,7 @@ typedef struct AndroidHostContext {
     jmethodID set_event_enabled;
     jmethodID call_module_sync;
     jmethodID call_module_async;
+    jmethodID set_module_event_enabled;
     void *runtime;
 } AndroidHostContext;
 
@@ -206,6 +207,38 @@ static int host_call_module_async(
     return consume_java_exception(context) ? 0 : 1;
 }
 
+static char *host_set_module_event_enabled(
+    void *opaque,
+    const char *module,
+    const char *event,
+    int enabled
+) {
+    AndroidHostContext *context = (AndroidHostContext *)opaque;
+    jstring java_module = (*context->env)->NewStringUTF(context->env, module);
+    jstring java_event = (*context->env)->NewStringUTF(context->env, event);
+    if (java_module == NULL || java_event == NULL) {
+        if (java_module != NULL) (*context->env)->DeleteLocalRef(context->env, java_module);
+        if (java_event != NULL) (*context->env)->DeleteLocalRef(context->env, java_event);
+        return NULL;
+    }
+
+    jstring result = (jstring)(*context->env)->CallObjectMethod(
+        context->env,
+        context->bridge,
+        context->set_module_event_enabled,
+        java_module,
+        java_event,
+        enabled ? JNI_TRUE : JNI_FALSE
+    );
+    (*context->env)->DeleteLocalRef(context->env, java_module);
+    (*context->env)->DeleteLocalRef(context->env, java_event);
+    if (consume_java_exception(context)) return NULL;
+
+    char *copy = copy_jstring(context->env, result);
+    if (result != NULL) (*context->env)->DeleteLocalRef(context->env, result);
+    return copy;
+}
+
 static void host_release_string(void *opaque, char *value) {
     (void)opaque;
     free(value);
@@ -243,6 +276,12 @@ static int load_bridge_methods(JNIEnv *env, AndroidHostContext *context) {
         "callModuleAsync",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V"
     );
+    context->set_module_event_enabled = (*env)->GetMethodID(
+        env,
+        bridge_class,
+        "setModuleEventEnabled",
+        "(Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;"
+    );
 
     (*env)->DeleteLocalRef(env, bridge_class);
     if ((*env)->ExceptionCheck(env)) return 0;
@@ -256,7 +295,8 @@ static int load_bridge_methods(JNIEnv *env, AndroidHostContext *context) {
         context->remove_node != NULL &&
         context->set_event_enabled != NULL &&
         context->call_module_sync != NULL &&
-        context->call_module_async != NULL;
+        context->call_module_async != NULL &&
+        context->set_module_event_enabled != NULL;
 }
 
 JNIEXPORT jlong JNICALL
@@ -290,6 +330,7 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
         .set_event_enabled = host_set_event_enabled,
         .call_module_sync = host_call_module_sync,
         .call_module_async = host_call_module_async,
+        .set_module_event_enabled = host_set_module_event_enabled,
         .release_string = host_release_string,
     };
 
@@ -393,6 +434,48 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
         response_utf8
     );
     (*env)->ReleaseStringUTFChars(env, response_json, response_utf8);
+
+    if (error == NULL) return NULL;
+    jstring result = (*env)->NewStringUTF(env, error);
+    sting_qjs_android_free_error(error);
+    return result;
+}
+
+JNIEXPORT jstring JNICALL
+Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nativeDispatchModuleEvent(
+    JNIEnv *env,
+    jobject self,
+    jlong handle,
+    jstring module,
+    jstring event,
+    jstring payload_json
+) {
+    (void)self;
+    AndroidHostContext *context = (AndroidHostContext *)(intptr_t)handle;
+    if (context == NULL || module == NULL || event == NULL || payload_json == NULL) {
+        return (*env)->NewStringUTF(env, "QuickJS runtime or module event payload is null");
+    }
+    context->env = env;
+
+    const char *module_utf8 = (*env)->GetStringUTFChars(env, module, NULL);
+    const char *event_utf8 = (*env)->GetStringUTFChars(env, event, NULL);
+    const char *payload_utf8 = (*env)->GetStringUTFChars(env, payload_json, NULL);
+    if (module_utf8 == NULL || event_utf8 == NULL || payload_utf8 == NULL) {
+        if (module_utf8 != NULL) (*env)->ReleaseStringUTFChars(env, module, module_utf8);
+        if (event_utf8 != NULL) (*env)->ReleaseStringUTFChars(env, event, event_utf8);
+        if (payload_utf8 != NULL) (*env)->ReleaseStringUTFChars(env, payload_json, payload_utf8);
+        return (*env)->NewStringUTF(env, "Unable to read Sting module event payload");
+    }
+
+    char *error = sting_qjs_android_dispatch_module_event(
+        context->runtime,
+        module_utf8,
+        event_utf8,
+        payload_utf8
+    );
+    (*env)->ReleaseStringUTFChars(env, module, module_utf8);
+    (*env)->ReleaseStringUTFChars(env, event, event_utf8);
+    (*env)->ReleaseStringUTFChars(env, payload_json, payload_utf8);
 
     if (error == NULL) return NULL;
     jstring result = (*env)->NewStringUTF(env, error);

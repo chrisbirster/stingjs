@@ -6,6 +6,7 @@ sealed class StingNativeModuleResult {
 }
 
 typealias StingNativeModuleCompletion = (StingNativeModuleResult) -> Unit
+typealias StingNativeModuleEventEmitter = (Any?) -> Unit
 
 interface StingNativeModule {
     val name: String
@@ -25,6 +26,17 @@ interface StingNativeModule {
                     message = "$name does not implement asynchronous method $method",
                 ),
             ),
+        )
+    }
+
+    fun setEventEnabled(
+        event: String,
+        enabled: Boolean,
+        emit: StingNativeModuleEventEmitter,
+    ) {
+        throw StingNativeModuleError(
+            code = "E_EVENT_NOT_FOUND",
+            message = "$name does not implement native event $event",
         )
     }
 }

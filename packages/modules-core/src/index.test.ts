@@ -10,6 +10,7 @@ import { createNativeModule, requireNativeModule } from './index.js';
 class RecordingBridge implements StingNativeBridge {
   calls: Array<{ module: string; method: string; argsJSON: string }> = [];
   asyncCalls: Array<{ module: string; method: string; argsJSON: string; requestId: number }> = [];
+  eventTransitions: Array<{ module: string; event: string; enabled: boolean }> = [];
 
   getRuntimeInfo(): string {
     return JSON.stringify({
@@ -34,6 +35,11 @@ class RecordingBridge implements StingNativeBridge {
 
   callModuleAsync(module: string, method: string, argsJSON: string, requestId: number): void {
     this.asyncCalls.push({ module, method, argsJSON, requestId });
+  }
+
+  setModuleEventEnabled(module: string, event: string, enabled: boolean): string {
+    this.eventTransitions.push({ module, event, enabled });
+    return JSON.stringify({ ok: true, value: null });
   }
 }
 
@@ -77,6 +83,35 @@ describe('native module client', () => {
     )).toBe(true);
 
     await expect(pending).resolves.toEqual({ text: 'native' });
+  });
+
+  it('routes typed native event subscriptions and returns an idempotent removable handle', () => {
+    const bridge = new RecordingBridge();
+    installNativeBridge(bridge);
+
+    const clipboard = createNativeModule('Clipboard');
+    const payloads: Array<{ text: string }> = [];
+    const subscription = clipboard.addListener<{ text: string }>('change', payload => {
+      payloads.push(payload);
+    });
+
+    expect(bridge.eventTransitions).toEqual([
+      { module: 'Clipboard', event: 'change', enabled: true },
+    ]);
+    expect(globalThis.__stingDispatchModuleEvent?.(
+      'Clipboard',
+      'change',
+      JSON.stringify({ text: 'native' }),
+    )).toBe(true);
+    expect(payloads).toEqual([{ text: 'native' }]);
+
+    subscription.remove();
+    subscription.remove();
+
+    expect(bridge.eventTransitions).toEqual([
+      { module: 'Clipboard', event: 'change', enabled: true },
+      { module: 'Clipboard', event: 'change', enabled: false },
+    ]);
   });
 
   it('fails clearly when a required module is absent', () => {

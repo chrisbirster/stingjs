@@ -48,4 +48,17 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
 
         module.callAsync(method, arguments, completion)
     }
+
+    fun setEventEnabled(
+        name: String,
+        event: String,
+        enabled: Boolean,
+        emit: StingNativeModuleEventEmitter,
+    ) {
+        val module = modules[name] ?: throw StingNativeModuleError(
+            code = "E_MODULE_NOT_FOUND",
+            message = "Native module $name is not registered",
+        )
+        module.setEventEnabled(event, enabled, emit)
+    }
 }

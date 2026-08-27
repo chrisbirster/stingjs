@@ -50,4 +50,20 @@ public final class StingModuleRegistry {
 
         module.callAsync(method: method, arguments: arguments, completion: completion)
     }
+
+    public func setEventEnabled(
+        module name: String,
+        event: String,
+        enabled: Bool,
+        emit: @escaping StingNativeModuleEventEmitter
+    ) throws {
+        guard let module = modules[name] else {
+            throw StingNativeModuleError(
+                code: "E_MODULE_NOT_FOUND",
+                message: "Native module \(name) is not registered"
+            )
+        }
+
+        try module.setEventEnabled(event: event, enabled: enabled, emit: emit)
+    }
 }

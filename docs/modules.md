@@ -45,6 +45,25 @@ export const Filesystem = {
 
 `callAsync()` represents real native asynchronous completion. It must not be implemented as `Promise.resolve(callSync(...))`.
 
+Repeated native event streams use `addListener()`:
+
+```ts
+const nativeNetwork = createNativeModule('Network');
+
+const subscription = nativeNetwork.addListener<{ connected: boolean }>(
+  'change',
+  state => {
+    console.log(state.connected);
+  },
+);
+
+subscription.remove();
+```
+
+Each `addListener()` call owns an independent subscription handle, even when the same callback function is registered more than once. The first JavaScript listener for a `(module, event)` pair enables native observation. Additional listeners share that observation. Removing the final listener disables native observation. `remove()` is idempotent.
+
+Listener fanout is snapshot-based: a listener may remove itself or another subscription while handling an event without corrupting the current delivery. After the final listener is removed, later/stale native emissions are ignored.
+
 ## Manifest
 
 Every module must provide `sting-module.json` using schema version 1. The manifest identifies the JavaScript package, native module classes, platform permissions, and the runtime capabilities the module needs.
@@ -67,6 +86,14 @@ Every module must provide `sting-module.json` using schema version 1. The manife
 }
 ```
 
+Modules that emit repeated native events declare the existing schema-v1 `events` capability, optionally alongside other capabilities:
+
+```json
+{
+  "capabilities": ["async-functions", "events"]
+}
+```
+
 Run `npm run modules:validate` to validate all first-party manifests and required package structure.
 
 ## Native contract today
@@ -75,9 +102,10 @@ The v0.1 module transport supports:
 
 - synchronous functions through `StingNativeModule.callSync` and `StingModuleRegistry`;
 - real asynchronous functions through `StingNativeModule.callAsync` and `@stingjs/modules-core` Promises;
+- repeated native event streams through `StingNativeModule.setEventEnabled` and `@stingjs/modules-core` subscriptions;
 - structured success values and `StingNativeError` failures;
-- lifecycle-safe pending Promise settlement;
-- background native completion marshalled back to the owning JavaScript runtime thread before engine re-entry.
+- lifecycle-safe pending Promise settlement and event subscription disposal;
+- background native completion/event callbacks marshalled back to the owning JavaScript runtime thread before engine re-entry.
 
 Haptics, Clipboard, and Device are the reference synchronous modules. Device also proves a structured object can round-trip through the shared module contract while keeping platform-specific environment detection in Swift/Kotlin.
 
@@ -89,7 +117,38 @@ On Android with official QuickJS, async completion follows the runtime-owned pat
 Kotlin worker -> owning Looper -> JNI -> Zig -> QuickJS -> Promise settlement
 ```
 
+Native module events follow the same engine-entry rule:
+
+```text
+Kotlin callback -> owning Looper -> JNI -> Zig -> QuickJS -> JS listeners
+Swift callback  -> main queue    -> JavaScriptCore         -> JS listeners
+```
+
+A native module may invoke its event emitter from a worker, coroutine dispatcher, system callback thread, or the runtime thread. It must not enter QuickJS or JavaScriptCore itself. The Sting runtime owns that marshalling.
+
 JNI is an internal Android runtime boundary, not a module authoring API.
+
+### Native event implementation
+
+Swift modules implement the shared event hook when they expose events:
+
+```swift
+func setEventEnabled(
+    event: String,
+    enabled: Bool,
+    emit: @escaping StingNativeModuleEventEmitter
+) throws {
+    // Start/stop platform observation. Call emit(payload) for each event.
+}
+```
+
+Kotlin uses the equivalent `StingNativeModule.setEventEnabled(event, enabled, emit)` contract.
+
+Unknown events should throw `StingNativeModuleError(code: "E_EVENT_NOT_FOUND", ...)`. The runtime converts enable/disable failures into structured `StingNativeError` data on the JavaScript side. A protocol-v1 host that predates module-event support fails clearly with `E_EVENTS_UNSUPPORTED`; Sting does not emulate events with polling or synchronous calls.
+
+Native observation should be stopped when `enabled` becomes false. Sting also keeps its own active-observation registry so callbacks that arrive after unsubscribe or runtime disposal become no-ops. Runtime disposal clears JavaScript listener state before disabling native observations and detaching event sinks.
+
+Renderer/node events such as button presses remain a separate transport keyed by native node IDs. Module events do not reuse renderer node identity or DOM-style event semantics.
 
 ## Filesystem v0.1
 
@@ -117,7 +176,7 @@ Until autolinking lands, applications explicitly register native modules in thei
 
 1. sync functions — implemented;
 2. async functions / Promises — implemented;
-3. module event streams and subscription disposal;
+3. module event streams and subscription disposal — implemented;
 4. permission declarations and generated platform configuration;
 5. native object handles and deterministic lifetime/disposal;
 6. native module views;
@@ -137,8 +196,11 @@ The first useful platform set is expected to include:
 - `@stingjs/secure-store`;
 - `@stingjs/location`;
 - `@stingjs/image-picker`;
+- `@stingjs/sharing`;
+- `@stingjs/network`;
+- `@stingjs/sensors`;
 - `@stingjs/audio`;
 - `@stingjs/camera`;
 - `@stingjs/notifications`.
 
-Audio and Camera should be built only after modules-core has shared event, permission, native-object, and native-view support; otherwise those packages would force one-off runtime APIs that later have to be replaced.
+Location, Network, Sensors, Notifications, Audio, and Camera can now share the generic event transport. Audio and Camera should still wait for the remaining permission/native-object/native-view capabilities rather than adding private bridge mechanisms.

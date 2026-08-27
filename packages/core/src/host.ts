@@ -17,6 +17,7 @@ export interface HostNode {
 }
 
 type EventHandler = (payload: NativeValue) => void;
+type ModuleEventHandler = (payload: NativeValue) => void;
 
 type PendingModuleCall = {
   readonly module: string;
@@ -62,6 +63,7 @@ export class StingHost {
   private readonly retainedEvents = new WeakMap<HostNode, Map<string, EventHandler>>();
   private readonly deactivatedNodes = new WeakSet<HostNode>();
   private readonly pendingModuleCalls = new Map<number, PendingModuleCall>();
+  private readonly moduleEvents = new Map<string, Map<string, Set<ModuleEventHandler>>>();
   private disposed = false;
 
   constructor(readonly bridge: StingNativeBridge) {}
@@ -231,6 +233,73 @@ export class StingHost {
     return true;
   }
 
+  addModuleEventListener(
+    module: string,
+    event: string,
+    handler: ModuleEventHandler,
+  ): () => void {
+    if (this.disposed) {
+      throw this.runtimeDisposedError(module, `addListener:${event}`);
+    }
+    if (!event) throw new TypeError('Native module event name must not be empty');
+    if (!this.bridge.setModuleEventEnabled) {
+      throw new StingNativeError({
+        code: 'E_EVENTS_UNSUPPORTED',
+        message: 'This Sting native host does not support native-module events.',
+        module,
+        method: `addListener:${event}`,
+      });
+    }
+
+    let eventsForModule = this.moduleEvents.get(module);
+    let listeners = eventsForModule?.get(event);
+
+    if (!listeners) {
+      this.setNativeModuleEventEnabled(module, event, true);
+      if (!eventsForModule) {
+        eventsForModule = new Map<string, Set<ModuleEventHandler>>();
+        this.moduleEvents.set(module, eventsForModule);
+      }
+      listeners = new Set<ModuleEventHandler>();
+      eventsForModule.set(event, listeners);
+    }
+
+    // Wrap each subscription so repeated addListener() calls with the same
+    // callback remain independent removable handles.
+    const subscriptionHandler: ModuleEventHandler = (payload) => handler(payload);
+    listeners.add(subscriptionHandler);
+    let removed = false;
+
+    return () => {
+      if (removed) return;
+      removed = true;
+
+      const currentEvents = this.moduleEvents.get(module);
+      const currentListeners = currentEvents?.get(event);
+      if (!currentListeners) return;
+
+      currentListeners.delete(subscriptionHandler);
+      if (currentListeners.size > 0) return;
+
+      // Remove JS dispatchability before asking native to stop observation so a
+      // re-entrant or racing callback is stale immediately.
+      currentEvents!.delete(event);
+      if (currentEvents!.size === 0) this.moduleEvents.delete(module);
+      this.setNativeModuleEventEnabled(module, event, false);
+    };
+  }
+
+  dispatchModuleEvent(module: string, event: string, payload: NativeValue = null): boolean {
+    if (this.disposed) return false;
+    const listeners = this.moduleEvents.get(module)?.get(event);
+    if (!listeners || listeners.size === 0) return false;
+
+    // Snapshot before dispatch. A listener may unsubscribe itself or another
+    // listener while handling the event; that must not corrupt this delivery.
+    for (const listener of [...listeners]) listener(payload);
+    return true;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -244,13 +313,43 @@ export class StingHost {
       pending.reject(this.runtimeDisposedError(pending.module, pending.method));
     }
 
+    const activeModuleEvents = [...this.moduleEvents.entries()].flatMap(([module, events]) =>
+      [...events.keys()].map((event) => ({ module, event })),
+    );
+    this.moduleEvents.clear();
+
+    for (const { module, event } of activeModuleEvents) {
+      try {
+        this.setNativeModuleEventEnabled(module, event, false);
+      } catch {
+        // Runtime teardown must remain idempotent and continue clearing every
+        // observation even if one native module reports a disable error.
+      }
+    }
+
     this.events.clear();
+  }
+
+  private setNativeModuleEventEnabled(module: string, event: string, enabled: boolean): void {
+    if (!this.bridge.setModuleEventEnabled) {
+      throw new StingNativeError({
+        code: 'E_EVENTS_UNSUPPORTED',
+        message: 'This Sting native host does not support native-module events.',
+        module,
+        method: `addListener:${event}`,
+      });
+    }
+
+    const response = decodeNativeCallResponse(
+      this.bridge.setModuleEventEnabled(module, event, enabled),
+    );
+    if (!response.ok) throw new StingNativeError(response.error);
   }
 
   private runtimeDisposedError(module: string, method: string): StingNativeError {
     return new StingNativeError({
       code: 'E_RUNTIME_DISPOSED',
-      message: 'Sting runtime was disposed before the asynchronous native call completed.',
+      message: 'Sting runtime was disposed before the native operation completed.',
       module,
       method,
     });

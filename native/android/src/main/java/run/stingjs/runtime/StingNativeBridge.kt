@@ -3,6 +3,11 @@ package run.stingjs.runtime
 import org.json.JSONArray
 import org.json.JSONObject
 
+private data class StingModuleEventKey(
+    val module: String,
+    val event: String,
+)
+
 class StingNativeBridge(
     private val nodes: StingNodeRegistry,
     private val modules: StingModuleRegistry = StingModuleRegistry(),
@@ -10,9 +15,14 @@ class StingNativeBridge(
 ) {
     private val asyncLock = Any()
     private val activeAsyncRequestIds = mutableSetOf<Int>()
+    private val moduleEventLock = Any()
+    private val activeModuleEvents = mutableSetOf<StingModuleEventKey>()
 
     @Volatile
     var asyncResultSink: ((Int, String) -> Unit)? = null
+
+    @Volatile
+    var moduleEventSink: ((String, String, String) -> Unit)? = null
 
     var mutationCounts = StingMutationCounts()
         private set
@@ -99,9 +109,63 @@ class StingNativeBridge(
         }
     }
 
+    fun setModuleEventEnabled(module: String, event: String, enabled: Boolean): String {
+        val key = StingModuleEventKey(module, event)
+        return try {
+            if (enabled) {
+                val inserted = synchronized(moduleEventLock) { activeModuleEvents.add(key) }
+                if (inserted) {
+                    try {
+                        modules.setEventEnabled(module, event, true) { payload ->
+                            emitModuleEvent(key, payload)
+                        }
+                    } catch (error: Throwable) {
+                        synchronized(moduleEventLock) { activeModuleEvents.remove(key) }
+                        throw error
+                    }
+                }
+            } else {
+                val removed = synchronized(moduleEventLock) { activeModuleEvents.remove(key) }
+                if (removed) {
+                    modules.setEventEnabled(module, event, false) { _ -> }
+                }
+            }
+
+            JSONObject()
+                .put("ok", true)
+                .put("value", JSONObject.NULL)
+                .toString()
+        } catch (error: Throwable) {
+            encodeErrorResponse(error, module, "addListener:$event")
+        }
+    }
+
+    fun isModuleEventActive(module: String, event: String): Boolean =
+        synchronized(moduleEventLock) {
+            activeModuleEvents.contains(StingModuleEventKey(module, event))
+        }
+
     fun detachAsyncResultSink() {
         asyncResultSink = null
         synchronized(asyncLock) { activeAsyncRequestIds.clear() }
+    }
+
+    fun detachModuleEventSink() {
+        val observations = synchronized(moduleEventLock) {
+            val active = activeModuleEvents.toList()
+            activeModuleEvents.clear()
+            moduleEventSink = null
+            active
+        }
+
+        for (key in observations) {
+            try {
+                modules.setEventEnabled(key.module, key.event, false) { _ -> }
+            } catch (_: Throwable) {
+                // Teardown must continue for every observation. JS/native bridge
+                // state is already detached, so later emissions are stale no-ops.
+            }
+        }
     }
 
     private fun completeModuleAsync(
@@ -126,6 +190,15 @@ class StingNativeBridge(
         asyncResultSink?.invoke(requestId, response)
     }
 
+    private fun emitModuleEvent(key: StingModuleEventKey, payload: Any?) {
+        val payloadJSON = encodeJSONValue(payload)
+        val sink = synchronized(moduleEventLock) {
+            if (!activeModuleEvents.contains(key)) return
+            moduleEventSink
+        }
+        sink?.invoke(key.module, key.event, payloadJSON)
+    }
+
     private fun decodeArguments(argsJSON: String): List<Any?> {
         val args = JSONArray(argsJSON)
         return buildList {
@@ -148,6 +221,14 @@ class StingNativeBridge(
         }
 
         return JSONObject().put("ok", false).put("error", nativeError).toString()
+    }
+
+    private fun encodeJSONValue(value: Any?): String {
+        // Android's org.json implementation does not expose JSONObject.valueToString.
+        // A single-element JSONArray gives us the same standards-compliant JSON
+        // fragment encoding for null, strings, numbers, booleans, objects, and arrays.
+        val encoded = JSONArray().put(wrapJSON(value)).toString()
+        return encoded.substring(1, encoded.length - 1)
     }
 
     private fun perform(operation: () -> Unit) {

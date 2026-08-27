@@ -8,8 +8,14 @@ declare global {
   // Installed by the native runtime before the application bundle evaluates.
   var __stingNativeBridge: StingNativeBridge | undefined;
 
-  // Called by the native runtime when a native event occurs.
+  // Called by the native runtime when a native view event occurs.
   var __stingDispatchEvent: ((nodeId: number, event: string, payloadJSON: string) => void) | undefined;
+
+  // Called by the native runtime when a repeated native-module event occurs.
+  // Returns false when no active listener exists for that module/event pair.
+  var __stingDispatchModuleEvent:
+    | ((module: string, event: string, payloadJSON: string) => boolean)
+    | undefined;
 
   // Called by the native runtime when an asynchronous native-module request
   // completes. Returns false for stale/unknown request IDs.
@@ -36,6 +42,8 @@ export function installNativeBridge(bridge: StingNativeBridge): StingHost {
   const dispatchEvent = (nodeId: number, event: string, payloadJSON: string) => {
     host.dispatchEvent(nodeId, event, decodeNativeValue(payloadJSON));
   };
+  const dispatchModuleEvent = (module: string, event: string, payloadJSON: string) =>
+    host.dispatchModuleEvent(module, event, decodeNativeValue(payloadJSON));
   const resolveModuleCall = (requestId: number, responseJSON: string) =>
     host.completeModuleAsync(requestId, responseJSON);
   const disposeRuntime = () => {
@@ -43,6 +51,9 @@ export function installNativeBridge(bridge: StingNativeBridge): StingHost {
     if (activeHost === host) activeHost = undefined;
     if (globalThis.__stingDispatchEvent === dispatchEvent) {
       globalThis.__stingDispatchEvent = undefined;
+    }
+    if (globalThis.__stingDispatchModuleEvent === dispatchModuleEvent) {
+      globalThis.__stingDispatchModuleEvent = undefined;
     }
     if (globalThis.__stingResolveModuleCall === resolveModuleCall) {
       globalThis.__stingResolveModuleCall = undefined;
@@ -53,6 +64,7 @@ export function installNativeBridge(bridge: StingNativeBridge): StingHost {
   };
 
   globalThis.__stingDispatchEvent = dispatchEvent;
+  globalThis.__stingDispatchModuleEvent = dispatchModuleEvent;
   globalThis.__stingResolveModuleCall = resolveModuleCall;
   globalThis.__stingDisposeRuntime = disposeRuntime;
   return host;
@@ -75,6 +87,7 @@ export function resetNativeBridgeForTests(): void {
   activeHost?.dispose();
   activeHost = undefined;
   globalThis.__stingDispatchEvent = undefined;
+  globalThis.__stingDispatchModuleEvent = undefined;
   globalThis.__stingResolveModuleCall = undefined;
   globalThis.__stingDisposeRuntime = undefined;
 }
