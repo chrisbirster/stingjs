@@ -1,6 +1,5 @@
 package __PACKAGE__
 
-import android.app.Activity
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
@@ -51,19 +50,11 @@ class PhysicalEvidenceInstrumentedTest {
             clickText(scenario, "Mount 10k rows")
             waitForTextPrefix(scenario, "Row 4281:")
 
-            repeat(WARMUP_COUNT) {
-                measureSparse(scenario)
-            }
-            repeat(SAMPLE_COUNT) { index ->
-                sparseSamples[index] = measureSparse(scenario)
-            }
+            repeat(WARMUP_COUNT) { measureSparse(scenario) }
+            repeat(SAMPLE_COUNT) { index -> sparseSamples[index] = measureSparse(scenario) }
 
-            repeat(WARMUP_COUNT) {
-                measureDense(scenario)
-            }
-            repeat(SAMPLE_COUNT) { index ->
-                denseSamples[index] = measureDense(scenario)
-            }
+            repeat(WARMUP_COUNT) { measureDense(scenario) }
+            repeat(SAMPLE_COUNT) { index -> denseSamples[index] = measureDense(scenario) }
         }
 
         val document = JSONObject()
@@ -77,10 +68,7 @@ class PhysicalEvidenceInstrumentedTest {
                     .put(measurement("dense-10k-100-row-update", denseSamples)),
             )
 
-        val outputDirectory = File(
-            targetContext.getExternalFilesDir(null),
-            "sting-benchmarks",
-        )
+        val outputDirectory = File(targetContext.getExternalFilesDir(null), "sting-benchmarks")
         check(outputDirectory.mkdirs() || outputDirectory.isDirectory) {
             "Unable to create ${outputDirectory.absolutePath}"
         }
@@ -104,9 +92,7 @@ class PhysicalEvidenceInstrumentedTest {
             assertNotNull("sparse update control", button)
 
             watcher = afterTextChangedWatcher {
-                if (finished.compareAndSet(0, SystemClock.elapsedRealtimeNanos())) {
-                    latch.countDown()
-                }
+                if (finished.compareAndSet(0, SystemClock.elapsedRealtimeNanos())) latch.countDown()
             }
             target!!.addTextChangedListener(watcher)
             started = SystemClock.elapsedRealtimeNanos()
@@ -114,9 +100,7 @@ class PhysicalEvidenceInstrumentedTest {
         }
 
         assertTrue("sparse native mutation timed out", latch.await(TIMEOUT_SECONDS, TimeUnit.SECONDS))
-        scenario.onActivity {
-            target?.removeTextChangedListener(watcher)
-        }
+        scenario.onActivity { target?.removeTextChangedListener(watcher) }
         return (finished.get() - started) / 1_000_000.0
     }
 
@@ -164,10 +148,7 @@ class PhysicalEvidenceInstrumentedTest {
         waitFor(scenario) { root -> findTextView(root) { it.startsWith(prefix) } != null }
     }
 
-    private fun waitFor(
-        scenario: ActivityScenario<MainActivity>,
-        condition: (View) -> Boolean,
-    ) {
+    private fun waitFor(scenario: ActivityScenario<MainActivity>, condition: (View) -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + TIMEOUT_SECONDS * 1_000L
         while (SystemClock.elapsedRealtime() < deadline) {
             var matched = false
@@ -210,8 +191,7 @@ class PhysicalEvidenceInstrumentedTest {
         val rows = linkedMapOf<Int, TextView>()
         fun visit(view: View) {
             if (view is TextView) {
-                val text = view.text?.toString().orEmpty()
-                val match = ROW_PATTERN.matchEntire(text)
+                val match = ROW_PATTERN.matchEntire(view.text?.toString().orEmpty())
                 if (match != null) {
                     val id = match.groupValues[1].toInt()
                     if (id in DENSE_TARGETS) rows[id] = view
@@ -265,7 +245,7 @@ class PhysicalEvidenceInstrumentedTest {
         const val WARMUP_COUNT = 5
         const val SAMPLE_COUNT = 30
         const val TIMEOUT_SECONDS = 60L
-        val DENSE_TARGETS = Array.from
+        val DENSE_TARGETS = (0 until 100).map { (4_281 + it * 97) % 10_000 }.toSet()
         val ROW_PATTERN = Regex("^Row (\\d+): \\d+$")
     }
 }
