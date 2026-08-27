@@ -18,7 +18,10 @@
         "module": { "type": "string", "minLength": 1 },
         "permissions": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "pattern": "^NS[A-Za-z0-9]+UsageDescription$"
+          },
           "uniqueItems": true
         }
       }
@@ -31,7 +34,10 @@
         "module": { "type": "string", "minLength": 1 },
         "permissions": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+          },
           "uniqueItems": true
         }
       }

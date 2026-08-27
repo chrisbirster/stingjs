@@ -20,9 +20,10 @@
     "benchmark:physical:android": "bash scripts/collect-android-physical.sh",
     "benchmark:results": "node benchmarks/results/tool.mjs",
     "build": "npm run build --workspaces --if-present",
+    "modules:config": "node scripts/sting-module-config.mjs",
     "modules:validate": "node scripts/validate-sting-modules.mjs",
     "release:check:v0.1": "node scripts/check-v0.1-release.mjs",
-    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs && npm run modules:validate",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && npm run modules:validate",
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
