@@ -1,12 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { loadStingConfig } from './config.js';
 import { collectDevices, type DevicePlatform, type StingDevice } from './platform.js';
 
 export interface RunOptions {
   projectRoot?: string;
   device?: string;
   configuration?: string;
+  variant?: string;
   skipBundle?: boolean;
 }
 
@@ -122,18 +124,23 @@ function findBuiltIosApp(derivedData: string, configuration: string, scheme: str
   return join(products, apps[0]);
 }
 
-export function runIos(options: RunOptions = {}): RunResult {
+export async function runIos(options: RunOptions = {}): Promise<RunResult> {
   if (process.platform !== 'darwin') throw new Error('`sting run ios` requires macOS and Xcode.');
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const loaded = await loadStingConfig(projectRoot);
+  const iosConfig = loaded?.config.ios;
   const device = selectDevice(collectDevices('darwin'), 'ios', options.device);
-  const configuration = options.configuration ?? 'Debug';
+  const configuration = options.configuration ?? iosConfig?.configuration ?? 'Debug';
 
   if (!options.skipBundle) buildJavaScript(projectRoot);
   if (device.state !== 'booted') execute('xcrun', ['simctl', 'boot', device.id]);
 
   const iosDirectory = join(projectRoot, 'ios');
-  const projectPath = findSingleEntry(iosDirectory, '.xcodeproj', 'iOS project');
-  const scheme = iosScheme(projectPath);
+  const projectPath = iosConfig?.project
+    ? resolve(projectRoot, iosConfig.project)
+    : findSingleEntry(iosDirectory, '.xcodeproj', 'iOS project');
+  if (!existsSync(projectPath)) throw new Error(`Configured iOS project not found: ${projectPath}`);
+  const scheme = iosConfig?.scheme ?? iosScheme(projectPath);
   const derivedData = join(projectRoot, '.sting', 'ios');
   mkdirSync(derivedData, { recursive: true });
 
@@ -147,9 +154,12 @@ export function runIos(options: RunOptions = {}): RunResult {
   ];
   execute('xcodebuild', [...baseArgs, 'build']);
 
-  const settings = execute('xcodebuild', [...baseArgs, '-showBuildSettings'], { capture: true });
-  const applicationId = parseXcodeBuildSetting(settings, 'PRODUCT_BUNDLE_IDENTIFIER');
-  if (!applicationId) throw new Error('Could not determine PRODUCT_BUNDLE_IDENTIFIER from Xcode build settings.');
+  let applicationId = iosConfig?.bundleIdentifier;
+  if (!applicationId) {
+    const settings = execute('xcodebuild', [...baseArgs, '-showBuildSettings'], { capture: true });
+    applicationId = parseXcodeBuildSetting(settings, 'PRODUCT_BUNDLE_IDENTIFIER');
+  }
+  if (!applicationId) throw new Error('Could not determine PRODUCT_BUNDLE_IDENTIFIER from Sting config or Xcode build settings.');
 
   const appPath = findBuiltIosApp(derivedData, configuration, scheme);
   execute('xcrun', ['simctl', 'install', device.id, appPath]);
@@ -176,20 +186,30 @@ function gradleCommand(androidDirectory: string): { command: string; argsPrefix:
   return { command: 'gradle', argsPrefix: [] };
 }
 
-export function runAndroid(options: RunOptions = {}): RunResult {
+function gradleVariant(value: string): string {
+  if (!value) throw new Error('Android variant cannot be empty.');
+  return `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+export async function runAndroid(options: RunOptions = {}): Promise<RunResult> {
   const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const loaded = await loadStingConfig(projectRoot);
+  const androidConfig = loaded?.config.android;
   const device = selectDevice(collectDevices(process.platform), 'android', options.device);
-  const androidDirectory = join(projectRoot, 'android');
+  const androidDirectory = androidConfig?.directory
+    ? resolve(projectRoot, androidConfig.directory)
+    : join(projectRoot, 'android');
   if (!existsSync(androidDirectory)) throw new Error(`Android project directory not found: ${androidDirectory}`);
 
   if (!options.skipBundle) buildJavaScript(projectRoot);
 
   const buildFile = androidBuildFile(androidDirectory);
-  const applicationId = parseAndroidApplicationId(readFileSync(buildFile, 'utf8'));
-  if (!applicationId) throw new Error(`Could not determine applicationId from ${buildFile}`);
+  const applicationId = androidConfig?.package ?? parseAndroidApplicationId(readFileSync(buildFile, 'utf8'));
+  if (!applicationId) throw new Error(`Could not determine Android package from Sting config or ${buildFile}`);
 
+  const variant = options.variant ?? androidConfig?.variant ?? 'debug';
   const gradle = gradleCommand(androidDirectory);
-  execute(gradle.command, [...gradle.argsPrefix, ':app:installDebug'], {
+  execute(gradle.command, [...gradle.argsPrefix, `:app:install${gradleVariant(variant)}`], {
     cwd: androidDirectory,
     env: { ...process.env, ANDROID_SERIAL: device.id },
   });
