@@ -20,6 +20,14 @@ let package = Package(
                 .product(name: "StingRuntime", package: "ios")
             ],
             path: "ios"
+        ),
+        .testTarget(
+            name: "StingFilesystemTests",
+            dependencies: [
+                "StingFilesystem",
+                .product(name: "StingRuntime", package: "ios")
+            ],
+            path: "Tests"
         )
     ],
     swiftLanguageVersions: [.v5]
