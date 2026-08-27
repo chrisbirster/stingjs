@@ -150,12 +150,12 @@ final class StingNativeObjectIntegrationTests: XCTestCase {
         const first = nativeValue(globalThis.__stingNativeBridge.callModuleSync(
           "ObjectTest",
           "__sting_object_create",
-          "[\"Counter\",2]"
+          JSON.stringify(["Counter", 2])
         ));
         const second = nativeValue(globalThis.__stingNativeBridge.callModuleSync(
           "ObjectTest",
           "__sting_object_create",
-          "[\"Counter\",10]"
+          JSON.stringify(["Counter", 10])
         ));
 
         globalThis.__stingObjectValue = nativeValue(globalThis.__stingNativeBridge.callModuleSync(
