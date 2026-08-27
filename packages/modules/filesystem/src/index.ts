@@ -45,6 +45,6 @@ export const Filesystem = {
   },
 
   async getInfo(path: string, options?: FilesystemPathOptions): Promise<FilesystemInfo> {
-    return await nativeFilesystem.callAsync('getInfo', [path, directory(options)]) as FilesystemInfo;
+    return await nativeFilesystem.callAsync('getInfo', [path, directory(options)]) as unknown as FilesystemInfo;
   },
 };
