@@ -25,6 +25,12 @@ typedef struct StingQuickJsAndroidHostCallbacks {
         const char *args_json,
         int request_id
     );
+    char *(*set_module_event_enabled)(
+        void *context,
+        const char *module,
+        const char *event,
+        int enabled
+    );
     void (*release_string)(void *context, char *value);
 } StingQuickJsAndroidHostCallbacks;
 
@@ -40,6 +46,12 @@ char *sting_qjs_android_complete_module_call(
     void *runtime,
     int request_id,
     const char *response_json
+);
+char *sting_qjs_android_dispatch_module_event(
+    void *runtime,
+    const char *module,
+    const char *event,
+    const char *payload_json
 );
 char *sting_qjs_android_dispose_runtime(void *runtime);
 void sting_qjs_android_destroy(void *runtime);
