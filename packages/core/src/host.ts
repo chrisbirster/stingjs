@@ -331,8 +331,7 @@ export class StingHost {
   }
 
   private setNativeModuleEventEnabled(module: string, event: string, enabled: boolean): void {
-    const setModuleEventEnabled = this.bridge.setModuleEventEnabled;
-    if (!setModuleEventEnabled) {
+    if (!this.bridge.setModuleEventEnabled) {
       throw new StingNativeError({
         code: 'E_EVENTS_UNSUPPORTED',
         message: 'This Sting native host does not support native-module events.',
@@ -341,7 +340,9 @@ export class StingHost {
       });
     }
 
-    const response = decodeNativeCallResponse(setModuleEventEnabled(module, event, enabled));
+    const response = decodeNativeCallResponse(
+      this.bridge.setModuleEventEnabled(module, event, enabled),
+    );
     if (!response.ok) throw new StingNativeError(response.error);
   }
 
