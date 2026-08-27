@@ -293,11 +293,10 @@ final class StingJavaScriptBridge: NSObject, StingJavaScriptBridgeExports {
             sink?(key.module, key.event, payloadJSON)
         }
 
-        if Thread.isMainThread {
-            deliver()
-        } else {
-            DispatchQueue.main.async(execute: deliver)
-        }
+        // Always queue module events, even when a module emits synchronously
+        // while setModuleEventEnabled(true) is on the main/runtime thread. This
+        // avoids recursive JavaScriptCore entry and lets listener setup finish.
+        DispatchQueue.main.async(execute: deliver)
     }
 
     private func registerAsyncRequest(_ requestId: Int) -> Bool {
