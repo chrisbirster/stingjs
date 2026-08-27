@@ -57,6 +57,15 @@ public final class StingJavaScriptRuntime {
             resolver.call(withArguments: [requestId, responseJSON])
         }
 
+        bridge.moduleEventSink = { [weak context] module, event, payloadJSON in
+            guard let context,
+                  let dispatch = context.objectForKeyedSubscript("__stingDispatchModuleEvent"),
+                  !dispatch.isUndefined else {
+                return
+            }
+            dispatch.call(withArguments: [module, event, payloadJSON])
+        }
+
         let performanceDiagnostics = self.performanceDiagnostics
         nodes.eventSink = { [weak context, weak performanceDiagnostics] nodeId, event, payloadJSON in
             let dispatch = {
@@ -136,6 +145,7 @@ public final class StingJavaScriptRuntime {
 
         nodes.eventSink = nil
         bridge?.detachAsyncResultSink()
+        bridge?.detachModuleEventSink()
     }
 
     private func installHostGlobals(in context: JSContext) {
