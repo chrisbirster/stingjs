@@ -57,9 +57,17 @@ const decision = await readText(decisionPath);
 if (!/^- Status:\s*accepted\s*$/im.test(decision)) {
   fail('production JavaScript engine ADR must be accepted before release');
 }
-const engineMatch = decision.match(/^- Engine:\s*(quickjs|quickjs-ng)\s*$/im);
-if (!engineMatch) {
-  fail('production JavaScript engine ADR must name Engine: quickjs or quickjs-ng');
+
+const engineLine = decision.match(/^- Engine:\s*(.+?)\s*$/im)?.[1]?.trim();
+let productionEngine;
+if (engineLine && /^official QuickJS(?:\s+`2026-06-04`)?$/i.test(engineLine)) {
+  productionEngine = 'quickjs';
+} else if (engineLine && /^quickjs$/i.test(engineLine)) {
+  productionEngine = 'quickjs';
+} else if (engineLine && /^quickjs-ng$/i.test(engineLine)) {
+  productionEngine = 'quickjs-ng';
+} else {
+  fail(`production JavaScript engine ADR must name an accepted QuickJS engine, found ${engineLine ?? 'no Engine line'}`);
 }
 
 const evidenceFiles = await collectJsonFiles(join(root, 'benchmarks/results/raw'));
@@ -122,5 +130,5 @@ if (cohortKeys.size !== 1) {
 }
 
 process.stdout.write(
-  `v0.1 release gate passed: engine=${engineMatch[1]} physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`,
+  `v0.1 release gate passed: engine=${productionEngine} physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`,
 );
