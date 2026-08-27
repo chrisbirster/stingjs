@@ -41,3 +41,10 @@ xcodebuild \
   -destination "platform=iOS Simulator,id=$DEVICE_ID" \
   CODE_SIGNING_ALLOWED=NO \
   test
+
+cd "$REPO_ROOT/packages/modules/filesystem"
+xcodebuild \
+  -scheme StingFilesystem \
+  -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+  CODE_SIGNING_ALLOWED=NO \
+  test

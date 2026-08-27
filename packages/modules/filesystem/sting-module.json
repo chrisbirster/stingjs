@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "Filesystem",
+  "package": "@stingjs/filesystem",
+  "version": "0.1.0",
+  "ios": {
+    "module": "FilesystemModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.filesystem.FilesystemModule",
+    "permissions": []
+  },
+  "capabilities": ["async-functions"]
+}
