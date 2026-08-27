@@ -3,6 +3,7 @@ package run.stingjs.helloworld
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.system.Os
 import android.widget.LinearLayout
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -340,5 +341,39 @@ class ModulesInstrumentedTest {
         val failure = result.get() as StingNativeModuleResult.Failure
         val error = failure.error as StingNativeModuleError
         assertEquals("E_INVALID_PATH", error.code)
+    }
+
+    @Test
+    fun filesystemDeleteDoesNotFollowDirectorySymlinks() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val module = FilesystemModule(context)
+        val suffix = System.nanoTime()
+        val deletionRoot = File(context.cacheDir, "sting-delete-root-$suffix")
+        val siblingRoot = File(context.cacheDir, "sting-delete-sibling-$suffix")
+        val protectedFile = File(siblingRoot, "keep.txt")
+        val symlink = File(deletionRoot, "linked-sibling")
+        val completion = CountDownLatch(1)
+        val result = AtomicReference<StingNativeModuleResult?>()
+
+        try {
+            deletionRoot.mkdirs()
+            siblingRoot.mkdirs()
+            protectedFile.writeText("keep-me")
+            Os.symlink(siblingRoot.absolutePath, symlink.absolutePath)
+
+            module.callAsync("delete", listOf(deletionRoot.name, "cache")) {
+                result.set(it)
+                completion.countDown()
+            }
+
+            assertTrue(completion.await(2, TimeUnit.SECONDS))
+            assertTrue(result.get() is StingNativeModuleResult.Success)
+            assertFalse(deletionRoot.exists())
+            assertTrue("Deleting a tree must not follow a directory symlink", protectedFile.exists())
+            assertEquals("keep-me", protectedFile.readText())
+        } finally {
+            deletionRoot.deleteRecursively()
+            siblingRoot.deleteRecursively()
+        }
     }
 }
