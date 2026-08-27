@@ -4,6 +4,13 @@ export interface NativeModuleDescriptor<Name extends string = string> {
   readonly name: Name;
 }
 
+export interface NativeModuleSubscription {
+  remove(): void;
+}
+
+export type NativeModuleEventListener<Payload extends NativeValue = NativeValue> =
+  (payload: Payload) => void;
+
 export interface NativeModuleClient<Name extends string = string> {
   readonly name: Name;
   isAvailable(): boolean;
@@ -16,6 +23,10 @@ export interface NativeModuleClient<Name extends string = string> {
     method: string,
     args?: readonly NativeValue[],
   ): Promise<Result>;
+  addListener<Payload extends NativeValue = NativeValue>(
+    event: string,
+    listener: NativeModuleEventListener<Payload>,
+  ): NativeModuleSubscription;
 }
 
 export function createNativeModule<const Name extends string>(
@@ -46,6 +57,18 @@ export function createNativeModule<const Name extends string>(
       args: readonly NativeValue[] = [],
     ): Promise<Result> {
       return getHost().callModuleAsync(name, method, [...args]) as Promise<Result>;
+    },
+
+    addListener<Payload extends NativeValue = NativeValue>(
+      event: string,
+      listener: NativeModuleEventListener<Payload>,
+    ): NativeModuleSubscription {
+      const remove = getHost().addModuleEventListener(
+        name,
+        event,
+        listener as NativeModuleEventListener,
+      );
+      return { remove };
     },
   };
 }
