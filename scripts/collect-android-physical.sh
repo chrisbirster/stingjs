@@ -59,6 +59,7 @@ run_sting_candidate() {
   adb -s "${DEVICE}" shell rm -rf "/sdcard/Android/data/run.stingjs.helloworld/files/sting-benchmarks" || true
   adb -s "${DEVICE}" shell am instrument -w -r \
     -e class run.stingjs.helloworld.PhysicalEvidenceInstrumentedTest \
+    -e stingPhysicalEvidence 1 \
     -e stingEngine "${engine}" \
     -e benchmarkCommit "${BENCHMARK_COMMIT}" \
     run.stingjs.helloworld.test/androidx.test.runner.AndroidJUnitRunner
