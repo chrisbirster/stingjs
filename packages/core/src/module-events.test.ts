@@ -31,6 +31,15 @@ function makeBridge(events = true): StingNativeBridge {
   return bridge;
 }
 
+function captureThrown(operation: () => void): unknown {
+  try {
+    operation();
+  } catch (error) {
+    return error;
+  }
+  throw new Error('Expected operation to throw');
+}
+
 afterEach(() => resetNativeBridgeForTests());
 
 describe('native module events', () => {
@@ -93,14 +102,13 @@ describe('native module events', () => {
   it('fails clearly on protocol-v1 hosts that do not implement module events', () => {
     const host = new StingHost(makeBridge(false));
 
-    expect(() => host.addModuleEventListener('Network', 'change', vi.fn())).toThrowError(
-      expect.objectContaining({
-        name: 'StingNativeError',
-        code: 'E_EVENTS_UNSUPPORTED',
-        module: 'Network',
-        method: 'addListener:change',
-      }),
-    );
+    const error = captureThrown(() => host.addModuleEventListener('Network', 'change', vi.fn()));
+    expect(error).toMatchObject({
+      name: 'StingNativeError',
+      code: 'E_EVENTS_UNSUPPORTED',
+      module: 'Network',
+      method: 'addListener:change',
+    });
   });
 
   it('preserves structured native errors while enabling an event source', () => {
@@ -116,13 +124,12 @@ describe('native module events', () => {
     }));
     const host = new StingHost(bridge);
 
-    expect(() => host.addModuleEventListener('Network', 'missing', vi.fn())).toThrowError(
-      expect.objectContaining({
-        name: 'StingNativeError',
-        code: 'E_EVENT_NOT_FOUND',
-        module: 'Network',
-      }),
-    );
+    const error = captureThrown(() => host.addModuleEventListener('Network', 'missing', vi.fn()));
+    expect(error).toMatchObject({
+      name: 'StingNativeError',
+      code: 'E_EVENT_NOT_FOUND',
+      module: 'Network',
+    });
   });
 
   it('clears dispatchability before runtime disposal disables native observations', () => {
