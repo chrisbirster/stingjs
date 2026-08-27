@@ -17,9 +17,10 @@
     "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
     "benchmark:ios-jsc-control": "bash scripts/collect-ios-jsc-control.sh",
     "benchmark:results": "node benchmarks/results/tool.mjs",
+    "benchmark:transport": "bash benchmarks/transport/run.sh",
     "build": "npm run build --workspaces --if-present",
     "release:check:v0.1": "node scripts/check-v0.1-release.mjs",
-    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs benchmarks/transport/summarize.test.mjs",
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
