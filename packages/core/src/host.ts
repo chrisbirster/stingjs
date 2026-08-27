@@ -184,13 +184,22 @@ export class StingHost {
       return Promise.reject(this.runtimeDisposedError(module, method));
     }
 
+    if (!this.bridge.callModuleAsync) {
+      return Promise.reject(new StingNativeError({
+        code: 'E_ASYNC_UNSUPPORTED',
+        message: 'This Sting native host does not support asynchronous native-module calls.',
+        module,
+        method,
+      }));
+    }
+
     const requestId = nextNativeModuleRequestId++;
 
     return new Promise<NativeValue | undefined>((resolve, reject) => {
       this.pendingModuleCalls.set(requestId, { module, method, resolve, reject });
 
       try {
-        this.bridge.callModuleAsync(module, method, encodeNativeValue(args), requestId);
+        this.bridge.callModuleAsync!(module, method, encodeNativeValue(args), requestId);
       } catch (error) {
         this.pendingModuleCalls.delete(requestId);
         reject(error);
