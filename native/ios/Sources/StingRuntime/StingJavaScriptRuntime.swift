@@ -146,6 +146,11 @@ public final class StingJavaScriptRuntime {
         nodes.eventSink = nil
         bridge?.detachAsyncResultSink()
         bridge?.detachModuleEventSink()
+
+        // JavaScript wrappers release their handles through __stingDisposeRuntime.
+        // This registry teardown is the final guarantee for raw or abandoned
+        // handles that were created without a live JS wrapper.
+        modules.disposeAllObjects()
     }
 
     private func installHostGlobals(in context: JSContext) {
