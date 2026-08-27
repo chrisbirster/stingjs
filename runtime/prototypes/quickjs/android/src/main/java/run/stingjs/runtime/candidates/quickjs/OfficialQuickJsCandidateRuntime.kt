@@ -79,11 +79,9 @@ class OfficialQuickJsCandidateRuntime(
     }
 
     private fun deliverModuleEvent(module: String, event: String, payloadJSON: String) {
-        if (Looper.myLooper() === ownerLooper) {
-            dispatchModuleEventOnOwnerThread(module, event, payloadJSON)
-            return
-        }
-
+        // Always queue module events, even when a native module emits while
+        // setModuleEventEnabled(true) is still on the owner thread. This avoids
+        // recursive QuickJS entry and guarantees listener setup finishes first.
         ownerHandler.post {
             dispatchModuleEventOnOwnerThread(module, event, payloadJSON)
         }
@@ -91,7 +89,7 @@ class OfficialQuickJsCandidateRuntime(
 
     private fun dispatchModuleEventOnOwnerThread(module: String, event: String, payloadJSON: String) {
         val current = handle
-        if (current == 0L) return
+        if (current == 0L || !bridge.isModuleEventActive(module, event)) return
 
         val error = nativeDispatchModuleEvent(current, module, event, payloadJSON)
         if (error != null) {
