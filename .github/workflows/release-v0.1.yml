@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag
+        description: Release tag (v0.1.0 or v0.1.0-rc.N)
         required: true
-        default: v0.1.0
+        default: v0.1.0-rc.1
 
 permissions:
   contents: read
@@ -14,6 +14,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      final_release: ${{ steps.release-kind.outputs.final_release }}
     steps:
       - name: Require main branch
         shell: bash
@@ -29,19 +31,32 @@ jobs:
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - run: npm install
-      - name: Verify release tag matches repository version
+      - name: Classify and validate release tag
+        id: release-kind
         shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
           version="$(node -p 'require("./package.json").version')"
-          test "${RELEASE_TAG}" = "v${version}"
+          escaped_version="${version//./\\.}"
+          if [[ "${RELEASE_TAG}" == "v${version}" ]]; then
+            echo "final_release=true" >> "$GITHUB_OUTPUT"
+            echo "Final release: ${RELEASE_TAG}"
+          elif printf '%s\n' "${RELEASE_TAG}" | grep -Eq "^v${escaped_version}-(alpha|beta|rc)\.[0-9]+$"; then
+            echo "final_release=false" >> "$GITHUB_OUTPUT"
+            echo "Prerelease: ${RELEASE_TAG}"
+          else
+            echo "Tag must be v${version} or v${version}-{alpha|beta|rc}.N; got ${RELEASE_TAG}" >&2
+            exit 1
+          fi
       - name: Run repository software gate
         run: |
           npm run typecheck
           npm test
           npm run build
-      - name: Enforce physical-device runtime decision gate
+      - name: Enforce final physical-device release gate
+        if: steps.release-kind.outputs.final_release == 'true'
         run: npm run release:check:v0.1
       - name: Stage JavaScript bundle and changelog
         run: |
@@ -91,9 +106,11 @@ jobs:
         working-directory: examples/hello-world/android
         run: gradle :app:assembleRelease --no-daemon
       - name: Stage Android artifact
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           mkdir -p release-artifacts
-          cp examples/hello-world/android/app/build/outputs/apk/release/app-release-unsigned.apk release-artifacts/stingjs-hello-world-v0.1.0-android-unsigned.apk
+          cp examples/hello-world/android/app/build/outputs/apk/release/app-release-unsigned.apk "release-artifacts/stingjs-hello-world-${RELEASE_TAG}-android-unsigned.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: v0.1-android
@@ -142,4 +159,5 @@ jobs:
           tag_name: ${{ inputs.tag }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
+          prerelease: ${{ needs.verify.outputs.final_release != 'true' }}
           files: release-artifacts/*
