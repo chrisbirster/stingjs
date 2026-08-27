@@ -13,18 +13,19 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--json]\n  sting devices [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n\nCommands:\n  doctor   Check local Sting development prerequisites\n  devices  List Android devices and available iOS simulators\n  start    Serve a built Sting bundle to Sting Go\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  start    Serve a built Sting bundle to Sting Go\n`);
 }
 
 function doctor(args: string[]): void {
-  const checks = collectDoctorChecks();
+  const runtimeDevelopment = hasFlag(args, '--runtime');
+  const checks = collectDoctorChecks(process.platform, { runtimeDevelopment });
   if (hasFlag(args, '--json')) {
-    console.log(JSON.stringify({ checks }));
+    console.log(JSON.stringify({ mode: runtimeDevelopment ? 'runtime' : 'app', checks }));
   } else {
-    console.log('Sting doctor\n');
+    console.log(runtimeDevelopment ? 'Sting doctor (runtime development)\n' : 'Sting doctor\n');
     for (const check of checks) {
-      const symbol = check.ok ? '✓' : check.required ? '✗' : '!';
-      const qualifier = check.required ? '' : ' (optional)';
+      const symbol = check.skipped ? '-' : check.ok ? '✓' : check.required ? '✗' : '!';
+      const qualifier = check.skipped ? ' (not required)' : check.required ? '' : ' (optional)';
       console.log(`${symbol} ${check.name}${qualifier}: ${check.detail}`);
     }
   }
