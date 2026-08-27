@@ -12,14 +12,6 @@ export default function App() {
       <Text style={{ fontSize: 24 }}>Count: {count()}</Text>
       <Button
         onPress={() => {
-          setCount(count() + 1);
-          Haptics.impact('medium');
-        }}
-      >
-        Add
-      </Button>
-      <Button
-        onPress={() => {
           Clipboard.setString(`Count: ${count()}`);
           setClipboardStatus(`Copied Count: ${count()}`);
         }}
@@ -27,6 +19,14 @@ export default function App() {
         Copy count
       </Button>
       <Text>{clipboardStatus()}</Text>
+      <Button
+        onPress={() => {
+          setCount(count() + 1);
+          Haptics.impact('medium');
+        }}
+      >
+        Add
+      </Button>
     </View>
   );
 }
