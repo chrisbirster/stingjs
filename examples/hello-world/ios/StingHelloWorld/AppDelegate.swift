@@ -1,5 +1,6 @@
 import StingClipboard
 import StingDevice
+import StingFilesystem
 import StingHaptics
 import StingRuntime
 import UIKit
@@ -17,6 +18,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
                 HapticsModule(),
                 ClipboardModule(),
                 DeviceModule(),
+                FilesystemModule(),
             ]
         )
         let window = UIWindow(frame: UIScreen.main.bounds)
