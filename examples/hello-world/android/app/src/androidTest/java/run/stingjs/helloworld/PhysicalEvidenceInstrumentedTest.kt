@@ -1,13 +1,14 @@
 package run.stingjs.helloworld
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.LinearLayout
+import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -24,34 +25,9 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import run.stingjs.runtime.StingMutationCounts
-import run.stingjs.runtime.StingNativeBridge
-import run.stingjs.runtime.StingNodeRegistry
-import run.stingjs.runtime.candidates.quickjs.OfficialQuickJsCandidateRuntime
-import run.stingjs.runtime.candidates.quickjsng.QuickJsNgCandidateRuntime
 
 @RunWith(AndroidJUnit4::class)
 class PhysicalEvidenceInstrumentedTest {
-    private interface CandidateRuntime : AutoCloseable {
-        fun evaluate(source: String)
-        fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String)
-    }
-
-    private class OfficialQuickJsRuntime(bridge: StingNativeBridge) : CandidateRuntime {
-        private val runtime = OfficialQuickJsCandidateRuntime(bridge)
-        override fun evaluate(source: String) = runtime.evaluate(source)
-        override fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String) =
-            runtime.dispatchEvent(nodeId, event, payloadJSON)
-        override fun close() = runtime.close()
-    }
-
-    private class QuickJsNgRuntime(bridge: StingNativeBridge) : CandidateRuntime {
-        private val runtime = QuickJsNgCandidateRuntime(bridge)
-        override fun evaluate(source: String) = runtime.evaluate(source)
-        override fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String) =
-            runtime.dispatchEvent(nodeId, event, payloadJSON)
-        override fun close() = runtime.close()
-    }
-
     @Test
     fun captureSparseAndDenseReleaseEvidence() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -69,102 +45,92 @@ class PhysicalEvidenceInstrumentedTest {
         require(benchmarkCommit.matches(Regex("^[0-9a-f]{40}$"))) {
             "benchmarkCommit must be a full 40-character Git SHA"
         }
-        require(engine == "quickjs" || engine == "quickjs-ng") {
+        require(
+            engine == BenchmarkActivity.ENGINE_QUICKJS ||
+                engine == BenchmarkActivity.ENGINE_QUICKJS_NG,
+        ) {
             "stingEngine must be quickjs or quickjs-ng"
         }
 
         val targetContext = instrumentation.targetContext
-        val benchmarkSource = targetContext.assets.open("sting-benchmark.js")
-            .bufferedReader()
-            .use { it.readText() }
-        assertTrue("sting-benchmark.js must not be empty", benchmarkSource.isNotBlank())
+        val intent = Intent(targetContext, BenchmarkActivity::class.java)
+            .putExtra(BenchmarkActivity.EXTRA_ENGINE, engine)
 
-        var capture: JSONObject? = null
-        instrumentation.runOnMainSync {
-            capture = runCandidate(
-                context = targetContext,
-                engine = engine,
-                benchmarkCommit = benchmarkCommit,
-                benchmarkSource = benchmarkSource,
-            )
+        val sparseSamples = DoubleArray(SAMPLE_COUNT)
+        val denseSamples = DoubleArray(SAMPLE_COUNT)
+
+        ActivityScenario.launch<BenchmarkActivity>(intent).use { scenario ->
+            assertAttachedControl(scenario, "Update row 4,281")
+            assertAttachedControl(scenario, "Update 100 rows")
+
+            repeat(WARMUP_COUNT) {
+                measurePress(scenario, "Update row 4,281", 1)
+            }
+            repeat(SAMPLE_COUNT) { index ->
+                sparseSamples[index] = measurePress(scenario, "Update row 4,281", 1)
+            }
+
+            repeat(WARMUP_COUNT) {
+                measurePress(scenario, "Update 100 rows", 100)
+            }
+            repeat(SAMPLE_COUNT) { index ->
+                denseSamples[index] = measurePress(scenario, "Update 100 rows", 100)
+            }
         }
 
-        assertNotNull("candidate capture document should be produced", capture)
+        val document = JSONObject()
+            .put("captureDocumentVersion", 1)
+            .put("role", "decision-evidence")
+            .put("metadata", metadata(targetContext, engine, benchmarkCommit))
+            .put(
+                "captures",
+                JSONArray()
+                    .put(measurement("sparse-10k-row-update", sparseSamples))
+                    .put(measurement("dense-10k-100-row-update", denseSamples)),
+            )
+
         val outputDirectory = File(targetContext.getExternalFilesDir(null), "sting-benchmarks")
         check(outputDirectory.mkdirs() || outputDirectory.isDirectory) {
             "Unable to create ${outputDirectory.absolutePath}"
         }
         val output = File(outputDirectory, "sting-${engine}-android.json")
-        output.writeText(capture!!.toString(2) + "\n")
+        output.writeText(document.toString(2) + "\n")
         println("STING_PHYSICAL_EVIDENCE=${output.absolutePath}")
     }
 
-    private fun runCandidate(
-        context: Context,
-        engine: String,
-        benchmarkCommit: String,
-        benchmarkSource: String,
-    ): JSONObject {
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-        }
-        val nodes = StingNodeRegistry(root)
-        val bridge = StingNativeBridge(nodes)
-        val runtime: CandidateRuntime = when (engine) {
-            "quickjs" -> OfficialQuickJsRuntime(bridge)
-            "quickjs-ng" -> QuickJsNgRuntime(bridge)
-            else -> error("unsupported engine: $engine")
-        }
-
-        runtime.use {
-            nodes.eventSink = runtime::dispatchEvent
-            runtime.evaluate(benchmarkSource)
-            runtime.evaluate("globalThis.__stingBenchmark.mountRows();")
-
-            val sparseButton = findButton(root, "Update row 4,281")
-            val denseButton = findButton(root, "Update 100 rows")
-            assertNotNull("native sparse benchmark Button", sparseButton)
-            assertNotNull("native dense benchmark Button", denseButton)
-
-            repeat(WARMUP_COUNT) { runMeasuredPress(sparseButton!!, bridge, 1) }
-            val sparse = DoubleArray(SAMPLE_COUNT) {
-                runMeasuredPress(sparseButton!!, bridge, 1)
-            }
-
-            repeat(WARMUP_COUNT) { runMeasuredPress(denseButton!!, bridge, 100) }
-            val dense = DoubleArray(SAMPLE_COUNT) {
-                runMeasuredPress(denseButton!!, bridge, 100)
-            }
-
-            nodes.eventSink = null
-            return JSONObject()
-                .put("captureDocumentVersion", 1)
-                .put("role", "decision-evidence")
-                .put("metadata", metadata(context, engine, benchmarkCommit))
-                .put(
-                    "captures",
-                    JSONArray()
-                        .put(measurement("sparse-10k-row-update", sparse))
-                        .put(measurement("dense-10k-100-row-update", dense)),
-                )
+    private fun assertAttachedControl(
+        scenario: ActivityScenario<BenchmarkActivity>,
+        text: String,
+    ) {
+        scenario.onActivity { activity ->
+            val button = findButton(activity.window.decorView, text)
+            assertNotNull("native benchmark Button $text", button)
+            assertTrue("native benchmark Button $text must be attached", button!!.isAttachedToWindow)
         }
     }
 
-    private fun runMeasuredPress(
-        button: Button,
-        bridge: StingNativeBridge,
+    private fun measurePress(
+        scenario: ActivityScenario<BenchmarkActivity>,
+        buttonText: String,
         expectedReplaceText: Int,
     ): Double {
-        bridge.resetMutationCounts()
-        val started = SystemClock.elapsedRealtimeNanos()
-        assertTrue("benchmark native Button should dispatch press", button.performClick())
-        val finished = SystemClock.elapsedRealtimeNanos()
-        assertOnlyTextMutations(bridge.mutationCounts, expectedReplaceText)
-        return (finished - started) / 1_000_000.0
+        var durationMs = Double.NaN
+        scenario.onActivity { activity ->
+            val button = findButton(activity.window.decorView, buttonText)
+            assertNotNull("native benchmark Button $buttonText", button)
+            assertTrue("benchmark native Button must be attached", button!!.isAttachedToWindow)
+
+            activity.resetMutationCountsForTesting()
+            val started = SystemClock.elapsedRealtimeNanos()
+            assertTrue("benchmark native Button should dispatch press", button.performClick())
+            val finished = SystemClock.elapsedRealtimeNanos()
+            assertOnlyTextMutations(activity.mutationCountsForTesting(), expectedReplaceText)
+            durationMs = (finished - started) / 1_000_000.0
+        }
+        check(durationMs.isFinite() && durationMs >= 0.0) {
+            "benchmark sample did not produce a valid duration"
+        }
+        return durationMs
     }
 
     private fun findButton(root: View, text: String): Button? {
@@ -214,7 +180,11 @@ class PhysicalEvidenceInstrumentedTest {
             .put("engine", engine)
             .put(
                 "engineVersion",
-                if (engine == "quickjs") "2026-06-04" else "v0.16.1@954dc53628e36891f93c359aa60895c2ae3dac6b",
+                if (engine == BenchmarkActivity.ENGINE_QUICKJS) {
+                    "2026-06-04"
+                } else {
+                    "v0.16.1@954dc53628e36891f93c359aa60895c2ae3dac6b"
+                },
             )
             .put("frameworkVersion", "StingJS 0.1.0 / Solid 2.0.0-rc.1")
             .put("displayRefreshHz", windowManager.defaultDisplay.refreshRate.toDouble())
