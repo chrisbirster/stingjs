@@ -1,5 +1,9 @@
 import { access, readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import {
+  aggregateModuleConfiguration,
+  validatePlatformPermissions,
+} from './sting-module-config.mjs';
 
 const root = resolve(process.cwd(), 'packages/modules');
 const allowedCapabilities = new Set([
@@ -47,11 +51,7 @@ async function validateModule(directory) {
     assert(allowedCapabilities.has(capability), `${prefix}: unknown capability ${capability}`);
   }
 
-  for (const platform of ['ios', 'android']) {
-    const permissions = manifest[platform]?.permissions ?? [];
-    assert(Array.isArray(permissions), `${prefix}: ${platform}.permissions must be an array`);
-    assert(new Set(permissions).size === permissions.length, `${prefix}: ${platform}.permissions contains duplicates`);
-  }
+  validatePlatformPermissions(manifest, prefix);
 
   await Promise.all([
     requirePath(join(moduleRoot, 'src/index.ts'), `${manifest.package} JavaScript entrypoint`),
@@ -74,4 +74,9 @@ const packages = manifests.map(manifest => manifest.package);
 assert(new Set(names).size === names.length, 'Duplicate Sting native module name detected');
 assert(new Set(packages).size === packages.length, 'Duplicate Sting module package detected');
 
-console.log(`Validated ${manifests.length} Sting module manifest(s): ${packages.join(', ')}`);
+const plan = aggregateModuleConfiguration(manifests);
+console.log(
+  `Validated ${manifests.length} Sting module manifest(s): ${packages.join(', ')}; ` +
+  `${plan.android.permissions.length} Android permission(s), ` +
+  `${plan.ios.requiredInfoPlistKeys.length} iOS Info.plist requirement(s)`,
+);
