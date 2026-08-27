@@ -140,6 +140,11 @@ class StingNativeBridge(
         }
     }
 
+    fun isModuleEventActive(module: String, event: String): Boolean =
+        synchronized(moduleEventLock) {
+            activeModuleEvents.contains(StingModuleEventKey(module, event))
+        }
+
     fun detachAsyncResultSink() {
         asyncResultSink = null
         synchronized(asyncLock) { activeAsyncRequestIds.clear() }
