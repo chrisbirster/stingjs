@@ -16,6 +16,11 @@ export interface DoctorCheck {
   ok: boolean;
   detail: string;
   required: boolean;
+  skipped?: boolean;
+}
+
+export interface DoctorOptions {
+  runtimeDevelopment?: boolean;
 }
 
 interface CommandResult {
@@ -43,16 +48,31 @@ function checkCommand(name: string, command: string, args: string[], required: b
   return { name, ok: result.ok, detail, required };
 }
 
-export function collectDoctorChecks(platform = process.platform): DoctorCheck[] {
+export function collectDoctorChecks(
+  platform = process.platform,
+  options: DoctorOptions = {},
+): DoctorCheck[] {
   const [major, minor] = process.versions.node.split('.').map(Number);
   const nodeOk = major > 22 || (major === 22 && minor >= 12);
   const checks: DoctorCheck[] = [
     { name: 'node', ok: nodeOk, detail: process.version, required: true },
     checkCommand('npm', 'npm', ['--version'], true),
-    checkCommand('zig', 'zig', ['version'], true),
-    checkCommand('java', 'java', ['-version'], false),
-    checkCommand('adb', 'adb', ['version'], false),
   ];
+
+  if (options.runtimeDevelopment) {
+    checks.push(checkCommand('zig', 'zig', ['version'], true));
+  } else {
+    checks.push({
+      name: 'zig',
+      ok: true,
+      detail: 'not required for Sting app development; use --runtime for runtime contributor checks',
+      required: false,
+      skipped: true,
+    });
+  }
+
+  checks.push(checkCommand('java', 'java', ['-version'], false));
+  checks.push(checkCommand('adb', 'adb', ['version'], false));
 
   if (platform === 'darwin') {
     checks.push(checkCommand('xcode', 'xcodebuild', ['-version'], false));
