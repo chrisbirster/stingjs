@@ -8,15 +8,26 @@ Developer tooling for StingJS. The npm package is intentionally `private: true` 
 npm install
 npm run build
 node dist/cli.js doctor
+node dist/cli.js doctor --runtime
 node dist/cli.js devices
 node dist/cli.js start --project-root ../../examples/hello-world
 ```
 
 ### `sting doctor`
 
-Checks the local environment for the tools used by Sting development. Node, npm, and Zig are required for the portable toolchain. Java/adb and Xcode/simctl are reported when relevant for native development.
+Checks the local environment for normal Sting application development.
 
-Use `--json` for machine-readable output.
+Node and npm are application prerequisites. Platform-native tools are reported when relevant for iOS or Android development. Zig is deliberately **not required** for ordinary Sting app developers and is shown as not required in the default doctor output.
+
+Sting runtime contributors and source-build workflows can opt into the lower-level toolchain check with:
+
+```bash
+sting doctor --runtime
+```
+
+In runtime mode, Zig is required. This keeps Sting's Zig-centered implementation an internal/runtime concern instead of forcing application developers to install or understand Zig.
+
+Use `--json` for machine-readable output. JSON output includes a `mode` field with either `app` or `runtime`.
 
 ### `sting devices`
 
