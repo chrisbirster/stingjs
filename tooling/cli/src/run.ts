@@ -31,11 +31,14 @@ function commandName(name: string): string {
 
 function execute(command: string, args: string[], options: CommandOptions = {}): string {
   const capture = options.capture ?? false;
-  const result = spawnSync(commandName(command), args, {
+  const executable = commandName(command);
+  const shell = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(executable);
+  const result = spawnSync(executable, args, {
     cwd: options.cwd,
     env: options.env ?? process.env,
     encoding: capture ? 'utf8' : undefined,
     stdio: capture ? 'pipe' : 'inherit',
+    shell,
   });
 
   if (result.error) {
