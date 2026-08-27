@@ -27,10 +27,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
   fail "physical evidence requires a clean worktree so benchmarkCommit exactly identifies the measured code"
 fi
 
-mapfile -t DEVICES < <(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
-[[ "${#DEVICES[@]}" -eq 1 ]] || \
-  fail "exactly one authorized Android device must be connected; found ${#DEVICES[@]}"
-readonly DEVICE="${DEVICES[0]}"
+readonly DEVICE_LINES="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')"
+readonly DEVICE_COUNT="$(printf '%s\n' "${DEVICE_LINES}" | awk 'NF { count += 1 } END { print count + 0 }')"
+[[ "${DEVICE_COUNT}" -eq 1 ]] || \
+  fail "exactly one authorized Android device must be connected; found ${DEVICE_COUNT}"
+readonly DEVICE="$(printf '%s\n' "${DEVICE_LINES}" | awk 'NF { print; exit }')"
 readonly IS_EMULATOR="$(adb -s "${DEVICE}" shell getprop ro.kernel.qemu | tr -d '\r')"
 [[ "${IS_EMULATOR}" != "1" ]] || fail "Android emulator detected; final v0.1 evidence requires a physical device"
 readonly DEVICE_MODEL="$(adb -s "${DEVICE}" shell getprop ro.product.manufacturer | tr -d '\r') $(adb -s "${DEVICE}" shell getprop ro.product.model | tr -d '\r')"
@@ -75,7 +76,7 @@ echo "Building Sting Release app with both QuickJS candidates..."
   gradle :app:assembleRelease :app:assembleAndroidTest --no-daemon
 )
 
-readonly STING_APP_APK="$(find "${STING_ANDROID}/app/build/outputs/apk/release" -maxdepth 1 -name '*.apk' -type f | head -n 1)"
+readonly STING_APP_APK="$(find "${STING_ANDROID}/app/build/outputs/apk/release" -name '*.apk' -type f | head -n 1)"
 readonly STING_TEST_APK="$(find "${STING_ANDROID}/app/build/outputs/apk/androidTest" -name '*.apk' -type f | head -n 1)"
 [[ -f "${STING_APP_APK}" ]] || fail "Sting Release APK was not produced"
 [[ -f "${STING_TEST_APK}" ]] || fail "Sting instrumentation APK was not produced"
@@ -98,7 +99,7 @@ STING_RN_BASELINE_DIR="${RN_DIR}" bash "${ROOT}/benchmarks/react-native-benchmar
   ./gradlew :app:assembleRelease :app:assembleAndroidTest --no-daemon
 )
 
-readonly RN_APP_APK="$(find "${RN_DIR}/android/app/build/outputs/apk/release" -maxdepth 1 -name '*.apk' -type f | head -n 1)"
+readonly RN_APP_APK="$(find "${RN_DIR}/android/app/build/outputs/apk/release" -name '*.apk' -type f | head -n 1)"
 readonly RN_TEST_APK="$(find "${RN_DIR}/android/app/build/outputs/apk/androidTest" -name '*.apk' -type f | head -n 1)"
 [[ -f "${RN_APP_APK}" ]] || fail "React Native Release APK was not produced"
 [[ -f "${RN_TEST_APK}" ]] || fail "React Native instrumentation APK was not produced"
