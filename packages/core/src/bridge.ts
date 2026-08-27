@@ -15,6 +15,7 @@ export interface StingNativeBridge {
   removeNode(parentId: number, nodeId: number): void;
   setEventEnabled(id: number, event: string, enabled: boolean): void;
   callModuleSync(module: string, method: string, argsJSON: string): string;
+  callModuleAsync(module: string, method: string, argsJSON: string, requestId: number): void;
 }
 
 export function encodeNativeValue(value: unknown): string {

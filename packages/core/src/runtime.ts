@@ -10,6 +10,13 @@ declare global {
 
   // Called by the native runtime when a native event occurs.
   var __stingDispatchEvent: ((nodeId: number, event: string, payloadJSON: string) => void) | undefined;
+
+  // Called by the native runtime when an asynchronous native-module request
+  // completes. Returns false for stale/unknown request IDs.
+  var __stingResolveModuleCall: ((requestId: number, responseJSON: string) => boolean) | undefined;
+
+  // Called by a native runtime before its JavaScript engine/context is torn down.
+  var __stingDisposeRuntime: (() => void) | undefined;
 }
 
 export function installNativeBridge(bridge: StingNativeBridge): StingHost {
@@ -23,10 +30,31 @@ export function installNativeBridge(bridge: StingNativeBridge): StingHost {
     );
   }
 
+  activeHost?.dispose();
   activeHost = host;
-  globalThis.__stingDispatchEvent = (nodeId, event, payloadJSON) => {
+
+  const dispatchEvent = (nodeId: number, event: string, payloadJSON: string) => {
     host.dispatchEvent(nodeId, event, decodeNativeValue(payloadJSON));
   };
+  const resolveModuleCall = (requestId: number, responseJSON: string) =>
+    host.completeModuleAsync(requestId, responseJSON);
+  const disposeRuntime = () => {
+    host.dispose();
+    if (activeHost === host) activeHost = undefined;
+    if (globalThis.__stingDispatchEvent === dispatchEvent) {
+      globalThis.__stingDispatchEvent = undefined;
+    }
+    if (globalThis.__stingResolveModuleCall === resolveModuleCall) {
+      globalThis.__stingResolveModuleCall = undefined;
+    }
+    if (globalThis.__stingDisposeRuntime === disposeRuntime) {
+      globalThis.__stingDisposeRuntime = undefined;
+    }
+  };
+
+  globalThis.__stingDispatchEvent = dispatchEvent;
+  globalThis.__stingResolveModuleCall = resolveModuleCall;
+  globalThis.__stingDisposeRuntime = disposeRuntime;
   return host;
 }
 
@@ -44,6 +72,9 @@ export function getHost(): StingHost {
 }
 
 export function resetNativeBridgeForTests(): void {
+  activeHost?.dispose();
   activeHost = undefined;
   globalThis.__stingDispatchEvent = undefined;
+  globalThis.__stingResolveModuleCall = undefined;
+  globalThis.__stingDisposeRuntime = undefined;
 }

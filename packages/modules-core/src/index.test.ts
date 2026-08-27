@@ -9,6 +9,7 @@ import { createNativeModule, requireNativeModule } from './index.js';
 
 class RecordingBridge implements StingNativeBridge {
   calls: Array<{ module: string; method: string; argsJSON: string }> = [];
+  asyncCalls: Array<{ module: string; method: string; argsJSON: string; requestId: number }> = [];
 
   getRuntimeInfo(): string {
     return JSON.stringify({
@@ -30,6 +31,10 @@ class RecordingBridge implements StingNativeBridge {
     this.calls.push({ module, method, argsJSON });
     return JSON.stringify({ ok: true, value: method === 'hasString' });
   }
+
+  callModuleAsync(module: string, method: string, argsJSON: string, requestId: number): void {
+    this.asyncCalls.push({ module, method, argsJSON, requestId });
+  }
 }
 
 afterEach(() => {
@@ -38,7 +43,7 @@ afterEach(() => {
 });
 
 describe('native module client', () => {
-  it('routes typed calls through the active Sting host', () => {
+  it('routes typed synchronous calls through the active Sting host', () => {
     const bridge = new RecordingBridge();
     installNativeBridge(bridge);
 
@@ -49,6 +54,29 @@ describe('native module client', () => {
     expect(bridge.calls).toEqual([
       { module: 'Clipboard', method: 'hasString', argsJSON: '[]' },
     ]);
+  });
+
+  it('routes typed asynchronous calls through the active Sting host and resolves later', async () => {
+    const bridge = new RecordingBridge();
+    installNativeBridge(bridge);
+
+    const clipboard = createNativeModule('Clipboard');
+    const pending = clipboard.callAsync<{ text: string }>('readLater', ['source']);
+
+    expect(bridge.asyncCalls).toHaveLength(1);
+    expect(bridge.asyncCalls[0]).toMatchObject({
+      module: 'Clipboard',
+      method: 'readLater',
+      argsJSON: '["source"]',
+    });
+
+    const requestId = bridge.asyncCalls[0]!.requestId;
+    expect(globalThis.__stingResolveModuleCall?.(
+      requestId,
+      JSON.stringify({ ok: true, value: { text: 'native' } }),
+    )).toBe(true);
+
+    await expect(pending).resolves.toEqual({ text: 'native' });
   });
 
   it('fails clearly when a required module is absent', () => {
