@@ -3,6 +3,11 @@ package run.stingjs.runtime
 import org.json.JSONArray
 import org.json.JSONObject
 
+private data class StingModuleEventKey(
+    val module: String,
+    val event: String,
+)
+
 class StingNativeBridge(
     private val nodes: StingNodeRegistry,
     private val modules: StingModuleRegistry = StingModuleRegistry(),
@@ -10,9 +15,14 @@ class StingNativeBridge(
 ) {
     private val asyncLock = Any()
     private val activeAsyncRequestIds = mutableSetOf<Int>()
+    private val moduleEventLock = Any()
+    private val activeModuleEvents = mutableSetOf<StingModuleEventKey>()
 
     @Volatile
     var asyncResultSink: ((Int, String) -> Unit)? = null
+
+    @Volatile
+    var moduleEventSink: ((String, String, String) -> Unit)? = null
 
     var mutationCounts = StingMutationCounts()
         private set
@@ -99,9 +109,58 @@ class StingNativeBridge(
         }
     }
 
+    fun setModuleEventEnabled(module: String, event: String, enabled: Boolean): String {
+        val key = StingModuleEventKey(module, event)
+        return try {
+            if (enabled) {
+                val inserted = synchronized(moduleEventLock) { activeModuleEvents.add(key) }
+                if (inserted) {
+                    try {
+                        modules.setEventEnabled(module, event, true) { payload ->
+                            emitModuleEvent(key, payload)
+                        }
+                    } catch (error: Throwable) {
+                        synchronized(moduleEventLock) { activeModuleEvents.remove(key) }
+                        throw error
+                    }
+                }
+            } else {
+                val removed = synchronized(moduleEventLock) { activeModuleEvents.remove(key) }
+                if (removed) {
+                    modules.setEventEnabled(module, event, false) { }
+                }
+            }
+
+            JSONObject()
+                .put("ok", true)
+                .put("value", JSONObject.NULL)
+                .toString()
+        } catch (error: Throwable) {
+            encodeErrorResponse(error, module, "addListener:$event")
+        }
+    }
+
     fun detachAsyncResultSink() {
         asyncResultSink = null
         synchronized(asyncLock) { activeAsyncRequestIds.clear() }
+    }
+
+    fun detachModuleEventSink() {
+        val observations = synchronized(moduleEventLock) {
+            val active = activeModuleEvents.toList()
+            activeModuleEvents.clear()
+            moduleEventSink = null
+            active
+        }
+
+        for (key in observations) {
+            try {
+                modules.setEventEnabled(key.module, key.event, false) { }
+            } catch (_: Throwable) {
+                // Teardown must continue for every observation. JS/native bridge
+                // state is already detached, so later emissions are stale no-ops.
+            }
+        }
     }
 
     private fun completeModuleAsync(
@@ -124,6 +183,14 @@ class StingNativeBridge(
         }
 
         asyncResultSink?.invoke(requestId, response)
+    }
+
+    private fun emitModuleEvent(key: StingModuleEventKey, payload: Any?) {
+        val payloadJSON = JSONObject.valueToString(wrapJSON(payload))
+        synchronized(moduleEventLock) {
+            if (!activeModuleEvents.contains(key)) return
+            moduleEventSink?.invoke(key.module, key.event, payloadJSON)
+        }
     }
 
     private fun decodeArguments(argsJSON: String): List<Any?> {
