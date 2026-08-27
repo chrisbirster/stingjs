@@ -214,7 +214,7 @@ class PhysicalEvidenceInstrumentedTest {
     private fun measurement(scenario: String, samples: DoubleArray): JSONObject =
         JSONObject()
             .put("scenario", scenario)
-            .put("metric", "native-event-to-visible-update-latency")
+            .put("metric", "native-event-to-native-mutation-latency")
             .put("unit", "ms")
             .put("direction", "lower-is-better")
             .put("samples", JSONArray().apply { samples.forEach { put(it) } })
