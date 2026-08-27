@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { collectDevices, collectDoctorChecks } from './platform.js';
+import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
 
 function hasFlag(args: string[], flag: string): boolean {
@@ -13,7 +14,7 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  start    Serve a built Sting bundle to Sting Go\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--no-bundle]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function doctor(args: string[]): void {
@@ -54,6 +55,23 @@ function devices(args: string[]): void {
     }
     console.log('');
   }
+}
+
+function run(args: string[]): void {
+  const [platform, ...runArgs] = args;
+  if (platform !== 'ios' && platform !== 'android') {
+    throw new Error('Usage: sting run <ios|android> [options]');
+  }
+
+  const runOptions = {
+    projectRoot: option(runArgs, '--project-root'),
+    device: option(runArgs, '--device'),
+    configuration: option(runArgs, '--configuration'),
+    skipBundle: hasFlag(runArgs, '--no-bundle'),
+  };
+  const result = platform === 'ios' ? runIos(runOptions) : runAndroid(runOptions);
+  console.log(`\nSting app launched on ${result.device.name} (${result.device.id})`);
+  console.log(`Application: ${result.applicationId}`);
 }
 
 async function start(args: string[]): Promise<void> {
@@ -104,6 +122,9 @@ async function main(): Promise<void> {
       return;
     case 'start':
       await start(args);
+      return;
+    case 'run':
+      run(args);
       return;
     case undefined:
     case '--help':
