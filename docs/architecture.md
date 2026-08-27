@@ -27,7 +27,9 @@ Native modules use a parallel path:
 ```text
 TypeScript module API
        ↓
-@stingjs/core module client
+@stingjs/modules-core
+       ↓
+@stingjs/core host/module contract
        ↓
 versioned Sting bridge
        ↓
@@ -41,6 +43,10 @@ OS API
 ### `@stingjs/core`
 
 Owns stable Sting concepts: host nodes, native mutation operations, event dispatch, module calls, error envelopes, protocol versioning, and runtime lifecycle. It must be usable in tests without Solid or a device.
+
+### `@stingjs/modules-core`
+
+Owns the JavaScript module-authoring boundary shared by first-party and third-party native modules. Module packages use `createNativeModule()` for availability/version checks and typed calls instead of reaching into low-level host APIs directly. Shared async, event, permission, native-object, native-view, lifecycle, and autolinking capabilities should extend this boundary rather than create one-off bridges in individual modules.
 
 ### `@stingjs/solid`
 
