@@ -45,6 +45,7 @@ dependencies {
     implementation(project(":sting-haptics"))
     implementation(project(":sting-clipboard"))
     implementation(project(":sting-device"))
+    implementation(project(":sting-filesystem"))
     implementation(project(":sting-runtime-quickjs-candidate"))
     implementation(project(":sting-runtime-quickjs-ng-candidate"))
 
