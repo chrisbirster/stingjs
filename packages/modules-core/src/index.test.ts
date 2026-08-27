@@ -34,7 +34,7 @@ class RecordingBridge implements StingNativeBridge {
 
 afterEach(() => {
   resetNativeBridgeForTests();
-  delete globalThis.__stingNativeBridge;
+  globalThis.__stingNativeBridge = undefined;
 });
 
 describe('native module client', () => {
