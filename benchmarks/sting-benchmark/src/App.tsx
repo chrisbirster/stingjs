@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import { Button, Text, View } from '@stingjs/native';
+import { Button, ScrollView, Text, View } from '@stingjs/native';
 
 const ROW_COUNT = 10_000;
 const SPARSE_TARGET = 4_281;
@@ -67,16 +67,17 @@ export default function App() {
       </Button>
 
       {showRows() ? (
-        <View style={{ flexDirection: 'column' }} accessibilityLabel="benchmark-rows">
+        <>
           <Button onPress={updateSparse}>Update row 4,281</Button>
           <Button onPress={updateDense}>Update 100 rows</Button>
-
-          {rows.map(row => (
-            <Text accessibilityLabel={`benchmark-row-${row.id}`}>
-              Row {row.id}: {row.revision()}
-            </Text>
-          ))}
-        </View>
+          <ScrollView accessibilityLabel="benchmark-rows">
+            {rows.map(row => (
+              <Text accessibilityLabel={`benchmark-row-${row.id}`}>
+                Row {row.id}: {row.revision()}
+              </Text>
+            ))}
+          </ScrollView>
+        </>
       ) : null}
     </View>
   );
