@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseAdbDevices, parseSimctlDevices } from './platform.js';
+import { collectDoctorChecks, parseAdbDevices, parseSimctlDevices } from './platform.js';
+
+test('doctor does not require Zig for normal Sting app development', () => {
+  const zig = collectDoctorChecks('linux').find((check) => check.name === 'zig');
+  assert.ok(zig);
+  assert.equal(zig.required, false);
+  assert.equal(zig.skipped, true);
+  assert.match(zig.detail, /not required for Sting app development/);
+});
+
+test('runtime doctor requires Zig for Sting runtime contributors', () => {
+  const zig = collectDoctorChecks('linux', { runtimeDevelopment: true }).find((check) => check.name === 'zig');
+  assert.ok(zig);
+  assert.equal(zig.required, true);
+  assert.equal(zig.skipped, undefined);
+});
 
 test('parseAdbDevices classifies physical devices and emulators', () => {
   const devices = parseAdbDevices(`List of devices attached\nR5CX12345 device product:foo model:Pixel_9 device:foo transport_id:1\nemulator-5554 device product:sdk model:sdk_gphone64_arm64 device:emu transport_id:2\n`);
