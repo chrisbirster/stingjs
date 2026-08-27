@@ -1,13 +1,23 @@
 package run.stingjs.runtime
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.net.Uri
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import java.net.URL
 import org.json.JSONObject
 import org.json.JSONTokener
 
@@ -19,7 +29,70 @@ private data class StingNode(
     var parentId: Int? = null,
     val children: MutableList<Int> = mutableListOf(),
     var gapDp: Float = 0f,
+    var imageSource: String? = null,
 )
+
+private class StingEditText(context: Context) : EditText(context) {
+    private var changeWatcher: TextWatcher? = null
+    private var suppressChange = false
+
+    fun setStingText(value: String) {
+        if (text.toString() == value) return
+        suppressChange = true
+        setText(value)
+        setSelection(text.length)
+        suppressChange = false
+    }
+
+    fun setChangeTextEnabled(enabled: Boolean, onChange: (String) -> Unit) {
+        changeWatcher?.let(::removeTextChangedListener)
+        changeWatcher = null
+        if (!enabled) return
+
+        changeWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                if (!suppressChange) onChange(s?.toString().orEmpty())
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        }.also(::addTextChangedListener)
+    }
+}
+
+private class StingScrollContainer(context: Context) : FrameLayout(context) {
+    val content = LinearLayout(context)
+    private val vertical = ScrollView(context)
+    private val horizontal = HorizontalScrollView(context)
+    private var horizontalMode = false
+
+    init {
+        content.orientation = LinearLayout.VERTICAL
+        setHorizontal(false)
+    }
+
+    fun setHorizontal(horizontalEnabled: Boolean) {
+        if (childCount > 0 && horizontalMode == horizontalEnabled) return
+        horizontalMode = horizontalEnabled
+
+        (content.parent as? ViewGroup)?.removeView(content)
+        removeAllViews()
+        content.orientation = if (horizontalEnabled) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+
+        val scroller: ViewGroup = if (horizontalEnabled) horizontal else vertical
+        scroller.removeAllViews()
+        scroller.addView(
+            content,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        addView(
+            scroller,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
+        )
+    }
+}
 
 class StingNodeRegistry(private val rootView: ViewGroup) {
     private val nodes = mutableMapOf<Int, StingNode>()
@@ -38,6 +111,12 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             }
             "text" -> TextView(rootView.context)
             "button" -> Button(rootView.context)
+            "image" -> ImageView(rootView.context).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                adjustViewBounds = true
+            }
+            "textinput" -> StingEditText(rootView.context)
+            "scrollview" -> StingScrollContainer(rootView.context)
             else -> throw StingRuntimeException("Unsupported native element type: $type")
         }
         nodes[id] = StingNode(id = id, type = normalized, view = view)
@@ -114,24 +193,50 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             "accessibilityLabel" -> {
                 node.view?.contentDescription = if (value == JSONObject.NULL) null else value as? String
             }
+            "source" -> applyImageSource(value, node)
+            "resizeMode" -> {
+                val mode = value as? String ?: return
+                (node.view as? ImageView)?.scaleType = when (mode) {
+                    "cover" -> ImageView.ScaleType.CENTER_CROP
+                    "stretch" -> ImageView.ScaleType.FIT_XY
+                    else -> ImageView.ScaleType.FIT_CENTER
+                }
+            }
+            "value" -> {
+                val text = if (value == JSONObject.NULL) "" else value as? String ?: ""
+                (node.view as? StingEditText)?.setStingText(text)
+            }
+            "placeholder" -> {
+                (node.view as? EditText)?.hint = if (value == JSONObject.NULL) null else value as? String
+            }
+            "editable" -> {
+                val editable = value as? Boolean ?: return
+                (node.view as? EditText)?.isEnabled = editable
+            }
+            "horizontal" -> {
+                val horizontal = value as? Boolean ?: return
+                (node.view as? StingScrollContainer)?.setHorizontal(horizontal)
+            }
             else -> Unit
         }
     }
 
     fun setEventEnabled(id: Int, event: String, enabled: Boolean) {
         val node = requireNode(id)
-        val button = node.view as? Button
-            ?: throw StingRuntimeException("Event $event is not supported by node $id")
-        if (event != "press") {
-            throw StingRuntimeException("Event $event is not supported by node $id")
-        }
-
-        if (enabled) {
-            button.setOnClickListener {
-                eventSink?.invoke(id, "press", "null")
+        when {
+            event == "press" && node.view is Button -> {
+                if (enabled) {
+                    node.view.setOnClickListener { eventSink?.invoke(id, "press", "null") }
+                } else {
+                    node.view.setOnClickListener(null)
+                }
             }
-        } else {
-            button.setOnClickListener(null)
+            event == "changeText" && node.view is StingEditText -> {
+                node.view.setChangeTextEnabled(enabled) { value ->
+                    eventSink?.invoke(id, "changeText", JSONObject.quote(value))
+                }
+            }
+            else -> throw StingRuntimeException("Event $event is not supported by node $id")
         }
     }
 
@@ -148,11 +253,14 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     private fun attachView(node: StingNode, parent: StingNode, insertionIndex: Int) {
         val childView = node.view ?: return
-        val parentView = parent.view as? ViewGroup
-            ?: throw StingRuntimeException("Cannot insert a native view below a text-only node")
+        if (parent.type in setOf("text", "button", "image", "textinput")) {
+            throw StingRuntimeException("Native leaf node ${parent.type} cannot contain view children")
+        }
 
-        if (parent.type == "text" || parent.type == "button") {
-            throw StingRuntimeException("Text and Button may only contain textual children in v0.1")
+        val parentView = when (val view = parent.view) {
+            is StingScrollContainer -> view.content
+            is ViewGroup -> view
+            else -> throw StingRuntimeException("Cannot insert a native view below a text-only node")
         }
 
         val viewIndex = parent.children
@@ -172,8 +280,34 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         val text = parent.children.mapNotNull { nodes[it]?.textValue }.joinToString(separator = "")
 
         when (val view = parent.view) {
-            is TextView -> view.text = text
             is Button -> view.text = text
+            is TextView -> view.text = text
+        }
+    }
+
+    private fun applyImageSource(value: Any?, node: StingNode) {
+        val imageView = node.view as? ImageView ?: return
+        val uri = when (value) {
+            is String -> value
+            is JSONObject -> value.optString("uri").takeIf { it.isNotBlank() }
+            else -> null
+        }
+        node.imageSource = uri
+        imageView.setImageDrawable(null)
+        if (uri.isNullOrBlank()) return
+
+        val parsed = Uri.parse(uri)
+        if (parsed.scheme == "http" || parsed.scheme == "https") {
+            Thread {
+                val bitmap = runCatching {
+                    URL(uri).openStream().use(BitmapFactory::decodeStream)
+                }.getOrNull() ?: return@Thread
+                imageView.post {
+                    if (nodes[node.id]?.imageSource == uri) imageView.setImageBitmap(bitmap)
+                }
+            }.start()
+        } else {
+            imageView.setImageURI(parsed)
         }
     }
 
@@ -185,9 +319,14 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             view.setBackgroundColor(Color.parseColor(style.getString("backgroundColor")))
         }
 
-        if (view is LinearLayout) {
-            if (style.has("flexDirection")) {
-                view.orientation = if (style.getString("flexDirection") == "row") {
+        val stack = when (view) {
+            is LinearLayout -> view
+            is StingScrollContainer -> view.content
+            else -> null
+        }
+        if (stack != null) {
+            if (style.has("flexDirection") && view !is StingScrollContainer) {
+                stack.orientation = if (style.getString("flexDirection") == "row") {
                     LinearLayout.HORIZONTAL
                 } else {
                     LinearLayout.VERTICAL
@@ -199,23 +338,23 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             }
             if (style.has("padding")) {
                 val padding = dp(context, style.getDouble("padding").toFloat())
-                view.setPadding(padding, padding, padding, padding)
+                stack.setPadding(padding, padding, padding, padding)
             }
         }
 
         if (style.has("color")) {
             val color = Color.parseColor(style.getString("color"))
             when (view) {
-                is TextView -> view.setTextColor(color)
                 is Button -> view.setTextColor(color)
+                is TextView -> view.setTextColor(color)
             }
         }
 
         if (style.has("fontSize")) {
             val size = style.getDouble("fontSize").toFloat()
             when (view) {
-                is TextView -> view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
                 is Button -> view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+                is TextView -> view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
             }
         }
 
@@ -231,7 +370,11 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     }
 
     private fun refreshGap(parent: StingNode) {
-        val layout = parent.view as? LinearLayout ?: return
+        val layout = when (val view = parent.view) {
+            is LinearLayout -> view
+            is StingScrollContainer -> view.content
+            else -> return
+        }
         val gap = dp(layout.context, parent.gapDp)
         val childViews = parent.children.mapNotNull { nodes[it]?.view }
 
