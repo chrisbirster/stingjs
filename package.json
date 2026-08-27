@@ -16,6 +16,7 @@
   "scripts": {
     "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
     "benchmark:ios-jsc-control": "bash scripts/collect-ios-jsc-control.sh",
+    "benchmark:physical:android": "bash scripts/collect-android-physical.sh",
     "benchmark:results": "node benchmarks/results/tool.mjs",
     "build": "npm run build --workspaces --if-present",
     "release:check:v0.1": "node scripts/check-v0.1-release.mjs",
