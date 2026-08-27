@@ -6,8 +6,8 @@ import { validateResult } from '../benchmarks/results/tool.mjs';
 const root = resolve(new URL('..', import.meta.url).pathname);
 const expectedVersion = '0.1.0';
 const requiredScenarioMetric = [
-  ['sparse-10k-row-update', 'native-event-to-visible-update-latency'],
-  ['dense-10k-100-row-update', 'native-event-to-visible-update-latency'],
+  ['sparse-10k-row-update', 'native-event-to-native-mutation-latency'],
+  ['dense-10k-100-row-update', 'native-event-to-native-mutation-latency'],
 ];
 
 function fail(message) {
