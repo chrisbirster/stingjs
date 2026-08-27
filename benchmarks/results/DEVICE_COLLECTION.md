@@ -57,7 +57,7 @@ The wrapper refuses emulators and dirty worktrees. It then:
 5. captures Sting + QuickJS-NG sparse/dense samples;
 6. generates the pinned bare React Native 0.87 + Hermes baseline;
 7. builds and installs its Release app/instrumentation APK;
-8. captures the equivalent RN/Hermes sparse/dense native-event-to-visible-update samples;
+8. captures the equivalent RN/Hermes sparse/dense native-event-to-native-mutation samples;
 9. pulls all three capture documents from the phone;
 10. converts them into schema-v1 evidence, validates them, and writes a deterministic summary.
 
@@ -82,9 +82,9 @@ For Sting, each measured sample requires:
 - one Solid fine-grained row computation;
 - exactly one `replaceText` native mutation;
 - no element/text creation, property replay, insert/remove churn, or event-registration churn;
-- one native event -> JS/Solid -> native commit round-trip sample.
+- one `native-event-to-native-mutation-latency` sample.
 
-For React Native, instrumentation starts at the same native control interaction and ends when the actual native row `TextView` changes.
+For React Native, instrumentation starts at the same native control interaction and ends when the actual native row `TextView` text property changes.
 
 Current capture policy:
 
@@ -101,9 +101,11 @@ For Sting the capture requires exactly 100 `replaceText` mutations and no struct
 
 This records dense cost directly rather than extrapolating it from the sparse case.
 
+The v0.1 comparison metric is **`native-event-to-native-mutation-latency`**. Its endpoint is the actual Android native text-property mutation. It does **not** claim that the display compositor has presented a frame. Frame presentation and frame pacing remain separate performance measurements.
+
 ## Evidence cohort rules
 
-`npm run release:check:v0.1` requires all three systems to provide both sparse and dense `native-event-to-visible-update-latency` evidence and verifies that the comparison cohort shares:
+`npm run release:check:v0.1` requires all three systems to provide both sparse and dense `native-event-to-native-mutation-latency` evidence and verifies that the comparison cohort shares:
 
 - exact benchmark Git commit;
 - physical Android device model;
