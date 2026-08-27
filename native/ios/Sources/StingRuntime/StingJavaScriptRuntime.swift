@@ -10,6 +10,7 @@ public final class StingJavaScriptRuntime {
     private let modules: StingModuleRegistry
     private var bridge: StingJavaScriptBridge?
     private var lastException: String?
+    private var disposed = false
 
     public init(
         rootView: UIView,
@@ -47,6 +48,15 @@ public final class StingJavaScriptRuntime {
         self.bridge = bridge
         context.setObject(bridge, forKeyedSubscript: "__stingNativeBridge" as NSString)
 
+        bridge.asyncResultSink = { [weak context] requestId, responseJSON in
+            guard let context,
+                  let resolver = context.objectForKeyedSubscript("__stingResolveModuleCall"),
+                  !resolver.isUndefined else {
+                return
+            }
+            resolver.call(withArguments: [requestId, responseJSON])
+        }
+
         let performanceDiagnostics = self.performanceDiagnostics
         nodes.eventSink = { [weak context, weak performanceDiagnostics] nodeId, event, payloadJSON in
             let dispatch = {
@@ -63,7 +73,15 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    deinit {
+        dispose()
+    }
+
     public func evaluate(bundle: String, sourceURL: URL? = nil) throws {
+        guard !disposed else {
+            throw StingRuntimeError("Cannot evaluate JavaScript after the Sting runtime is disposed")
+        }
+
         lastException = nil
 
         let evaluateBundle = {
@@ -85,6 +103,16 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    public func dispose() {
+        if Thread.isMainThread {
+            disposeOnRuntimeThread()
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                self?.disposeOnRuntimeThread()
+            }
+        }
+    }
+
     // Internal diagnostics used by native integration tests and benchmark
     // harnesses. These deliberately stay out of the public Sting application
     // API while allowing us to verify fine-grained renderer behavior at the
@@ -95,6 +123,19 @@ public final class StingJavaScriptRuntime {
 
     var mutationCounts: StingBridgeMutationCounts {
         bridge?.mutationCounts ?? StingBridgeMutationCounts()
+    }
+
+    private func disposeOnRuntimeThread() {
+        guard !disposed else { return }
+        disposed = true
+
+        if let disposeRuntime = context.objectForKeyedSubscript("__stingDisposeRuntime"),
+           !disposeRuntime.isUndefined {
+            disposeRuntime.call(withArguments: [])
+        }
+
+        nodes.eventSink = nil
+        bridge?.detachAsyncResultSink()
     }
 
     private func installHostGlobals(in context: JSContext) {

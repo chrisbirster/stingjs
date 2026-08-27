@@ -8,7 +8,11 @@ import {
   type StingNativeBridge,
 } from './index.js';
 
-function makeBridge(): StingNativeBridge {
+type AsyncTestBridge = StingNativeBridge & {
+  callModuleAsync: NonNullable<StingNativeBridge['callModuleAsync']>;
+};
+
+function makeBridge(): AsyncTestBridge {
   return {
     getRuntimeInfo: vi.fn(() => JSON.stringify({
       protocolVersion: STING_PROTOCOL_VERSION,
@@ -23,6 +27,7 @@ function makeBridge(): StingNativeBridge {
     removeNode: vi.fn(),
     setEventEnabled: vi.fn(),
     callModuleSync: vi.fn(() => JSON.stringify({ ok: true, value: null })),
+    callModuleAsync: vi.fn(),
   };
 }
 
@@ -185,5 +190,150 @@ describe('StingHost', () => {
     const host = new StingHost(bridge);
 
     expect(() => host.callModuleSync('Haptics', 'missing')).toThrow(StingNativeError);
+  });
+
+  it('resolves asynchronous native calls with primitive and structured results', async () => {
+    const bridge = makeBridge();
+    installNativeBridge(bridge);
+
+    const primitive = installNativeBridge(bridge).callModuleAsync('AsyncTest', 'primitive', [7]);
+    const primitiveRequestId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+    expect(primitiveRequestId).toBeTypeOf('number');
+    expect(globalThis.__stingResolveModuleCall?.(
+      primitiveRequestId!,
+      JSON.stringify({ ok: true, value: 14 }),
+    )).toBe(true);
+    await expect(primitive).resolves.toBe(14);
+
+    const host = installNativeBridge(bridge);
+    const structured = host.callModuleAsync('AsyncTest', 'object');
+    const structuredRequestId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+    expect(globalThis.__stingResolveModuleCall?.(
+      structuredRequestId!,
+      JSON.stringify({ ok: true, value: { name: 'sting', count: 2 } }),
+    )).toBe(true);
+    await expect(structured).resolves.toEqual({ name: 'sting', count: 2 });
+  });
+
+  it('rejects asynchronous native calls with structured StingNativeError data', async () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const pending = host.callModuleAsync('Filesystem', 'readFile', ['/missing']);
+    const requestId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    expect(globalThis.__stingResolveModuleCall?.(
+      requestId!,
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: 'E_NOT_FOUND',
+          message: 'File does not exist',
+          module: 'Filesystem',
+          method: 'readFile',
+          details: { uri: '/missing' },
+        },
+      }),
+    )).toBe(true);
+
+    await expect(pending).rejects.toMatchObject({
+      name: 'StingNativeError',
+      code: 'E_NOT_FOUND',
+      module: 'Filesystem',
+      method: 'readFile',
+      details: { uri: '/missing' },
+    });
+  });
+
+  it('settles concurrent asynchronous calls independently when native completes out of order', async () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+
+    const first = host.callModuleAsync('AsyncTest', 'first');
+    const firstId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+    const second = host.callModuleAsync('AsyncTest', 'second');
+    const secondId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    expect(secondId).not.toBe(firstId);
+    expect(globalThis.__stingResolveModuleCall?.(
+      secondId!,
+      JSON.stringify({ ok: true, value: 'second-result' }),
+    )).toBe(true);
+    expect(globalThis.__stingResolveModuleCall?.(
+      firstId!,
+      JSON.stringify({ ok: true, value: 'first-result' }),
+    )).toBe(true);
+
+    await expect(second).resolves.toBe('second-result');
+    await expect(first).resolves.toBe('first-result');
+  });
+
+  it('ignores duplicate, stale, and unknown asynchronous completion request ids', async () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const pending = host.callModuleAsync('AsyncTest', 'once');
+    const requestId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    expect(globalThis.__stingResolveModuleCall?.(
+      requestId!,
+      JSON.stringify({ ok: true, value: 'first' }),
+    )).toBe(true);
+    expect(globalThis.__stingResolveModuleCall?.(
+      requestId!,
+      JSON.stringify({ ok: true, value: 'duplicate' }),
+    )).toBe(false);
+    expect(globalThis.__stingResolveModuleCall?.(
+      Number.MAX_SAFE_INTEGER,
+      JSON.stringify({ ok: true, value: 'unknown' }),
+    )).toBe(false);
+
+    await expect(pending).resolves.toBe('first');
+  });
+
+  it('rejects outstanding asynchronous calls when the runtime is disposed', async () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const pending = host.callModuleAsync('Filesystem', 'readFile', ['/slow']);
+    const requestId = vi.mocked(bridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    globalThis.__stingDisposeRuntime?.();
+
+    await expect(pending).rejects.toMatchObject({
+      name: 'StingNativeError',
+      code: 'E_RUNTIME_DISPOSED',
+      module: 'Filesystem',
+      method: 'readFile',
+    });
+    expect(globalThis.__stingResolveModuleCall).toBeUndefined();
+    expect(host.completeModuleAsync(
+      requestId!,
+      JSON.stringify({ ok: true, value: 'too-late' }),
+    )).toBe(false);
+  });
+
+  it('never reuses asynchronous request ids across host instances', async () => {
+    const firstBridge = makeBridge();
+    const firstHost = new StingHost(firstBridge);
+    const firstPending = firstHost.callModuleAsync('AsyncTest', 'first');
+    const firstId = vi.mocked(firstBridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    const secondBridge = makeBridge();
+    const secondHost = new StingHost(secondBridge);
+    const secondPending = secondHost.callModuleAsync('AsyncTest', 'second');
+    const secondId = vi.mocked(secondBridge.callModuleAsync).mock.calls.at(-1)?.[3];
+
+    expect(secondId).toBeGreaterThan(firstId!);
+    expect(firstHost.completeModuleAsync(
+      firstId!,
+      JSON.stringify({ ok: true, value: null }),
+    )).toBe(true);
+    expect(secondHost.completeModuleAsync(
+      secondId!,
+      JSON.stringify({ ok: true, value: null }),
+    )).toBe(true);
+    await expect(firstPending).resolves.toBeNull();
+    await expect(secondPending).resolves.toBeNull();
+
+    firstHost.dispose();
+    secondHost.dispose();
   });
 });

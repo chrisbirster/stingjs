@@ -66,11 +66,22 @@ public final class StingPerformanceDiagnostics: @unchecked Sendable {
     func measure<T>(_ metric: String, operation: () throws -> T) rethrows -> T {
         let start = nowNanoseconds()
         defer {
-            let end = nowNanoseconds()
-            let elapsed = end >= start ? end - start : 0
-            append(metric: metric, durationNanoseconds: elapsed)
+            record(metric, durationNanoseconds: elapsedNanoseconds(since: start))
         }
         return try operation()
+    }
+
+    func timestampNanoseconds() -> UInt64 {
+        nowNanoseconds()
+    }
+
+    func record(_ metric: String, durationNanoseconds: UInt64) {
+        append(metric: metric, durationNanoseconds: durationNanoseconds)
+    }
+
+    func elapsedNanoseconds(since start: UInt64) -> UInt64 {
+        let end = nowNanoseconds()
+        return end >= start ? end - start : 0
     }
 
     private func append(metric: String, durationNanoseconds: UInt64) {

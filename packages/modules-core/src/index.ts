@@ -12,6 +12,10 @@ export interface NativeModuleClient<Name extends string = string> {
     method: string,
     args?: readonly NativeValue[],
   ): Result;
+  callAsync<Result extends NativeValue | undefined = NativeValue | undefined>(
+    method: string,
+    args?: readonly NativeValue[],
+  ): Promise<Result>;
 }
 
 export function createNativeModule<const Name extends string>(
@@ -35,6 +39,13 @@ export function createNativeModule<const Name extends string>(
       args: readonly NativeValue[] = [],
     ): Result {
       return getHost().callModuleSync(name, method, [...args]) as Result;
+    },
+
+    callAsync<Result extends NativeValue | undefined = NativeValue | undefined>(
+      method: string,
+      args: readonly NativeValue[] = [],
+    ): Promise<Result> {
+      return getHost().callModuleAsync(name, method, [...args]) as Promise<Result>;
     },
   };
 }

@@ -33,4 +33,21 @@ public final class StingModuleRegistry {
 
         return try module.callSync(method: method, arguments: arguments)
     }
+
+    public func callAsync(
+        module name: String,
+        method: String,
+        arguments: [Any],
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        guard let module = modules[name] else {
+            completion(.failure(StingNativeModuleError(
+                code: "E_MODULE_NOT_FOUND",
+                message: "Native module \(name) is not registered"
+            )))
+            return
+        }
+
+        module.callAsync(method: method, arguments: arguments, completion: completion)
+    }
 }

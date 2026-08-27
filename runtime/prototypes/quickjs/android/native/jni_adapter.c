@@ -17,6 +17,7 @@ typedef struct AndroidHostContext {
     jmethodID remove_node;
     jmethodID set_event_enabled;
     jmethodID call_module_sync;
+    jmethodID call_module_async;
     void *runtime;
 } AndroidHostContext;
 
@@ -172,6 +173,39 @@ static char *host_call_module_sync(
     return copy;
 }
 
+static int host_call_module_async(
+    void *opaque,
+    const char *module,
+    const char *method,
+    const char *args_json,
+    int request_id
+) {
+    AndroidHostContext *context = (AndroidHostContext *)opaque;
+    jstring java_module = (*context->env)->NewStringUTF(context->env, module);
+    jstring java_method = (*context->env)->NewStringUTF(context->env, method);
+    jstring java_args = (*context->env)->NewStringUTF(context->env, args_json);
+    if (java_module == NULL || java_method == NULL || java_args == NULL) {
+        if (java_module != NULL) (*context->env)->DeleteLocalRef(context->env, java_module);
+        if (java_method != NULL) (*context->env)->DeleteLocalRef(context->env, java_method);
+        if (java_args != NULL) (*context->env)->DeleteLocalRef(context->env, java_args);
+        return 0;
+    }
+
+    (*context->env)->CallVoidMethod(
+        context->env,
+        context->bridge,
+        context->call_module_async,
+        java_module,
+        java_method,
+        java_args,
+        (jint)request_id
+    );
+    (*context->env)->DeleteLocalRef(context->env, java_module);
+    (*context->env)->DeleteLocalRef(context->env, java_method);
+    (*context->env)->DeleteLocalRef(context->env, java_args);
+    return consume_java_exception(context) ? 0 : 1;
+}
+
 static void host_release_string(void *opaque, char *value) {
     (void)opaque;
     free(value);
@@ -203,6 +237,12 @@ static int load_bridge_methods(JNIEnv *env, AndroidHostContext *context) {
         "callModuleSync",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"
     );
+    context->call_module_async = (*env)->GetMethodID(
+        env,
+        bridge_class,
+        "callModuleAsync",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V"
+    );
 
     (*env)->DeleteLocalRef(env, bridge_class);
     if ((*env)->ExceptionCheck(env)) return 0;
@@ -215,7 +255,8 @@ static int load_bridge_methods(JNIEnv *env, AndroidHostContext *context) {
         context->insert_node != NULL &&
         context->remove_node != NULL &&
         context->set_event_enabled != NULL &&
-        context->call_module_sync != NULL;
+        context->call_module_sync != NULL &&
+        context->call_module_async != NULL;
 }
 
 JNIEXPORT jlong JNICALL
@@ -248,6 +289,7 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
         .remove_node = host_remove_node,
         .set_event_enabled = host_set_event_enabled,
         .call_module_sync = host_call_module_sync,
+        .call_module_async = host_call_module_async,
         .release_string = host_release_string,
     };
 
@@ -255,7 +297,7 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
     if (context->runtime == NULL) {
         (*env)->DeleteGlobalRef(env, context->bridge);
         free(context);
-        throw_illegal_state(env, "Unable to initialize official QuickJS Android candidate");
+        throw_illegal_state(env, "Unable to initialize official QuickJS Android runtime");
         return 0;
     }
 
@@ -325,6 +367,39 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
     return result;
 }
 
+JNIEXPORT jstring JNICALL
+Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nativeCompleteModuleCall(
+    JNIEnv *env,
+    jobject self,
+    jlong handle,
+    jint request_id,
+    jstring response_json
+) {
+    (void)self;
+    AndroidHostContext *context = (AndroidHostContext *)(intptr_t)handle;
+    if (context == NULL || response_json == NULL) {
+        return (*env)->NewStringUTF(env, "QuickJS runtime or async module response is null");
+    }
+    context->env = env;
+
+    const char *response_utf8 = (*env)->GetStringUTFChars(env, response_json, NULL);
+    if (response_utf8 == NULL) {
+        return (*env)->NewStringUTF(env, "Unable to read Sting async module response");
+    }
+
+    char *error = sting_qjs_android_complete_module_call(
+        context->runtime,
+        (int)request_id,
+        response_utf8
+    );
+    (*env)->ReleaseStringUTFChars(env, response_json, response_utf8);
+
+    if (error == NULL) return NULL;
+    jstring result = (*env)->NewStringUTF(env, error);
+    sting_qjs_android_free_error(error);
+    return result;
+}
+
 JNIEXPORT void JNICALL
 Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nativeDestroy(
     JNIEnv *env,
@@ -335,6 +410,13 @@ Java_run_stingjs_runtime_candidates_quickjs_OfficialQuickJsCandidateRuntime_nati
     AndroidHostContext *context = (AndroidHostContext *)(intptr_t)handle;
     if (context == NULL) return;
     context->env = env;
+
+    char *dispose_error = sting_qjs_android_dispose_runtime(context->runtime);
+    if (dispose_error != NULL) {
+        throw_illegal_state(env, dispose_error);
+        sting_qjs_android_free_error(dispose_error);
+    }
+
     sting_qjs_android_destroy(context->runtime);
     (*env)->DeleteGlobalRef(env, context->bridge);
     free(context);

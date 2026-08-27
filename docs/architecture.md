@@ -4,7 +4,7 @@
 
 StingJS provides a native application platform for SolidJS with an Expo-like developer experience, without React Native, Expo runtime dependencies, or a WebView rendering layer.
 
-If you are trying to understand the concrete path from `App.tsx` and Vite to a running UIKit application, start with [`how-sting-runs.md`](how-sting-runs.md). This document focuses on the architectural boundaries and invariants behind that pipeline.
+If you are trying to understand the concrete path from `App.tsx` and Vite to a running UIKit application, start with [`how-sting-runs.md`](how-sting-runs.md). For the concrete Android QuickJS → Zig → JNI → Kotlin runtime path, see [`android-runtime.md`](android-runtime.md). This document focuses on the architectural boundaries and invariants behind those pipelines.
 
 The architectural invariant is:
 
@@ -104,7 +104,11 @@ Benefits:
 
 ## Threading
 
-For v0.1, JavaScript execution and native UI mutations are serialized on the main thread. This is not the long-term performance model; it is the smallest correct model for proving semantics. We will not introduce background queues until profiling identifies a need and the ordering contract is explicit.
+For v0.1, JavaScript execution and native UI mutations are serialized on the main thread. Native modules may perform genuinely asynchronous work on background queues/threads, but **all JavaScript-engine entry and Promise completion must be marshalled back to the single thread that owns the runtime**.
+
+On Android, JNI is the narrow internal Zig/C ↔ Kotlin boundary. `JNIEnv` is thread-local and must never be reused as though it were a process-global engine handle. A background Kotlin completion must return to the runtime-owning Android Looper before entering JNI/Zig/QuickJS. On iOS, background native completion similarly returns to the main queue before entering JavaScriptCore.
+
+A future dedicated JavaScript thread can replace main-thread ownership without changing this invariant: one runtime owner thread, explicit marshalling before every engine entry. See [`android-runtime.md`](android-runtime.md) and [`decisions/0005-async-native-modules-and-runtime-threading.md`](decisions/0005-async-native-modules-and-runtime-threading.md).
 
 ## Layout
 
@@ -112,7 +116,7 @@ Do not block the first renderer proof on a complete cross-platform layout engine
 
 ## Versioned runtime contract
 
-Every JS/native runtime instance exposes a protocol version. Breaking bridge changes require a protocol major-version change. Framework packages can negotiate capabilities so a development client can report a useful compatibility error instead of failing with undefined native calls.
+Every JS/native runtime instance exposes a protocol version. Breaking bridge changes require a protocol major-version change. Framework packages can negotiate additive capabilities so a development client can report a useful compatibility error instead of failing with undefined native calls.
 
 Initial shape:
 
@@ -124,9 +128,13 @@ interface StingRuntimeInfo {
 }
 ```
 
+The async native-call work is additive to protocol v1: sync-only applications remain valid on sync-only v1 hosts, while `callAsync()` must fail clearly when the host lacks the async bridge capability. Future incompatible changes to existing operations or envelopes still require a protocol-major bump.
+
 ## Lifecycle
 
 v0.1 defines runtime-created, app-mounted, foreground/background, and runtime-destroyed hooks. Native modules may subscribe through the registry rather than editing application delegate/activity code directly.
+
+Runtime destruction is also part of async-module correctness: outstanding Promises are rejected before engine teardown, completion sinks are detached, and late native results are ignored rather than re-entering a destroyed runtime.
 
 ## Current implementation versus target architecture
 
@@ -148,7 +156,9 @@ Zig-centered Sting runtime
    UIKit   Android Views
 ```
 
-JavaScriptCore/UIKit remains the independent iOS semantic/native control. QuickJS-NG remains a secondary compatibility/performance lane while it provides useful independent evidence at low maintenance cost. The historical Hermes prototype remains evidence for the isolated-adapter architecture and for the generic JavaScript preflight failure that disqualified that tested candidate.
+On Android, the Zig runtime reaches Kotlin through a narrow C ABI/JNI adapter; that adapter is an implementation detail rather than a public application or module API.
+
+JavaScriptCore/UIKit remains the independent iOS semantic/native control. QuickJS-NG remains a secondary compatibility/performance lane while it provides useful independent evidence at low maintenance cost; it does not block production QuickJS feature work. The historical Hermes prototype remains evidence for the isolated-adapter architecture and for the generic JavaScript preflight failure that disqualified that tested candidate.
 
 Public application APIs remain engine-independent even though the v0.1 implementation is deliberately converging on one production engine.
 

@@ -18,10 +18,22 @@ export interface HostNode {
 
 type EventHandler = (payload: NativeValue) => void;
 
+type PendingModuleCall = {
+  readonly module: string;
+  readonly method: string;
+  readonly resolve: (value: NativeValue | undefined) => void;
+  readonly reject: (reason: unknown) => void;
+};
+
 // Native registries retain retired node identities for stale-callback and
 // ghost-node protection. IDs therefore belong to the JavaScript runtime
 // lifetime, not to an individual StingHost instance.
 let nextNativeNodeId = 1;
+
+// Async native completions can arrive after a host is replaced or disposed.
+// Never reuse request IDs inside the JavaScript process so a stale completion
+// cannot accidentally settle a newer call owned by another host instance.
+let nextNativeModuleRequestId = 1;
 
 function eventNameFromProperty(name: string): string | null {
   if (!name.startsWith('on') || name.length <= 2) return null;
@@ -49,6 +61,8 @@ export class StingHost {
   private readonly events = new Map<number, Map<string, EventHandler>>();
   private readonly retainedEvents = new WeakMap<HostNode, Map<string, EventHandler>>();
   private readonly deactivatedNodes = new WeakSet<HostNode>();
+  private readonly pendingModuleCalls = new Map<number, PendingModuleCall>();
+  private disposed = false;
 
   constructor(readonly bridge: StingNativeBridge) {}
 
@@ -159,6 +173,87 @@ export class StingHost {
 
     if (!response.ok) throw new StingNativeError(response.error);
     return response.value;
+  }
+
+  callModuleAsync(
+    module: string,
+    method: string,
+    args: NativeValue[] = [],
+  ): Promise<NativeValue | undefined> {
+    if (this.disposed) {
+      return Promise.reject(this.runtimeDisposedError(module, method));
+    }
+
+    if (!this.bridge.callModuleAsync) {
+      return Promise.reject(new StingNativeError({
+        code: 'E_ASYNC_UNSUPPORTED',
+        message: 'This Sting native host does not support asynchronous native-module calls.',
+        module,
+        method,
+      }));
+    }
+
+    const requestId = nextNativeModuleRequestId++;
+
+    return new Promise<NativeValue | undefined>((resolve, reject) => {
+      this.pendingModuleCalls.set(requestId, { module, method, resolve, reject });
+
+      try {
+        this.bridge.callModuleAsync!(module, method, encodeNativeValue(args), requestId);
+      } catch (error) {
+        this.pendingModuleCalls.delete(requestId);
+        reject(error);
+      }
+    });
+  }
+
+  completeModuleAsync(requestId: number, responseJSON: string): boolean {
+    const pending = this.pendingModuleCalls.get(requestId);
+    if (!pending) return false;
+
+    // Delete before parsing/settling so duplicate or re-entrant completions can
+    // never observe the request as pending and settle the same Promise twice.
+    this.pendingModuleCalls.delete(requestId);
+
+    let response;
+    try {
+      response = decodeNativeCallResponse(responseJSON);
+    } catch (error) {
+      pending.reject(error);
+      return true;
+    }
+
+    if (!response.ok) {
+      pending.reject(new StingNativeError(response.error));
+    } else {
+      pending.resolve(response.value);
+    }
+    return true;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    // Clear first so a re-entrant/stale native completion during rejection is
+    // ignored rather than observing a request that is already being disposed.
+    const pendingCalls = [...this.pendingModuleCalls.values()];
+    this.pendingModuleCalls.clear();
+
+    for (const pending of pendingCalls) {
+      pending.reject(this.runtimeDisposedError(pending.module, pending.method));
+    }
+
+    this.events.clear();
+  }
+
+  private runtimeDisposedError(module: string, method: string): StingNativeError {
+    return new StingNativeError({
+      code: 'E_RUNTIME_DISPOSED',
+      message: 'Sting runtime was disposed before the asynchronous native call completed.',
+      module,
+      method,
+    });
   }
 
   private createHostNode(type: string, isText: boolean, textValue: string | null): HostNode {

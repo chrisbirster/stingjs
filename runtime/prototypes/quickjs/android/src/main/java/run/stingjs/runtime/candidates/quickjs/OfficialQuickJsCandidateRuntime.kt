@@ -1,24 +1,36 @@
 package run.stingjs.runtime.candidates.quickjs
 
+import android.os.Handler
+import android.os.Looper
 import run.stingjs.runtime.StingNativeBridge
 import run.stingjs.runtime.StingRuntimeException
 
 /**
- * Android bring-up wrapper for the pinned official QuickJS candidate.
+ * Android wrapper for the pinned official QuickJS v0.1 production runtime.
  *
- * This is deliberately candidate-specific. It is not a public Sting engine
- * abstraction and must not be interpreted as an engine selection.
+ * The implementation still lives under the historical prototype directory
+ * while the portable runtime is consolidated. This class is not a public
+ * engine-selection API.
  */
 class OfficialQuickJsCandidateRuntime(
-    bridge: StingNativeBridge,
+    private val bridge: StingNativeBridge,
 ) : AutoCloseable {
+    private val ownerLooper = Looper.myLooper()
+        ?: throw StingRuntimeException("Official QuickJS must be created on a thread with an Android Looper")
+    private val ownerHandler = Handler(ownerLooper)
+
     private var handle: Long = nativeCreate(bridge).also {
         if (it == 0L) {
-            throw StingRuntimeException("Unable to create the official QuickJS Android candidate runtime")
+            throw StingRuntimeException("Unable to create the official QuickJS Android runtime")
         }
     }
 
+    init {
+        bridge.asyncResultSink = ::deliverModuleCompletion
+    }
+
     fun evaluate(source: String) {
+        requireOwnerThread("evaluate JavaScript")
         val error = nativeEvaluate(handle, source)
         if (error != null) {
             throw StingRuntimeException("Official QuickJS evaluation failed: $error")
@@ -26,6 +38,7 @@ class OfficialQuickJsCandidateRuntime(
     }
 
     fun dispatchEvent(nodeId: Int, event: String, payloadJSON: String) {
+        requireOwnerThread("dispatch a native event")
         val error = nativeDispatchEvent(handle, nodeId, event, payloadJSON)
         if (error != null) {
             throw StingRuntimeException("Official QuickJS event dispatch failed: $error")
@@ -33,10 +46,42 @@ class OfficialQuickJsCandidateRuntime(
     }
 
     override fun close() {
+        requireOwnerThread("destroy the runtime")
         val current = handle
         if (current == 0L) return
+
         handle = 0L
+        bridge.detachAsyncResultSink()
         nativeDestroy(current)
+    }
+
+    private fun deliverModuleCompletion(requestId: Int, responseJSON: String) {
+        if (Looper.myLooper() === ownerLooper) {
+            completeModuleCallOnOwnerThread(requestId, responseJSON)
+            return
+        }
+
+        ownerHandler.post {
+            completeModuleCallOnOwnerThread(requestId, responseJSON)
+        }
+    }
+
+    private fun completeModuleCallOnOwnerThread(requestId: Int, responseJSON: String) {
+        val current = handle
+        if (current == 0L) return
+
+        val error = nativeCompleteModuleCall(current, requestId, responseJSON)
+        if (error != null) {
+            throw StingRuntimeException("Official QuickJS async module completion failed: $error")
+        }
+    }
+
+    private fun requireOwnerThread(operation: String) {
+        if (Looper.myLooper() !== ownerLooper) {
+            throw StingRuntimeException(
+                "Official QuickJS must $operation on the Looper thread that created the runtime",
+            )
+        }
     }
 
     private external fun nativeCreate(bridge: StingNativeBridge): Long
@@ -46,6 +91,11 @@ class OfficialQuickJsCandidateRuntime(
         nodeId: Int,
         event: String,
         payloadJSON: String,
+    ): String?
+    private external fun nativeCompleteModuleCall(
+        handle: Long,
+        requestId: Int,
+        responseJSON: String,
     ): String?
     private external fun nativeDestroy(handle: Long)
 
