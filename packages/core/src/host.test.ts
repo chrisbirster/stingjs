@@ -8,7 +8,11 @@ import {
   type StingNativeBridge,
 } from './index.js';
 
-function makeBridge(): StingNativeBridge {
+type AsyncTestBridge = StingNativeBridge & {
+  callModuleAsync: NonNullable<StingNativeBridge['callModuleAsync']>;
+};
+
+function makeBridge(): AsyncTestBridge {
   return {
     getRuntimeInfo: vi.fn(() => JSON.stringify({
       protocolVersion: STING_PROTOCOL_VERSION,
