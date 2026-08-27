@@ -10,6 +10,8 @@ final class StingNode {
     var children: [Int] = []
     var widthConstraint: NSLayoutConstraint?
     var heightConstraint: NSLayoutConstraint?
+    var imageTask: URLSessionDataTask?
+    var imageSource: String?
 
     init(id: Int, type: String, view: UIView? = nil, textValue: String? = nil) {
         self.id = id
@@ -53,6 +55,21 @@ final class StingNodeRegistry {
                 self?.eventSink?(nodeId, "press", "null")
             }
             view = button
+        case "image":
+            let imageView = UIImageView()
+            imageView.contentMode = .scaleAspectFit
+            imageView.clipsToBounds = true
+            view = imageView
+        case "textinput":
+            let textInput = StingTextInput(frame: .zero)
+            textInput.nodeId = id
+            textInput.borderStyle = .roundedRect
+            textInput.onChangeText = { [weak self] nodeId, value in
+                self?.eventSink?(nodeId, "changeText", Self.encodeJSONFragment(value))
+            }
+            view = textInput
+        case "scrollview":
+            view = StingScrollView(frame: .zero)
         default:
             throw StingRuntimeError("Unsupported native element type: \(type)")
         }
@@ -128,8 +145,34 @@ final class StingNodeRegistry {
             }
         case "accessibilityLabel":
             node.view?.accessibilityLabel = value as? String
+        case "source":
+            applyImageSource(value, to: node)
+        case "resizeMode":
+            if let imageView = node.view as? UIImageView, let mode = value as? String {
+                switch mode {
+                case "cover": imageView.contentMode = .scaleAspectFill
+                case "stretch": imageView.contentMode = .scaleToFill
+                default: imageView.contentMode = .scaleAspectFit
+                }
+            }
+        case "value":
+            if let input = node.view as? UITextField {
+                input.text = value is NSNull ? "" : (value as? String ?? "")
+            }
+        case "placeholder":
+            if let input = node.view as? UITextField {
+                input.placeholder = value is NSNull ? nil : value as? String
+            }
+        case "editable":
+            if let input = node.view as? UITextField, let editable = value as? Bool {
+                input.isEnabled = editable
+            }
+        case "horizontal":
+            if let scroll = node.view as? StingScrollView, let horizontal = value as? Bool {
+                scroll.setHorizontal(horizontal)
+            }
         default:
-            // The JS renderer warns/validates public properties. Keeping unknown
+            // The JS renderer validates the public surface. Keeping unknown
             // properties harmless here lets the native surface grow incrementally.
             break
         }
@@ -137,10 +180,14 @@ final class StingNodeRegistry {
 
     func setEventEnabled(id: Int, event: String, enabled: Bool) throws {
         let node = try requireNode(id)
-        guard event == "press", let button = node.view as? StingButton else {
+        switch (event, node.view) {
+        case ("press", let button as StingButton):
+            button.setPressEnabled(enabled)
+        case ("changeText", let input as StingTextInput):
+            input.setChangeTextEnabled(enabled)
+        default:
             throw StingRuntimeError("Event \(event) is not supported by node \(id)")
         }
-        button.setPressEnabled(enabled)
     }
 
     private func requireNode(_ id: Int) throws -> StingNode {
@@ -154,11 +201,13 @@ final class StingNodeRegistry {
             throw StingRuntimeError("Cannot insert a native view below a text-only node")
         }
 
-        if parent.type == "text" || parent.type == "button" {
-            throw StingRuntimeError("Text and Button may only contain textual children in v0.1")
+        if ["text", "button", "image", "textinput"].contains(parent.type) {
+            throw StingRuntimeError("Native leaf node \(parent.type) cannot contain view children")
         }
 
-        if let stack = parentView as? UIStackView {
+        if let scroll = parentView as? StingScrollView {
+            scroll.contentStack.insertArrangedSubview(childView, at: min(index, scroll.contentStack.arrangedSubviews.count))
+        } else if let stack = parentView as? UIStackView {
             stack.insertArrangedSubview(childView, at: min(index, stack.arrangedSubviews.count))
         } else {
             parentView.addSubview(childView)
@@ -167,7 +216,9 @@ final class StingNodeRegistry {
 
     private func detachView(_ childView: UIView?, from parentView: UIView?) {
         guard let childView else { return }
-        if let stack = parentView as? UIStackView {
+        if let scroll = parentView as? StingScrollView {
+            scroll.contentStack.removeArrangedSubview(childView)
+        } else if let stack = parentView as? UIStackView {
             stack.removeArrangedSubview(childView)
         }
         childView.removeFromSuperview()
@@ -181,6 +232,43 @@ final class StingNodeRegistry {
             label.text = text
         } else if let button = parent.view as? UIButton {
             button.setTitle(text, for: .normal)
+        }
+    }
+
+    private func applyImageSource(_ value: Any, to node: StingNode) {
+        guard let imageView = node.view as? UIImageView else { return }
+        let uri: String?
+        if let direct = value as? String {
+            uri = direct
+        } else if let object = value as? [String: Any] {
+            uri = object["uri"] as? String
+        } else {
+            uri = nil
+        }
+
+        node.imageTask?.cancel()
+        node.imageTask = nil
+        node.imageSource = uri
+        imageView.image = nil
+        guard let uri, !uri.isEmpty else { return }
+
+        if let url = URL(string: uri), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            let task = URLSession.shared.dataTask(with: url) { [weak self, weak imageView] data, _, _ in
+                guard let data, let image = UIImage(data: data) else { return }
+                DispatchQueue.main.async {
+                    guard self?.nodes[node.id]?.imageSource == uri else { return }
+                    imageView?.image = image
+                }
+            }
+            node.imageTask = task
+            task.resume()
+            return
+        }
+
+        if let url = URL(string: uri), url.isFileURL, let data = try? Data(contentsOf: url) {
+            imageView.image = UIImage(data: data)
+        } else {
+            imageView.image = UIImage(named: uri)
         }
     }
 
@@ -210,15 +298,28 @@ final class StingNodeRegistry {
             }
         }
 
+        if let scroll = view as? StingScrollView, let padding = style["padding"] as? NSNumber {
+            let amount = CGFloat(truncating: padding)
+            scroll.contentStack.isLayoutMarginsRelativeArrangement = true
+            scroll.contentStack.directionalLayoutMargins = NSDirectionalEdgeInsets(
+                top: amount,
+                leading: amount,
+                bottom: amount,
+                trailing: amount
+            )
+        }
+
         if let color = style["color"] as? String, let parsed = UIColor(stingHex: color) {
             if let label = view as? UILabel { label.textColor = parsed }
             if let button = view as? UIButton { button.setTitleColor(parsed, for: .normal) }
+            if let input = view as? UITextField { input.textColor = parsed }
         }
 
         if let fontSize = style["fontSize"] as? NSNumber {
             let size = CGFloat(truncating: fontSize)
             if let label = view as? UILabel { label.font = label.font.withSize(size) }
             if let button = view as? UIButton { button.titleLabel?.font = button.titleLabel?.font.withSize(size) }
+            if let input = view as? UITextField { input.font = (input.font ?? UIFont.systemFont(ofSize: size)).withSize(size) }
         }
 
         if let width = style["width"] as? NSNumber {
@@ -232,6 +333,15 @@ final class StingNodeRegistry {
             node.heightConstraint = view.heightAnchor.constraint(equalToConstant: CGFloat(truncating: height))
             node.heightConstraint?.isActive = true
         }
+    }
+
+    private static func encodeJSONFragment(_ value: Any) -> String {
+        guard JSONSerialization.isValidJSONObject([value]),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+              let string = String(data: data, encoding: .utf8) else {
+            return "null"
+        }
+        return string
     }
 }
 

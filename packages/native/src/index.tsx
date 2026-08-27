@@ -8,7 +8,13 @@ import {
 import type { HostNode } from '@stingjs/core';
 
 export type FlexDirection = 'row' | 'column';
+export type ImageResizeMode = 'contain' | 'cover' | 'stretch';
+export type ImageSource = string | { uri: string };
 
+/**
+ * Deliberately small v0.1 layout/style surface. Values are device-independent
+ * points on iOS and density-independent pixels on Android unless noted.
+ */
 export interface Style {
   flexDirection?: FlexDirection;
   gap?: number;
@@ -40,6 +46,29 @@ export interface ButtonProps {
   onPress?: () => void;
 }
 
+export interface ImageProps {
+  source?: ImageSource;
+  resizeMode?: ImageResizeMode;
+  style?: Style;
+  accessibilityLabel?: string;
+}
+
+export interface TextInputProps {
+  value?: string;
+  placeholder?: string;
+  editable?: boolean;
+  style?: Style;
+  accessibilityLabel?: string;
+  onChangeText?: (value: string) => void;
+}
+
+export interface ScrollViewProps {
+  children?: unknown;
+  horizontal?: boolean;
+  style?: Style;
+  accessibilityLabel?: string;
+}
+
 function createNativePrimitive(type: string, props: object): HostNode {
   const node = createElement(type);
   spread(node, props);
@@ -68,7 +97,7 @@ function stringifyTextChild(value: unknown): string {
   }
 }
 
-/** Native container backed by UIView/UIStackView on iOS and View/ViewGroup on Android. */
+/** Native container backed by UIStackView on iOS and LinearLayout on Android. */
 export function View(props: ViewProps): HostNode {
   return createNativePrimitive('view', props);
 }
@@ -97,4 +126,26 @@ export function Text(props: TextProps): HostNode {
 /** Native pressable button backed by UIButton on iOS and Button on Android. */
 export function Button(props: ButtonProps): HostNode {
   return createNativePrimitive('button', props);
+}
+
+/** Native image backed by UIImageView on iOS and ImageView on Android. */
+export function Image(props: ImageProps): HostNode {
+  return createNativePrimitive('image', props);
+}
+
+/**
+ * Controlled native text input. `onChangeText` receives the current native text
+ * as a string; assigning `value` from Solid updates the native control without
+ * synthesizing another change event.
+ */
+export function TextInput(props: TextInputProps): HostNode {
+  return createNativePrimitive('textinput', props);
+}
+
+/**
+ * Native scrolling container. Children retain ordinary Sting host identities;
+ * the platform host owns only the scroll container/content-view plumbing.
+ */
+export function ScrollView(props: ScrollViewProps): HostNode {
+  return createNativePrimitive('scrollview', props);
 }
