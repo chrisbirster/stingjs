@@ -27,7 +27,8 @@ const bridge_bootstrap =
     \\  removeNode(parentId, nodeId) { globalThis.__stingHostCall("removeNode", parentId, nodeId); },
     \\  setEventEnabled(id, event, enabled) { globalThis.__stingHostCall("setEventEnabled", id, event, enabled); },
     \\  callModuleSync(module, method, argsJSON) { return globalThis.__stingHostCall("callModuleSync", module, method, argsJSON); },
-    \\  callModuleAsync(module, method, argsJSON, requestId) { globalThis.__stingHostCall("callModuleAsync", module, method, argsJSON, requestId); }
+    \\  callModuleAsync(module, method, argsJSON, requestId) { globalThis.__stingHostCall("callModuleAsync", module, method, argsJSON, requestId); },
+    \\  setModuleEventEnabled(module, event, enabled) { return globalThis.__stingHostCall("setModuleEventEnabled", module, event, enabled); }
     \\};
 ;
 
@@ -203,6 +204,24 @@ fn jsHostCall(
             return bridgeCallFailed(ctx);
         }
         return c.JS_NewInt32(ctx, 0);
+    }
+
+    if (strcmp(operation, "setModuleEventEnabled") == 0) {
+        if (argc < 4) return fail(ctx, "setModuleEventEnabled requires module, event, and enabled");
+        const module_name = c.JS_ToCString(ctx, argv[1]);
+        if (module_name == null) return fail(ctx, "setModuleEventEnabled module is invalid");
+        defer c.JS_FreeCString(ctx, module_name);
+        const event = c.JS_ToCString(ctx, argv[2]);
+        if (event == null) return fail(ctx, "setModuleEventEnabled event is invalid");
+        defer c.JS_FreeCString(ctx, event);
+        const enabled = c.JS_ToBool(ctx, argv[3]);
+        if (enabled < 0) return fail(ctx, "setModuleEventEnabled enabled value is invalid");
+
+        const callback = state.host.set_module_event_enabled orelse return bridgeCallFailed(ctx);
+        const response = callback(state.host.context, module_name, event, if (enabled != 0) 1 else 0);
+        if (response == null) return bridgeCallFailed(ctx);
+        defer releaseHostString(state, response);
+        return c.JS_NewString(ctx, response);
     }
 
     return fail(ctx, "Unknown Sting host operation");
@@ -383,6 +402,47 @@ export fn sting_qjs_android_complete_module_call(
     const result = c.JS_Call(
         state.context,
         resolve,
+        global,
+        @intCast(args.len),
+        &args[0],
+    );
+    defer c.JS_FreeValue(state.context, result);
+    if (c.JS_IsException(result) != 0) return copyException(state.context);
+    return drainPendingJobs(state);
+}
+
+export fn sting_qjs_android_dispatch_module_event(
+    handle: ?*anyopaque,
+    module: [*c]const u8,
+    event: [*c]const u8,
+    payload_json: [*c]const u8,
+) [*c]u8 {
+    const state = stateFromHandle(handle) orelse return strdup("QuickJS runtime handle is null");
+    if (module == null or event == null or payload_json == null) {
+        return strdup("Sting module event payload is null");
+    }
+
+    const global = c.JS_GetGlobalObject(state.context);
+    defer c.JS_FreeValue(state.context, global);
+    const module_dispatch = c.JS_GetPropertyStr(state.context, global, "__stingDispatchModuleEvent");
+    defer c.JS_FreeValue(state.context, module_dispatch);
+
+    if (c.JS_IsFunction(state.context, module_dispatch) == 0) {
+        return strdup("__stingDispatchModuleEvent is not installed");
+    }
+
+    var args = [_]c.JSValue{
+        c.JS_NewString(state.context, module),
+        c.JS_NewString(state.context, event),
+        c.JS_NewString(state.context, payload_json),
+    };
+    defer {
+        for (&args) |*arg| c.JS_FreeValue(state.context, arg.*);
+    }
+
+    const result = c.JS_Call(
+        state.context,
+        module_dispatch,
         global,
         @intCast(args.len),
         &args[0],
