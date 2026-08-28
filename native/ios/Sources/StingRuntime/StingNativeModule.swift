@@ -1,7 +1,9 @@
 import Foundation
+import UIKit
 
 public typealias StingNativeModuleCompletion = (Result<Any?, Error>) -> Void
 public typealias StingNativeModuleEventEmitter = (Any?) -> Void
+public typealias StingNativeViewEventEmitter = (Any?) -> Void
 
 public protocol StingNativeObject: AnyObject {
     func callSync(method: String, arguments: [Any]) throws -> Any?
@@ -28,6 +30,47 @@ public extension StingNativeObject {
     func dispose() {}
 }
 
+public protocol StingNativeView: AnyObject {
+    var view: UIView { get }
+    var childContainer: UIView? { get }
+
+    func setProperty(name: String, value: Any) throws
+    func setEventEnabled(
+        event: String,
+        enabled: Bool,
+        emit: @escaping StingNativeViewEventEmitter
+    ) throws
+    func didAttach()
+    func didDetach()
+    func dispose()
+}
+
+public extension StingNativeView {
+    var childContainer: UIView? { nil }
+
+    func setProperty(name: String, value: Any) throws {
+        throw StingNativeModuleError(
+            code: "E_VIEW_PROPERTY_NOT_FOUND",
+            message: "Native view does not implement property \(name)"
+        )
+    }
+
+    func setEventEnabled(
+        event: String,
+        enabled: Bool,
+        emit: @escaping StingNativeViewEventEmitter
+    ) throws {
+        throw StingNativeModuleError(
+            code: "E_VIEW_EVENT_NOT_FOUND",
+            message: "Native view does not implement event \(event)"
+        )
+    }
+
+    func didAttach() {}
+    func didDetach() {}
+    func dispose() {}
+}
+
 public protocol StingNativeModule: AnyObject {
     var name: String { get }
     var version: String { get }
@@ -44,6 +87,7 @@ public protocol StingNativeModule: AnyObject {
         emit: @escaping StingNativeModuleEventEmitter
     ) throws
     func createObject(type: String, arguments: [Any]) throws -> any StingNativeObject
+    func createView(type: String) throws -> any StingNativeView
 }
 
 public extension StingNativeModule {
@@ -73,6 +117,13 @@ public extension StingNativeModule {
         throw StingNativeModuleError(
             code: "E_OBJECT_TYPE_NOT_FOUND",
             message: "\(name) does not implement native object type \(type)"
+        )
+    }
+
+    func createView(type: String) throws -> any StingNativeView {
+        throw StingNativeModuleError(
+            code: "E_VIEW_TYPE_NOT_FOUND",
+            message: "\(name) does not implement native view type \(type)"
         )
     }
 }
