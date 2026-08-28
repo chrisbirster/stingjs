@@ -9,6 +9,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -16,8 +17,14 @@ import org.junit.runner.RunWith
 class StingGoPhysicalDeviceInstrumentedTest {
     @Test
     fun physicalDeviceLoadsSolidBundleAndConnectsReloadStream() {
+        val arguments = InstrumentationRegistry.getArguments()
+        assumeTrue(
+            "physical Sting Go validation is opt-in and does not run on hosted emulator CI",
+            arguments.getString("stingGoPhysicalEvidence") == "1",
+        )
+
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val manifestUrl = InstrumentationRegistry.getArguments()
+        val manifestUrl = arguments
             .getString("stingGoManifestUrl")
             ?.takeIf { it.isNotBlank() }
             ?: error("stingGoManifestUrl instrumentation argument is required")
