@@ -151,7 +151,7 @@ class CameraModule : StingNativeModule {
             "Preview" -> CameraPreviewView(context)
             else -> throw StingNativeModuleError(
                 code = "E_VIEW_TYPE_NOT_FOUND",
-                message = "Unknown Camera view type $type",
+                message = "Unknown native view type $type",
             )
         }
 }
@@ -194,6 +194,8 @@ Solid keyed reconciliation may detach a host node and later insert the same node
 
 A resource-heavy view should pause attachment-dependent work in `didDetach()` and resume it in `didAttach()`. Final native resources belong in `dispose()`.
 
+Attachment state is a subtree property. When a parent subtree is removed, every nested module view becomes detached and non-dispatchable; reinserting the subtree reattaches those descendants. This prevents nested module views from emitting ghost events while their ancestor is absent from the native tree.
+
 Runtime teardown first lets Solid and the JavaScript host dispose the rendered tree while ordinary `removeNode` operations are still legal. The native node registry then disables remaining view events, detaches any still-attached module views, and calls `dispose()` exactly once for every live module view.
 
 ## Child content
@@ -223,6 +225,6 @@ SolidJS 2 / @solidjs/universal
     -> Swift/UIKit or Kotlin/Android View
 ```
 
-Official QuickJS remains the v0.1 production engine. QuickJS-NG may exercise the same transport as a secondary conformance lane, and JavaScriptCore/UIKit remains the independent iOS semantic/native reference.
+Official QuickJS is the production engine and the only engine for which native-module-view feature parity is required. JavaScriptCore/UIKit remains the independent iOS semantic/native reference. QuickJS-NG is frozen experimental/reference code and is not extended merely to match new product capabilities.
 
 Do not expose `UIView`, Android `View`, JNI references, QuickJS `JSValue`, JSI objects, raw pointers, or platform object identities to JavaScript.
