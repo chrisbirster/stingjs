@@ -127,6 +127,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - run: npm install
@@ -136,6 +139,17 @@ jobs:
         run: npm run test:ios-runtime
       - name: Build iOS native host
         run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Package distributable official-QuickJS iOS host
+        run: bash scripts/package-ios-host.sh release-artifacts/ios-host
+      - name: Prove release iOS host builds without Zig
+        run: bash scripts/test-ios-distributable-host.sh release-artifacts/ios-host
+      - name: Stage iOS distributable artifact
+        run: cp release-artifacts/ios-host/sting-ios-host.zip release-artifacts/sting-ios-host.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v0.1-ios
+          path: release-artifacts/sting-ios-host.zip
+          if-no-files-found: error
 
   release:
     runs-on: ubuntu-latest
@@ -154,6 +168,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: v0.1-android
+          path: release-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: v0.1-ios
           path: release-artifacts
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
