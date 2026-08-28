@@ -32,6 +32,10 @@ public final class StingModuleRegistry {
         Dictionary(uniqueKeysWithValues: modules.values.map { ($0.name, $0.version) })
     }
 
+    public func createView(module name: String, type: String) throws -> any StingNativeView {
+        try requireModule(name).createView(type: type)
+    }
+
     public func callSync(module name: String, method: String, arguments: [Any]) throws -> Any? {
         let module = try requireModule(name)
 
