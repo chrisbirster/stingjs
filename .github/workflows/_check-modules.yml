@@ -1,0 +1,52 @@
+name: Check · Modules
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  android-modules:
+    name: Android Modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Build Haptics
+        working-directory: examples/hello-world/android
+        run: gradle :sting-haptics:assembleDebug --no-daemon
+      - name: Build Clipboard
+        working-directory: examples/hello-world/android
+        run: gradle :sting-clipboard:assembleDebug --no-daemon
+      - name: Build Device
+        working-directory: examples/hello-world/android
+        run: gradle :sting-device:assembleDebug --no-daemon
+      - name: Build Filesystem
+        working-directory: examples/hello-world/android
+        run: gradle :sting-filesystem:assembleDebug --no-daemon
+
+  ios-modules:
+    name: iOS Modules
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Haptics
+        working-directory: packages/modules/haptics
+        run: xcodebuild -scheme StingHaptics -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Clipboard
+        working-directory: packages/modules/clipboard
+        run: xcodebuild -scheme StingClipboard -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Device
+        working-directory: packages/modules/device
+        run: xcodebuild -scheme StingDevice -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Filesystem
+        working-directory: packages/modules/filesystem
+        run: xcodebuild -scheme StingFilesystem -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

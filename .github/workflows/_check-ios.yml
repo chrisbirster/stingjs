@@ -1,0 +1,24 @@
+name: Check · iOS
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    name: iOS Runtime
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install dependencies
+        run: npm install
+      - name: Test StingRuntime only
+        run: bash scripts/test-ios-runtime.sh --runtime-only
+      - name: Build StingRuntime for iOS Simulator
+        working-directory: native/ios
+        run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

@@ -1,0 +1,72 @@
+name: Dev Integration
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: dev-integration
+  cancel-in-progress: true
+
+jobs:
+  js-ts:
+    name: JS / TS
+    uses: ./.github/workflows/_check-js.yml
+
+  runtime:
+    name: StingRuntime
+    uses: ./.github/workflows/_check-runtime.yml
+
+  android:
+    name: Android
+    uses: ./.github/workflows/_check-android.yml
+
+  ios:
+    name: iOS
+    uses: ./.github/workflows/_check-ios.yml
+
+  modules:
+    name: Modules
+    uses: ./.github/workflows/_check-modules.yml
+
+  tooling:
+    name: Tooling
+    uses: ./.github/workflows/tooling.yml
+
+  e2e:
+    name: E2E
+    uses: ./.github/workflows/_check-e2e.yml
+
+  complete:
+    name: Complete
+    if: always()
+    needs:
+      - js-ts
+      - runtime
+      - android
+      - ios
+      - modules
+      - tooling
+      - e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require full dev integration stack
+        env:
+          JS_TS: ${{ needs.js-ts.result }}
+          RUNTIME: ${{ needs.runtime.result }}
+          ANDROID: ${{ needs.android.result }}
+          IOS: ${{ needs.ios.result }}
+          MODULES: ${{ needs.modules.result }}
+          TOOLING: ${{ needs.tooling.result }}
+          E2E: ${{ needs.e2e.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$TOOLING" "$E2E"; do
+            if [[ "$result" != "success" ]]; then
+              echo "Dev integration responsibility failed: $result" >&2
+              exit 1
+            fi
+          done

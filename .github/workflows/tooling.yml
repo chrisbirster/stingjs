@@ -1,21 +1,12 @@
-name: Tooling
+name: Check · Tooling
 
 on:
-  pull_request:
-    paths:
-      - 'tooling/cli/**'
-      - 'apps/sting-go/**'
-      - '.github/workflows/tooling.yml'
-  push:
-    branches:
-      - dev
-    paths:
-      - 'tooling/cli/**'
-      - 'apps/sting-go/**'
-      - '.github/workflows/tooling.yml'
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   cli:
+    name: CLI · ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
