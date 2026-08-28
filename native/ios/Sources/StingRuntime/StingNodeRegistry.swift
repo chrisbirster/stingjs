@@ -14,6 +14,7 @@ final class StingNode {
     var imageTask: URLSessionDataTask?
     var imageSource: String?
     var enabledModuleViewEvents: Set<String> = []
+    var isAttached = false
 
     init(
         id: Int,
@@ -37,7 +38,9 @@ final class StingNodeRegistry {
     var moduleViewFactory: ((String, String) throws -> any StingNativeView)?
 
     init(rootView: UIView) {
-        nodes[0] = StingNode(id: 0, type: "root", view: rootView)
+        let root = StingNode(id: 0, type: "root", view: rootView)
+        root.isAttached = true
+        nodes[0] = root
     }
 
     func createElement(id: Int, type: String) throws {
@@ -127,8 +130,10 @@ final class StingNodeRegistry {
 
         if let previousParentId = node.parentId, let previousParent = nodes[previousParentId] {
             previousParent.children.removeAll { $0 == nodeId }
+            if node.isAttached {
+                propagateDetach(nodeId)
+            }
             node.parentId = nil
-            node.nativeModuleView?.didDetach()
             detachView(node.view, from: childContainer(for: previousParent))
             refreshTextContent(previousParentId)
         }
@@ -143,8 +148,17 @@ final class StingNodeRegistry {
         parent.children.insert(nodeId, at: insertionIndex)
         node.parentId = parentId
 
-        try attachView(node, to: parent, at: insertionIndex)
-        node.nativeModuleView?.didAttach()
+        do {
+            try attachView(node, to: parent, at: insertionIndex)
+        } catch {
+            parent.children.removeAll { $0 == nodeId }
+            node.parentId = nil
+            throw error
+        }
+
+        if parent.isAttached {
+            propagateAttach(nodeId)
+        }
         refreshTextContent(parentId)
     }
 
@@ -156,8 +170,10 @@ final class StingNodeRegistry {
         }
 
         parent.children.removeAll { $0 == nodeId }
+        if node.isAttached {
+            propagateDetach(nodeId)
+        }
         node.parentId = nil
-        node.nativeModuleView?.didDetach()
         detachView(node.view, from: childContainer(for: parent))
         refreshTextContent(parentId)
     }
@@ -239,7 +255,7 @@ final class StingNodeRegistry {
                               !self.disposed,
                               let node,
                               self.nodes[id] === node,
-                              node.parentId != nil,
+                              node.isAttached,
                               node.enabledModuleViewEvents.contains(event) else {
                             return
                         }
@@ -276,8 +292,8 @@ final class StingNodeRegistry {
         for id in nodes.keys.sorted() where id != 0 {
             guard let node = nodes[id], let nativeView = node.nativeModuleView else { continue }
 
-            if node.parentId != nil {
-                node.parentId = nil
+            if node.isAttached {
+                node.isAttached = false
                 nativeView.didDetach()
             }
 
@@ -296,6 +312,28 @@ final class StingNodeRegistry {
         guard !disposed else { throw StingRuntimeError("Sting node registry is disposed") }
         guard let node = nodes[id] else { throw StingRuntimeError("Unknown native node id \(id)") }
         return node
+    }
+
+    private func propagateAttach(_ nodeId: Int) {
+        guard let node = nodes[nodeId], !node.isAttached else { return }
+
+        node.isAttached = true
+        for childId in node.children {
+            propagateAttach(childId)
+        }
+        node.nativeModuleView?.didAttach()
+    }
+
+    private func propagateDetach(_ nodeId: Int) {
+        guard let node = nodes[nodeId], node.isAttached else { return }
+
+        // Mark the complete subtree inactive before any parent detach hook runs,
+        // so re-entrant native callbacks cannot observe an attached descendant.
+        node.isAttached = false
+        for childId in node.children {
+            propagateDetach(childId)
+        }
+        node.nativeModuleView?.didDetach()
     }
 
     private func attachView(_ node: StingNode, to parent: StingNode, at index: Int) throws {
