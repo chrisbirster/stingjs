@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -35,6 +35,11 @@ test('creates an external Android Sting project from prebuilt host artifacts', (
   assert.equal(packageJson.scripts.test, 'vitest run --passWithNoTests');
   assert.equal(readFileSync(join(target, 'android/app/libs/sting-runtime.aar'), 'utf8'), 'runtime-aar');
   assert.equal(readFileSync(join(target, 'android/app/libs/sting-quickjs.aar'), 'utf8'), 'quickjs-aar');
+
+  if (process.platform !== 'win32') {
+    const mode = statSync(join(target, 'android/gradlew')).mode;
+    assert.notEqual(mode & 0o100, 0, 'generated android/gradlew must be executable');
+  }
 
   const activity = readFileSync(
     join(target, 'android/app/src/main/java/com/example/myapp/MainActivity.kt'),
