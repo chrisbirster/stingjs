@@ -168,6 +168,10 @@ class StingNativeBridge(
         }
     }
 
+    fun disposeNativeObjects() {
+        modules.disposeAllObjects()
+    }
+
     private fun completeModuleAsync(
         requestId: Int,
         module: String,

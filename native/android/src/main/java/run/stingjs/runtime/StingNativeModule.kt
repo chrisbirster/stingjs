@@ -8,6 +8,27 @@ sealed class StingNativeModuleResult {
 typealias StingNativeModuleCompletion = (StingNativeModuleResult) -> Unit
 typealias StingNativeModuleEventEmitter = (Any?) -> Unit
 
+interface StingNativeObject {
+    fun callSync(method: String, arguments: List<Any?>): Any?
+
+    fun callAsync(
+        method: String,
+        arguments: List<Any?>,
+        completion: StingNativeModuleCompletion,
+    ) {
+        completion(
+            StingNativeModuleResult.Failure(
+                StingNativeModuleError(
+                    code = "E_OBJECT_METHOD_NOT_FOUND",
+                    message = "Native object does not implement asynchronous method $method",
+                ),
+            ),
+        )
+    }
+
+    fun dispose() {}
+}
+
 interface StingNativeModule {
     val name: String
     val version: String
@@ -37,6 +58,13 @@ interface StingNativeModule {
         throw StingNativeModuleError(
             code = "E_EVENT_NOT_FOUND",
             message = "$name does not implement native event $event",
+        )
+    }
+
+    fun createObject(type: String, arguments: List<Any?>): StingNativeObject {
+        throw StingNativeModuleError(
+            code = "E_OBJECT_TYPE_NOT_FOUND",
+            message = "$name does not implement native object type $type",
         )
     }
 }

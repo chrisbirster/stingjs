@@ -54,7 +54,14 @@ class OfficialQuickJsCandidateRuntime(
         handle = 0L
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
-        nativeDestroy(current)
+        try {
+            nativeDestroy(current)
+        } finally {
+            // __stingDisposeRuntime releases registered JS wrappers first. The
+            // native registry is the final guarantee for raw or abandoned
+            // handles that never reached a JavaScript wrapper disposer.
+            bridge.disposeNativeObjects()
+        }
     }
 
     private fun deliverModuleCompletion(requestId: Int, responseJSON: String) {
