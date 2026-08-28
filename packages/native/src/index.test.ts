@@ -87,7 +87,7 @@ describe('@stingjs/native styling integration', () => {
     expect(style.backgroundColor).toBe('#4f46e5');
     expect(style.color).toBe('#ffffff');
     expect(style.borderRadius).toBe(8);
-    expect(style.fontWeight).toBe('semibold');
+    expect(style.fontWeight).toBe(600);
     expect(style.paddingLeft).toBe(16);
     expect(style.paddingRight).toBe(16);
     expect(style.paddingTop).toBe(10);
@@ -108,7 +108,7 @@ describe('@stingjs/native styling integration', () => {
     expect(vi.mocked(bridge.createElement).mock.calls.some(([, type]) => type === 'text')).toBe(true);
     const style = propertyPayloads(bridge, 'style').at(-1) as Record<string, unknown>;
     expect(style.fontSize).toBe(28);
-    expect(style.fontWeight).toBe('bold');
+    expect(style.fontWeight).toBe(700);
 
     dispose();
   });
