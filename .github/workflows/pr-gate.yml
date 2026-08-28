@@ -1,0 +1,166 @@
+name: PR Gate
+
+on:
+  pull_request:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  classify:
+    name: Classify Changes
+    runs-on: ubuntu-latest
+    outputs:
+      js_ts: ${{ steps.classify.outputs.js_ts }}
+      runtime: ${{ steps.classify.outputs.runtime }}
+      android: ${{ steps.classify.outputs.android }}
+      ios: ${{ steps.classify.outputs.ios }}
+      modules: ${{ steps.classify.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        name: Route changed files to responsibility checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          js_ts=false
+          runtime=false
+          android=false
+          ios=false
+          modules=false
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            js_ts=true
+            runtime=true
+            android=true
+            ios=true
+            modules=true
+          else
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+
+              case "$file" in
+                .github/workflows/*|package.json|package-lock.json|tsconfig*.json|scripts/test-ios-runtime.sh)
+                  js_ts=true
+                  runtime=true
+                  android=true
+                  ios=true
+                  modules=true
+                  ;;
+              esac
+
+              case "$file" in
+                packages/core/*|packages/solid/*|packages/native/*|packages/stylex/*|benchmarks/solid2-conformance/*|benchmarks/sting-benchmark/*|examples/async-native/*)
+                  js_ts=true
+                  runtime=true
+                  android=true
+                  ios=true
+                  ;;
+                *.ts|*.tsx|*.js|*.mjs)
+                  js_ts=true
+                  ;;
+              esac
+
+              case "$file" in
+                runtime/*)
+                  runtime=true
+                  android=true
+                  ios=true
+                  ;;
+              esac
+
+              case "$file" in
+                native/android/*|examples/hello-world/android/*)
+                  android=true
+                  ;;
+              esac
+
+              case "$file" in
+                native/ios/*|examples/hello-world/ios/*)
+                  ios=true
+                  ;;
+              esac
+
+              case "$file" in
+                packages/modules/*|packages/modules-core/*)
+                  modules=true
+                  js_ts=true
+                  ;;
+              esac
+            done < <(git diff --name-only "$base" "$head")
+          fi
+
+          echo "js_ts=$js_ts" >> "$GITHUB_OUTPUT"
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          echo "android=$android" >> "$GITHUB_OUTPUT"
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "modules=$modules" >> "$GITHUB_OUTPUT"
+
+          printf 'JS/TS=%s Runtime=%s Android=%s iOS=%s Modules=%s\n' \
+            "$js_ts" "$runtime" "$android" "$ios" "$modules"
+
+  js-ts:
+    name: JS / TS
+    needs: classify
+    if: needs.classify.outputs.js_ts == 'true'
+    uses: ./.github/workflows/_check-js.yml
+
+  runtime:
+    name: StingRuntime
+    needs: classify
+    if: needs.classify.outputs.runtime == 'true'
+    uses: ./.github/workflows/_check-runtime.yml
+
+  android:
+    name: Android
+    needs: classify
+    if: needs.classify.outputs.android == 'true'
+    uses: ./.github/workflows/_check-android.yml
+
+  ios:
+    name: iOS
+    needs: classify
+    if: needs.classify.outputs.ios == 'true'
+    uses: ./.github/workflows/_check-ios.yml
+
+  modules:
+    name: Modules
+    needs: classify
+    if: needs.classify.outputs.modules == 'true'
+    uses: ./.github/workflows/_check-modules.yml
+
+  required:
+    name: Required
+    if: always()
+    needs:
+      - classify
+      - js-ts
+      - runtime
+      - android
+      - ios
+      - modules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected responsibility check to pass
+        env:
+          CLASSIFY: ${{ needs.classify.result }}
+          JS_TS: ${{ needs.js-ts.result }}
+          RUNTIME: ${{ needs.runtime.result }}
+          ANDROID: ${{ needs.android.result }}
+          IOS: ${{ needs.ios.result }}
+          MODULES: ${{ needs.modules.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in "$CLASSIFY" "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "A selected responsibility check did not pass: $result" >&2
+              exit 1
+            fi
+          done
