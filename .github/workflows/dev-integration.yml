@@ -31,6 +31,10 @@ jobs:
     name: Modules
     uses: ./.github/workflows/_check-modules.yml
 
+  tooling:
+    name: Tooling
+    uses: ./.github/workflows/tooling.yml
+
   e2e:
     name: E2E
     uses: ./.github/workflows/_check-e2e.yml
@@ -44,6 +48,7 @@ jobs:
       - android
       - ios
       - modules
+      - tooling
       - e2e
     runs-on: ubuntu-latest
     steps:
@@ -54,11 +59,12 @@ jobs:
           ANDROID: ${{ needs.android.result }}
           IOS: ${{ needs.ios.result }}
           MODULES: ${{ needs.modules.result }}
+          TOOLING: ${{ needs.tooling.result }}
           E2E: ${{ needs.e2e.result }}
         shell: bash
         run: |
           set -euo pipefail
-          for result in "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$E2E"; do
+          for result in "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$TOOLING" "$E2E"; do
             if [[ "$result" != "success" ]]; then
               echo "Dev integration responsibility failed: $result" >&2
               exit 1
