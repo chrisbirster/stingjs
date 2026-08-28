@@ -9,22 +9,19 @@ export type StyleXStyles<T extends Style = Style> =
   | undefined;
 
 /**
- * StyleX-shaped authoring adapter for Sting.
+ * Native half of Sting's StyleX integration.
  *
- * This mirrors StyleX's small `create` + `props` mental model while keeping
- * Sting's modifier IR as the native runtime target. It intentionally does not
- * depend on @stylexjs/stylex, so native builds never create or resolve CSS classes.
+ * Application code uses StyleX's `create` + composition model. On Sting native
+ * builds these static definitions remain typed style values that feed `sx` and
+ * lower into the Sting Style IR. A web build can configure the official StyleX
+ * compiler to recognize this package as an import source and emit atomic CSS.
+ * CSS classes are never interpreted by the native runtime.
  */
 export function create<const T extends StyleXDefinition>(styles: T): T {
   return styles;
 }
 
-/** Compose reusable definitions into the `sx` prop consumed by @stingjs/native. */
+/** Compose StyleX definitions into the `sx` prop consumed by @stingjs/native. */
 export function props(...styles: readonly SxInput[]): { readonly sx: readonly SxInput[] } {
   return { sx: styles };
-}
-
-/** Value-level composition helper when JSX spread syntax is undesirable. */
-export function compose(...styles: readonly SxInput[]): readonly SxInput[] {
-  return styles;
 }
