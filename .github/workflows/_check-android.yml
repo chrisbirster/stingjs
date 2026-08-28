@@ -6,7 +6,7 @@ on:
 
 jobs:
   android:
-    name: Android Runtime
+    name: Android Runtime + Sting Go
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -16,20 +16,32 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v4
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android SDK and pinned NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.5.0'
       - name: Compile Sting Android runtime and instrumentation
         working-directory: examples/hello-world/android
         run: gradle :sting-runtime:assembleDebug :sting-runtime:assembleDebugAndroidTest --no-daemon
+      - name: Build Sting Go and instrumentation
+        working-directory: apps/sting-go/android
+        run: gradle :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest --no-daemon
+      - name: Verify official QuickJS is packaged in Sting Go
+        run: |
+          test -f apps/sting-go/android/app/build/outputs/apk/release/app-release.apk
+          unzip -l apps/sting-go/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so'
+          unzip -l apps/sting-go/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_android.so'
+          find apps/sting-go/android/app/build/outputs/apk/androidTest -name '*.apk' -type f | grep -q .
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run Sting Android runtime instrumentation
+      - name: Run Android runtime and Sting Go instrumentation
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 36
@@ -37,4 +49,6 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: cd examples/hello-world/android && gradle :sting-runtime:connectedDebugAndroidTest --no-daemon
+          script: |
+            (cd examples/hello-world/android && gradle :sting-runtime:connectedDebugAndroidTest --no-daemon)
+            (cd apps/sting-go/android && gradle :app:connectedDebugAndroidTest --no-daemon)
