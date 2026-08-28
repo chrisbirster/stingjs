@@ -8,11 +8,13 @@ import {
 } from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
 import {
+  alignItems,
   background,
   flexDirection,
   fontSize,
   fontWeight,
   foreground,
+  justifyContent,
   paddingX,
   paddingY,
   recipe,
@@ -77,11 +79,11 @@ const buttonRecipe = recipe({
   variants: {
     variant: {
       primary: [
-        background('#4f46e5'),
-        foreground('#ffffff'),
-        rounded(8),
+        background('accent'),
+        foreground('onAccent'),
+        rounded('md'),
         fontWeight('semibold'),
-        paddingX(16),
+        paddingX('4'),
         paddingY(10),
       ],
     },
@@ -208,11 +210,7 @@ export function Center(props: ViewProps): HostNode {
     'view',
     props as ViewProps & Record<string, unknown>,
     ['children', 'accessibilityLabel'],
-    [
-      flexDirection('column'),
-      { $$stingModifier: true, kind: 'style', property: 'alignItems', value: 'center' },
-      { $$stingModifier: true, kind: 'style', property: 'justifyContent', value: 'center' },
-    ],
+    [flexDirection('column'), alignItems('center'), justifyContent('center')],
   );
 }
 
