@@ -1,4 +1,4 @@
-import { createMemo } from 'solid-js';
+import { createMemo, createRenderEffect } from 'solid-js';
 import {
   bindHostText,
   createElement,
@@ -6,7 +6,7 @@ import {
   insertNode,
   spread,
 } from '@stingjs/solid';
-import type { HostNode } from '@stingjs/core';
+import { getHost, type HostNode } from '@stingjs/core';
 import {
   alignItems,
   background,
@@ -115,6 +115,35 @@ function hasResolvedStyle(styling: ReturnType<typeof resolveStyling>): boolean {
   return Object.entries(styling.style).some(([key, value]) => key !== '__stingResolved' && value !== null);
 }
 
+/**
+ * Bind the two styling bridge channels directly to Solid's reactive graph.
+ *
+ * Completely unstyled nodes stay mutation-free. Once a channel has emitted,
+ * resolved nulls/empty arrays continue to flow so native state can be reset
+ * when a reactive style or native modifier disappears.
+ */
+function bindStyling(
+  node: HostNode,
+  styling: () => ReturnType<typeof resolveStyling>,
+): void {
+  let hasEmittedStyle = false;
+  let hasEmittedNativeModifiers = false;
+
+  createRenderEffect(styling, resolved => {
+    if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
+    if (hasEmittedStyle) {
+      getHost().setProperty(node, 'style', resolved.style);
+    }
+  });
+
+  createRenderEffect(styling, resolved => {
+    if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
+    if (hasEmittedNativeModifiers) {
+      getHost().setProperty(node, 'nativeModifiers', resolved.nativeModifiers);
+    }
+  });
+}
+
 function createNativePrimitive(
   type: string,
   props: StyleProps & Record<string, unknown>,
@@ -133,22 +162,11 @@ function createNativePrimitive(
   }));
 
   const forwarded: Record<string, unknown> = {};
-  let hasEmittedStyle = false;
-  let hasEmittedNativeModifiers = false;
   for (const key of forwardedKeys) {
     defineForwardedGetter(forwarded, key, () => props[key]);
   }
-  defineForwardedGetter(forwarded, 'style', () => {
-    const resolved = styling();
-    if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
-    return hasEmittedStyle ? resolved.style : undefined;
-  });
-  defineForwardedGetter(forwarded, 'nativeModifiers', () => {
-    const resolved = styling();
-    if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
-    return hasEmittedNativeModifiers ? resolved.nativeModifiers : undefined;
-  });
   spread(node, forwarded);
+  bindStyling(node, styling);
   return node;
 }
 
@@ -225,21 +243,10 @@ function createNativeText(props: TextProps, defaults?: ModifierInput): HostNode 
     modifiers: props.modifiers,
   }));
   const forwarded: Record<string, unknown> = {};
-  let hasEmittedStyle = false;
-  let hasEmittedNativeModifiers = false;
   defineForwardedGetter(forwarded, 'accessibilityLabel', () => props.accessibilityLabel);
-  defineForwardedGetter(forwarded, 'style', () => {
-    const resolved = styling();
-    if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
-    return hasEmittedStyle ? resolved.style : undefined;
-  });
-  defineForwardedGetter(forwarded, 'nativeModifiers', () => {
-    const resolved = styling();
-    if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
-    return hasEmittedNativeModifiers ? resolved.nativeModifiers : undefined;
-  });
 
   spread(node, forwarded, true);
+  bindStyling(node, styling);
   insertNode(node, textNode);
   bindHostText(textNode, () => stringifyTextChild(props.children));
   return node;
