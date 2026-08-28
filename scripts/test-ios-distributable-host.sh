@@ -43,6 +43,11 @@ fi
     -destination 'generic/platform=iOS Simulator' \
     CODE_SIGNING_ALLOWED=NO \
     build
+  env PATH="$consumer_path" xcodebuild \
+    -scheme StingQuickJSRuntime \
+    -destination 'generic/platform=iOS' \
+    CODE_SIGNING_ALLOWED=NO \
+    build
 )
 
-printf 'external iOS QuickJS host package built without Zig: %s\n' "$PACKAGE_DIR"
+printf 'external iOS QuickJS host package built for simulator and device without Zig: %s\n' "$PACKAGE_DIR"
