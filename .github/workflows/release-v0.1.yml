@@ -87,13 +87,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.5.0'
+      - name: Package distributable Android host AARs
+        run: bash scripts/package-android-host.sh release-artifacts
+      - name: Prove release AARs build in a Zig-free external consumer
+        run: bash scripts/test-android-distributable-host.sh release-artifacts
       - name: Build Android release smoke artifact
         working-directory: examples/hello-world/android
         run: gradle :app:assembleRelease --no-daemon
-      - name: Stage Android artifact
-        run: |
-          mkdir -p release-artifacts
-          cp examples/hello-world/android/app/build/outputs/apk/release/app-release-unsigned.apk release-artifacts/stingjs-hello-world-v0.1.0-android-unsigned.apk
+      - name: Stage Android example artifact
+        run: cp examples/hello-world/android/app/build/outputs/apk/release/app-release-unsigned.apk release-artifacts/stingjs-hello-world-v0.1.0-android-unsigned.apk
       - uses: actions/upload-artifact@v4
         with:
           name: v0.1-android
