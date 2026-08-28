@@ -9,7 +9,11 @@ import {
   type Element as SolidElement,
   type ValidComponent,
 } from 'solid-js';
-import { getHost, type HostNode } from '@stingjs/core';
+import {
+  encodeNativeModuleViewType,
+  getHost,
+  type HostNode,
+} from '@stingjs/core';
 
 const renderer = createRenderer<HostNode>({
   createElement(type: string, staticProperties?: Record<string, unknown>) {
@@ -71,6 +75,37 @@ export const {
   applyRef,
   ref,
 } = renderer;
+
+export type NativeModuleViewComponent<Props extends object = Record<string, unknown>> =
+  (props: Props) => HostNode;
+
+/**
+ * Build a normal Solid component backed by a module-owned UIKit/Android view.
+ *
+ * Module packages should create and export these components once, for example:
+ *
+ *   export const CameraPreview = createNativeModuleView<CameraPreviewProps>(
+ *     'Camera',
+ *     'Preview',
+ *   );
+ *
+ * Application code then uses <CameraPreview /> like any other Sting component;
+ * the framework-reserved host identity remains an implementation detail.
+ */
+export function createNativeModuleView<
+  Props extends object = Record<string, unknown>,
+>(
+  module: string,
+  viewType: string,
+): NativeModuleViewComponent<Props> {
+  const hostType = encodeNativeModuleViewType(module, viewType);
+
+  return (props: Props): HostNode => {
+    const element = createElement(hostType);
+    spread(element, props);
+    return element;
+  };
+}
 
 export type StingDynamicComponent = ValidComponent | string;
 
