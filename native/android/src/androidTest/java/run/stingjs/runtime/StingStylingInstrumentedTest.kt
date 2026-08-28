@@ -1,12 +1,14 @@
 package run.stingjs.runtime
 
 import android.os.Build
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -88,13 +90,16 @@ class StingStylingInstrumentedTest {
             "nativeModifiers",
             "[{\"name\":\"blur\",\"value\":{\"radius\":16}}]",
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            assertNotNull(nodes.viewForNode(1)?.renderEffect)
-        }
 
-        nodes.setProperty(1, "nativeModifiers", "[]")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            assertEquals(null, nodes.viewForNode(1)?.renderEffect)
+            val getter = View::class.java.getMethod("getRenderEffect")
+            assertNotNull(getter.invoke(nodes.viewForNode(1)))
+
+            nodes.setProperty(1, "nativeModifiers", "[]")
+            assertNull(getter.invoke(nodes.viewForNode(1)))
+        } else {
+            // Unsupported platform versions accept the portable descriptor as a no-op.
+            nodes.setProperty(1, "nativeModifiers", "[]")
         }
     }
 }
