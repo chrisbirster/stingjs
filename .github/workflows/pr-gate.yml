@@ -95,7 +95,7 @@ jobs:
               esac
 
               case "$file" in
-                native/android/*|examples/hello-world/android/*)
+                native/android/*|examples/hello-world/android/*|apps/sting-go/android/*)
                   android=true
                   ;;
               esac
