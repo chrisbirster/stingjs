@@ -16,8 +16,8 @@ StyleX / sx={styles.foo}
          OR
 
 modifiers={[
-  padding(16),
-  background(...)
+  padding('4'),
+  background('surface')
 ]}
 
                 ↓
@@ -27,7 +27,7 @@ modifiers={[
 
 padding(16)
 gap(12)
-background(surface)
+background(#ffffff)
 cornerRadius(12)
 font(title)
 
@@ -38,12 +38,12 @@ font(title)
 
        Web          Native
         │              │
-      CSS          layout/native
+   StyleX/CSS      layout/native
                         │
                   UIKit / Android
 ```
 
-The web arrow is an architectural target for the shared IR and StyleX integration. Sting's current renderer is native; this PR does not add a DOM renderer.
+The current Sting renderer remains native; this styling foundation does not add a DOM renderer. The web side is a verified compile-time StyleX bridge: the official StyleX compiler recognizes `@stingjs/stylex` as an import source and can lower the same static definitions and `sx` JSX syntax to web CSS/class output.
 
 ## 1. Modifiers
 
@@ -60,13 +60,15 @@ import {
 
 <Box
   modifiers={m(
-    padding(16),
-    background('#09090b'),
-    cornerRadius(12),
+    padding('4'),
+    background('surface'),
+    cornerRadius('lg'),
     font('title'),
   )}
 />
 ```
+
+Portable modifier helpers accept the same shared Sting tokens used by semantic style props, while still accepting raw numeric/color values where appropriate. Both forms resolve to the same concrete Style IR before crossing the native bridge.
 
 Portable modifiers lower into the shared style IR. Native-only capabilities use the same ordered modifier channel without being added to the portable style vocabulary:
 
@@ -74,15 +76,15 @@ Portable modifiers lower into the shared style IR. Native-only capabilities use 
 <Box modifiers={[nativeBlur(20)]} />
 ```
 
-`nativeBlur()` is implemented with UIKit on iOS and `RenderEffect` on Android 12+.
+`nativeBlur()` is implemented with `UIVisualEffectView` on iOS and `RenderEffect` on Android 12+; removal of the modifier removes the native effect.
 
 Modifier arrays may contain arrays, `false`, `null`, `undefined`, or Solid accessors. Reactive values therefore stay inside Solid's fine-grained graph.
 
-State/environment operations such as `pressed(...)` and `responsive(...)` belong at this IR layer, but this PR does not ship placeholder/no-op versions. They should be added only with real state and viewport lowering on every supported platform.
+State/environment operations such as `pressed(...)` and `responsive(...)` belong at this IR layer, but this foundation deliberately does not ship placeholder/no-op versions. They are separate capabilities that require real state and viewport lowering on every supported platform.
 
 ## 2. StyleX integration
 
-`@stingjs/stylex` provides the native half of a StyleX integration using the familiar static `create()` model:
+`@stingjs/stylex` is the shared StyleX authoring seam:
 
 ```tsx
 import * as stylex from '@stingjs/stylex';
@@ -99,11 +101,22 @@ const styles = stylex.create({
 <Stack sx={styles.screen} />
 ```
 
-On native, those static definitions feed `sx` and lower into Sting's style IR. CSS class names are not interpreted by UIKit or Android.
+On native builds, those static definitions stay as typed style values, feed `sx`, and lower into Sting's Style IR. CSS class names are never interpreted by UIKit or Android.
 
-For a web build, the intended integration is to configure the official StyleX compiler so `@stingjs/stylex` is recognized as a StyleX import source and the same static definitions compile to atomic CSS. This keeps StyleX a compile-time web concern while preserving the same application-facing styling vocabulary on native.
+On web compiler builds, configure the official StyleX Babel plugin with `@stingjs/stylex` as an import source:
 
-The native adapter intentionally exposes only the StyleX surface Sting currently needs: `create()` and `props()`. Sting does not invent parallel StyleX-only helpers.
+```js
+[
+  '@stylexjs/babel-plugin',
+  {
+    importSources: ['@stingjs/stylex'],
+  },
+]
+```
+
+Sting tests this integration against the official StyleX compiler. The conformance suite verifies both `stylex.create(...)` extraction and `sx={styles.foo}` JSX lowering, so the web bridge is executable compiler behavior rather than only an architectural intention.
+
+The native adapter intentionally exposes only the StyleX surface Sting currently needs: `create()` and `props()`. `props(...)` composes native definitions back into Sting's `sx` channel; direct `sx={styles.foo}` is the canonical cross-platform example.
 
 ## 3. Semantic components and style props
 
@@ -118,7 +131,7 @@ Most application code should use semantic components and terse token props:
 </Stack>
 ```
 
-The semantic primitives currently include:
+The semantic primitives include:
 
 - `Box` — neutral container
 - `Stack` — vertical container
@@ -146,9 +159,9 @@ const button = recipe({
   variants: {
     variant: {
       primary: [
-        background('#4f46e5'),
-        foreground('#ffffff'),
-        cornerRadius(8),
+        background('accent'),
+        foreground('onAccent'),
+        cornerRadius('md'),
       ],
     },
   },
@@ -199,4 +212,15 @@ component defaults
 
 Styling resolution runs in Solid memos. A signal used by `sx`, a style prop, or a modifier accessor triggers the existing property-mutation path rather than React-style component reconciliation.
 
-The normalized style IR carries explicit reset values after a previously-applied style disappears, so UIKit and Android restore native defaults instead of leaving stale visual state.
+The normalized style IR carries explicit reset values after a previously applied style disappears, so UIKit and Android restore native defaults instead of leaving stale visual state. Android also preserves the prior native layout width/height when a reactive dimension style is removed.
+
+## Verification contract
+
+A styling change is considered healthy only when the required Sting lanes pass:
+
+- TypeScript typecheck, tests, and workspace build
+- official QuickJS runtime smoke
+- Android production host build, official QuickJS packaging, and real emulator instrumentation
+- iOS runtime and native host/application builds
+
+Hermes, QuickJS-NG, and the React Native/Hermes benchmark remain comparison lanes and are non-blocking; they are not Sting's production runtime contract.
