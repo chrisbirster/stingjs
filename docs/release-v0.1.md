@@ -1,23 +1,26 @@
 # v0.1 release checklist
 
-The v0.1 release is intentionally blocked until both the software matrix and the required physical runtime validation evidence are complete.
+Sting uses three deliberate boundaries during the v0.1 cycle:
 
-## Software gate
+1. **Feature PR gate** — selectively validates the responsibilities changed by a feature before it reaches `dev`.
+2. **Promotion gate** — a `dev -> main` PR runs the full production integration matrix, including JS/TS, official QuickJS, Android, iOS, Modules, Tooling, and Android/iOS E2E.
+3. **Release gate** — a manual release from `main` validates the tag, rebuilds the release-facing software/artifacts, and applies the physical-device evidence requirement only to final `v0.1.0`.
 
-The exact candidate commit must pass:
+This lets coherent development milestones reach `main` and become installable prereleases without weakening the stronger evidence requirement for the final release.
 
-- root TypeScript/typecheck/tests/build,
-- official QuickJS semantic/runtime smoke,
-- Hermes containment/baseline regression smoke,
-- React Native 0.87 + Hermes release baseline build,
-- iOS JavaScriptCore/UIKit runtime + native framework/app build on the iOS simulator,
-- Android Kotlin/QuickJS/Zig host build,
-- Android release APK build,
-- Android native instrumentation tests.
+## Promotion software gate
 
-QuickJS-NG is a frozen experimental/reference prototype. Its standalone smoke may remain available as non-blocking research signal, but it is not part of the product software gate.
+Before a `dev -> main` promotion is merged, **Promotion Gate / Required** must pass for the exact promotion head. The responsibility-owned workflows cover:
 
-The cross-platform `examples/hello-world` application must continue to prove native button -> Solid -> native text plus Haptics.
+- JS/TS typecheck, tests, and builds,
+- the official QuickJS production runtime smoke,
+- Android Sting runtime compilation and real emulator instrumentation,
+- iOS StingRuntime tests/build,
+- first-party native module builds on Android and iOS,
+- Tooling on Linux, macOS, and Windows,
+- complete Android and iOS Hello World E2E composition.
+
+QuickJS-NG, the isolated Hermes candidate, and the React Native/Hermes comparison are experimental/reference lanes. They are not part of the normal feature or promotion merge gate.
 
 ## Primitive gate
 
@@ -29,11 +32,25 @@ The cross-platform `examples/hello-world` application must continue to prove nat
 - Image source/resize/accessibility
 - controlled TextInput / changeText / editable
 - ScrollView vertical/horizontal container behavior
-- minimal style/layout mapping
+- the documented style/layout contract
 
-## Runtime evidence gate
+The cross-platform `examples/hello-world` application must continue to prove native event -> Solid -> native mutation through the production composition path.
 
-`npm run release:check:v0.1` is the machine gate. It requires:
+## Prerelease gate
+
+The manual **Release v0.1** workflow accepts:
+
+- `v0.1.0-alpha.N`
+- `v0.1.0-beta.N`
+- `v0.1.0-rc.N`
+
+A prerelease must run from `main`. The workflow re-runs the repository software gate and release-facing platform/package checks, stages the JavaScript bundle and Android distributable host artifacts, proves the Android AARs build in a Zig-free external consumer, validates the iOS native host, and creates a GitHub **prerelease**.
+
+Prereleases deliberately do **not** run `npm run release:check:v0.1`; that command is the physical-evidence gate reserved for final `v0.1.0`.
+
+## Runtime evidence gate for final v0.1.0
+
+`npm run release:check:v0.1` is the final-release machine gate. It requires:
 
 1. repository version `0.1.0`,
 2. a `0.1.0` changelog section,
@@ -41,19 +58,26 @@ The cross-platform `examples/hello-world` application must continue to prove nat
 4. validated release physical-device evidence under `benchmarks/results/raw/`,
 5. physical Android evidence for official QuickJS,
 6. physical Android evidence for the React Native/Hermes baseline,
-7. a green iOS simulator/UIKit software matrix for the production runtime architecture, independent JavaScriptCore reference lane, and public primitive surface where applicable.
+7. a green iOS simulator/native software matrix for the production runtime architecture and independent JavaScriptCore reference lane where applicable.
 
-There is no physical iPhone available for v0.1. iOS simulator results are therefore compatibility/semantic evidence only. They must not be checked into `benchmarks/results/raw/`, used as physical-device performance numbers, or used to claim iPhone performance parity.
+There is no physical iPhone available for v0.1. iOS simulator results are compatibility/semantic evidence only. They must not be checked into `benchmarks/results/raw/`, used as physical-device performance numbers, or used to claim iPhone performance parity.
 
-Official QuickJS `2026-06-04` is already the accepted production engine. Same-device physical Android evidence validates and characterizes that direction rather than selecting among equal production candidates. The evidence still matters for startup, memory, event/native-update latency, module overhead, frame behavior, binary size, and representative workloads. A severe correctness or performance blocker can reopen ADR 0004; otherwise work should optimize and harden the accepted QuickJS path.
+Official QuickJS `2026-06-04` is already the accepted production engine. Same-device physical Android evidence validates and characterizes that direction rather than selecting among equal production candidates. A severe correctness or performance blocker can reopen ADR 0004; otherwise work should optimize and harden the accepted QuickJS path.
 
-QuickJS-NG benchmark data may remain as optional historical/research evidence but is not required for release. #69 tracks removing the old candidate from normal Android application packaging. React Native/Hermes remains the external competitor/reference baseline.
+## Catch-up promotion procedure
 
-The pinned Hermes V1 Sting candidate is not required as a physical Sting candidate because the conformance train already disqualified that exact runtime build on generic JavaScript lexical semantics. Hermes remains required as the React Native baseline. That result must not be generalized into a claim that SolidJS 2 is incompatible with every Hermes version.
+When `dev` has a coherent green milestone:
 
-## Release procedure
+1. Finish or intentionally defer open work that belongs in that milestone.
+2. Open or refresh the promotion PR from `dev` to `main`.
+3. Require **Promotion Gate / Required** to pass.
+4. Merge the promotion PR without squashing away the development history.
+5. Run **Release v0.1** manually from `main` with the next prerelease tag, for example `v0.1.0-rc.1`.
+6. Continue development on `dev`; repeat with later prereleases when another coherent batch is ready.
 
-After the Android physical validation matrix is reviewed and no blocking QuickJS issue is found:
+## Final release procedure
+
+After the Android physical validation evidence is reviewed and no blocking official-QuickJS issue remains:
 
 ```bash
 npm install
@@ -63,6 +87,6 @@ npm run build
 npm run release:check:v0.1
 ```
 
-Merge the reviewed milestone from `dev` to `main`, then run the **Release v0.1** workflow from `main` with tag `v0.1.0`.
+Promote the reviewed final milestone from `dev` to `main`, require the full Promotion Gate, then run **Release v0.1** from `main` with tag `v0.1.0`.
 
-The workflow re-runs the software/evidence gates, builds the Android release smoke artifact and iOS simulator native host, and creates the GitHub release. Do not bypass the evidence check by manually creating a tag/release.
+For `v0.1.0`, the workflow re-runs the release-facing software checks, enforces the physical evidence gate, builds/stages the release artifacts, validates the iOS native host, and creates the final GitHub release. Do not bypass the evidence check by manually creating the final tag/release.
