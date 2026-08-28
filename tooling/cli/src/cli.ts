@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
 import { loadStingConfig } from './config.js';
+import { collectProjectDoctorContext } from './doctor.js';
 import { collectDevices, collectDoctorChecks } from './platform.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
@@ -16,16 +17,35 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Check the Sting project and its required local platform toolchain; add --runtime for runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
-function doctor(args: string[]): void {
+async function doctor(args: string[]): Promise<void> {
   const runtimeDevelopment = hasFlag(args, '--runtime');
-  const checks = collectDoctorChecks(process.platform, { runtimeDevelopment });
+  const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
+  const project = await collectProjectDoctorContext(projectRoot);
+  const environmentChecks = collectDoctorChecks(process.platform, {
+    runtimeDevelopment,
+    android: project.platforms.android,
+    ios: project.platforms.ios,
+    requireSystemGradle: project.requiresSystemGradle,
+  });
+  const checks = [...project.checks, ...environmentChecks];
+
   if (hasFlag(args, '--json')) {
-    console.log(JSON.stringify({ mode: runtimeDevelopment ? 'runtime' : 'app', checks }));
+    console.log(JSON.stringify({
+      mode: runtimeDevelopment ? 'runtime' : 'app',
+      projectRoot: project.projectRoot,
+      configPath: project.configPath,
+      platforms: project.platforms,
+      checks,
+    }));
   } else {
     console.log(runtimeDevelopment ? 'Sting doctor (runtime development)\n' : 'Sting doctor\n');
+    console.log(`Project: ${project.projectRoot}`);
+    const targets = [project.platforms.ios ? 'ios' : undefined, project.platforms.android ? 'android' : undefined]
+      .filter((target): target is string => target !== undefined);
+    console.log(`Targets: ${targets.length > 0 ? targets.join(', ') : 'none detected'}\n`);
     for (const check of checks) {
       const symbol = check.skipped ? '-' : check.ok ? '✓' : check.required ? '✗' : '!';
       const qualifier = check.skipped ? ' (not required)' : check.required ? '' : ' (optional)';
@@ -136,7 +156,7 @@ async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   switch (command) {
     case 'doctor':
-      doctor(args);
+      await doctor(args);
       return;
     case 'devices':
       devices(args);

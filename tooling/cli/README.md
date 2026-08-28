@@ -8,6 +8,7 @@ Developer tooling for StingJS. The npm package is intentionally `private: true` 
 npm install
 npm run build
 node dist/cli.js doctor
+node dist/cli.js doctor --project-root ../../examples/hello-world
 node dist/cli.js doctor --runtime
 node dist/cli.js devices
 node dist/cli.js config --project-root ../../examples/hello-world
@@ -18,9 +19,19 @@ node dist/cli.js run android --project-root ../../examples/hello-world
 
 ### `sting doctor`
 
-Checks the local environment for normal Sting application development.
+Checks both the Sting project and the local environment needed for that project's native targets.
 
-Node and npm are application prerequisites. Platform-native tools are reported when relevant for iOS or Android development. Zig is deliberately **not required** for ordinary Sting app developers and is shown as not required in the default doctor output.
+```bash
+sting doctor
+sting doctor --project-root ./apps/my-app
+sting doctor --json
+```
+
+The project check validates `package.json`, the normal `npm run build` contract, any discovered `sting.config.ts` (or supported JavaScript variant), configured native project paths, and Android Gradle-wrapper availability. A missing Sting config is not an error: projects that rely on the CLI's native-project inference remain supported.
+
+Platform prerequisites become required only when the project actually targets that platform. An Android project requires Java, the Android SDK, and adb. If the Android project has no Gradle wrapper, `sting doctor` requires a system Gradle installation as the existing fallback. An iOS project requires Xcode and simctl when doctor runs on macOS; on other operating systems the iOS toolchain check is reported as skipped rather than making Android-only work impossible.
+
+Node and npm remain application prerequisites. Zig is deliberately **not required** for ordinary Sting app developers and is shown as not required in the default doctor output.
 
 Sting runtime contributors and source-build workflows can opt into the lower-level toolchain check with:
 
@@ -30,7 +41,7 @@ sting doctor --runtime
 
 In runtime mode, Zig is required. This keeps Sting's Zig-centered implementation an internal/runtime concern instead of forcing application developers to install or understand Zig.
 
-Use `--json` for machine-readable output. JSON output includes a `mode` field with either `app` or `runtime`.
+Use `--json` for machine-readable output. JSON output includes `mode`, `projectRoot`, `platforms`, the resolved `configPath` when present, and all project/environment checks.
 
 ### `sting devices`
 

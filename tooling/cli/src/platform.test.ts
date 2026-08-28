@@ -17,6 +17,28 @@ test('runtime doctor requires Zig for Sting runtime contributors', () => {
   assert.equal(zig.skipped, undefined);
 });
 
+test('Android project doctor makes the Android toolchain required', () => {
+  const checks = collectDoctorChecks('linux', { android: true, requireSystemGradle: true });
+  for (const name of ['java', 'android sdk', 'adb', 'gradle']) {
+    const check = checks.find((candidate) => candidate.name === name);
+    assert.ok(check, `${name} check should exist`);
+    assert.equal(check.required, true, `${name} should be required for an Android project`);
+  }
+});
+
+test('iOS project doctor requires Xcode tools on macOS', () => {
+  const checks = collectDoctorChecks('darwin', { ios: true });
+  assert.equal(checks.find((check) => check.name === 'xcode')?.required, true);
+  assert.equal(checks.find((check) => check.name === 'simctl')?.required, true);
+});
+
+test('iOS project doctor skips the iOS toolchain off macOS', () => {
+  const check = collectDoctorChecks('linux', { ios: true }).find((candidate) => candidate.name === 'ios toolchain');
+  assert.ok(check);
+  assert.equal(check.required, false);
+  assert.equal(check.skipped, true);
+});
+
 test('parseAdbDevices classifies physical devices and emulators', () => {
   const devices = parseAdbDevices(`List of devices attached\nR5CX12345 device product:foo model:Pixel_9 device:foo transport_id:1\nemulator-5554 device product:sdk model:sdk_gphone64_arm64 device:emu transport_id:2\n`);
   assert.deepEqual(devices, [

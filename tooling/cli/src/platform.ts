@@ -22,6 +22,9 @@ export interface DoctorCheck {
 
 export interface DoctorOptions {
   runtimeDevelopment?: boolean;
+  android?: boolean;
+  ios?: boolean;
+  requireSystemGradle?: boolean;
 }
 
 interface CommandResult {
@@ -49,21 +52,21 @@ function checkCommand(name: string, command: string, args: string[], required: b
   return { name, ok: result.ok, detail, required };
 }
 
-function checkAndroidSdk(): DoctorCheck {
+function checkAndroidSdk(required: boolean): DoctorCheck {
   const sdkRoot = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
   if (!sdkRoot) {
     return {
       name: 'android sdk',
       ok: false,
       detail: 'ANDROID_SDK_ROOT or ANDROID_HOME is not set',
-      required: false,
+      required,
     };
   }
   return {
     name: 'android sdk',
     ok: existsSync(sdkRoot),
     detail: existsSync(sdkRoot) ? sdkRoot : `${sdkRoot} does not exist`,
-    required: false,
+    required,
   };
 }
 
@@ -90,13 +93,26 @@ export function collectDoctorChecks(
     });
   }
 
-  checks.push(checkCommand('java', 'java', ['-version'], false));
-  checks.push(checkAndroidSdk());
-  checks.push(checkCommand('adb', 'adb', ['version'], false));
+  const androidRequired = options.android === true;
+  checks.push(checkCommand('java', 'java', ['-version'], androidRequired));
+  checks.push(checkAndroidSdk(androidRequired));
+  checks.push(checkCommand('adb', 'adb', ['version'], androidRequired));
+  if (options.requireSystemGradle) {
+    checks.push(checkCommand('gradle', 'gradle', ['--version'], true));
+  }
 
   if (platform === 'darwin') {
-    checks.push(checkCommand('xcode', 'xcodebuild', ['-version'], false));
-    checks.push(checkCommand('simctl', 'xcrun', ['simctl', 'help'], false));
+    const iosRequired = options.ios === true;
+    checks.push(checkCommand('xcode', 'xcodebuild', ['-version'], iosRequired));
+    checks.push(checkCommand('simctl', 'xcrun', ['simctl', 'help'], iosRequired));
+  } else if (options.ios) {
+    checks.push({
+      name: 'ios toolchain',
+      ok: true,
+      detail: `iOS builds require macOS; skipped on ${platform}`,
+      required: false,
+      skipped: true,
+    });
   }
 
   return checks;
