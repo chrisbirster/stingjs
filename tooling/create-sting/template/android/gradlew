@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+set -eu
+VERSION=9.5.0
+CACHE="${GRADLE_USER_HOME:-$HOME/.gradle}/sting-wrapper/gradle-$VERSION"
+if [ ! -x "$CACHE/bin/gradle" ]; then
+  ARCHIVE="$CACHE.zip"
+  mkdir -p "$(dirname "$CACHE")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip" -o "$ARCHIVE"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$ARCHIVE" "https://services.gradle.org/distributions/gradle-$VERSION-bin.zip"
+  else
+    echo "curl or wget is required to bootstrap Gradle" >&2
+    exit 1
+  fi
+  TMP="$CACHE.tmp.$$"
+  rm -rf "$TMP"
+  mkdir -p "$TMP"
+  unzip -q "$ARCHIVE" -d "$TMP"
+  rm -rf "$CACHE"
+  mv "$TMP/gradle-$VERSION" "$CACHE"
+  rm -rf "$TMP" "$ARCHIVE"
+fi
+exec "$CACHE/bin/gradle" "$@"
