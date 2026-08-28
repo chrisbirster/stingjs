@@ -6,6 +6,10 @@ on:
       - dev
   workflow_dispatch:
 
+concurrency:
+  group: dev-integration
+  cancel-in-progress: true
+
 jobs:
   js-ts:
     name: JS / TS
