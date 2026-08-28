@@ -1,0 +1,31 @@
+name: Check · StingRuntime
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    name: StingRuntime / Official QuickJS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install Sting workspace dependencies
+        run: npm install
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - name: Build and run official QuickJS through Zig
+        run: bash runtime/prototypes/quickjs/run-host.sh
