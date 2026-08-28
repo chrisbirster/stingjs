@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set VERSION=9.3.0
+set VERSION=9.5.0
 if "%GRADLE_USER_HOME%"=="" set GRADLE_USER_HOME=%USERPROFILE%\.gradle
 set CACHE=%GRADLE_USER_HOME%\sting-wrapper\gradle-%VERSION%
 if exist "%CACHE%\bin\gradle.bat" goto run
