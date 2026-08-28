@@ -25,14 +25,29 @@ describe('@stingjs/stylex', () => {
     });
   });
 
-  it('is a verified import source for the official StyleX compiler', () => {
+  it('compiles the complete portable Style IR through the official StyleX compiler', () => {
     const result = transformSync(
       `
         import * as stylex from '@stingjs/stylex';
         const styles = stylex.create({
           root: {
-            backgroundColor: '#09090b',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
             padding: 16,
+            paddingTop: 8,
+            paddingRight: 12,
+            paddingBottom: 8,
+            paddingLeft: 12,
+            width: 320,
+            height: 48,
+            backgroundColor: '#09090b',
+            color: '#ffffff',
+            fontSize: 16,
+            fontWeight: 600,
+            borderRadius: 12,
+            opacity: 0.9,
           },
         });
         export const root = styles.root;
