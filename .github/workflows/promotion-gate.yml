@@ -1,0 +1,82 @@
+name: Promotion Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  source:
+    name: Require dev as promotion source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source branch
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.head_ref }}" != "dev" ]]; then
+            echo "main must be promoted from dev; got ${{ github.head_ref }}" >&2
+            exit 1
+          fi
+
+  js-ts:
+    name: JS / TS
+    needs: source
+    uses: ./.github/workflows/_check-js.yml
+
+  runtime:
+    name: StingRuntime
+    needs: source
+    uses: ./.github/workflows/_check-runtime.yml
+
+  android:
+    name: Android
+    needs: source
+    uses: ./.github/workflows/_check-android.yml
+
+  ios:
+    name: iOS
+    needs: source
+    uses: ./.github/workflows/_check-ios.yml
+
+  modules:
+    name: Modules
+    needs: source
+    uses: ./.github/workflows/_check-modules.yml
+
+  e2e:
+    name: E2E
+    needs: source
+    uses: ./.github/workflows/_check-e2e.yml
+
+  required:
+    name: Required
+    if: always()
+    needs:
+      - source
+      - js-ts
+      - runtime
+      - android
+      - ios
+      - modules
+      - e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the full promotion stack to pass
+        env:
+          SOURCE: ${{ needs.source.result }}
+          JS_TS: ${{ needs.js-ts.result }}
+          RUNTIME: ${{ needs.runtime.result }}
+          ANDROID: ${{ needs.android.result }}
+          IOS: ${{ needs.ios.result }}
+          MODULES: ${{ needs.modules.result }}
+          E2E: ${{ needs.e2e.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in "$SOURCE" "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$E2E"; do
+            if [[ "$result" != "success" ]]; then
+              echo "Promotion responsibility failed: $result" >&2
+              exit 1
+            fi
+          done
