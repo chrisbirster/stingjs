@@ -47,7 +47,6 @@ dependencies {
     implementation(project(":sting-device"))
     implementation(project(":sting-filesystem"))
     implementation(project(":sting-runtime-quickjs-candidate"))
-    implementation(project(":sting-runtime-quickjs-ng-candidate"))
 
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

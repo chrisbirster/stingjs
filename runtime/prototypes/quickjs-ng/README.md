@@ -1,8 +1,8 @@
-# QuickJS-NG runtime prototype
+# QuickJS-NG frozen reference prototype
 
-This directory is an **engine evaluation prototype**, not a StingJS engine decision.
+This directory preserves StingJS's historical QuickJS-NG engine-evaluation work. **QuickJS-NG is not a StingJS production runtime and does not receive new renderer, Modules SDK, lifecycle, tooling, or first-party-module feature parity.**
 
-It exists beside the official QuickJS prototype so both candidates can run the same portable JavaScript workload and the same real Solid/Sting semantic workloads through a Zig-owned host boundary.
+StingJS production applications use official QuickJS `2026-06-04`. Application developers do not select an engine.
 
 ## Pin
 
@@ -10,15 +10,11 @@ It exists beside the official QuickJS prototype so both candidates can run the s
 - release date: 2026-08-04
 - pinned commit: `954dc53628e36891f93c359aa60895c2ae3dac6b`
 
-The runner fetches the release tag and verifies that it resolves to the pinned commit before building.
+The retained runner fetches the release tag and verifies that it resolves to the pinned commit before building.
 
-## Current proof
+## Historical proof
 
-The prototype runs three comparable gates:
-
-1. the shared dependency-free JavaScript CPU benchmark,
-2. the real hello-world Solid/Sting bundle, including press -> `Count: 1`, exactly one `replaceText`, and one `Haptics.impact("medium")`,
-3. the real 10,000-row Solid/Sting bundle, requiring sparse = exactly one `replaceText` and dense = exactly 100 `replaceText` calls with zero unrelated mutation replay.
+The prototype demonstrated that the pinned candidate could run the portable JavaScript workload and representative Solid/Sting semantic workloads through a Zig-owned host boundary:
 
 ```text
 Solid + Sting bundle
@@ -27,20 +23,22 @@ Solid + Sting bundle
         -> Zig semantic host
 ```
 
-QuickJS-NG's embedding API differs slightly from official QuickJS in places such as boolean helper return types. Those differences stay inside this prototype and must not leak into Sting's public runtime contract.
+That evidence remains useful as historical/reference data. It does not create a second supported runtime architecture.
 
-Passing these gates proves the portable Sting renderer/event/module semantics can execute under the pinned QuickJS-NG candidate. It does **not** select QuickJS-NG or replace physical-device release measurements.
+## Optional research run
 
-## Run
-
-Requires Zig `0.16.0`, Node/npm, Git, CMake, and a host C toolchain:
+The standalone smoke may still be run explicitly while it remains inexpensive to maintain. It is non-blocking in CI and is intentionally outside normal Android/iOS application packaging:
 
 ```sh
 bash runtime/prototypes/quickjs-ng/run-host.sh
 ```
 
-The build lives outside the repository under `${STING_RUNTIME_CACHE:-$TMPDIR/stingjs-runtime}`.
+Requires Zig `0.16.0`, Node/npm, Git, CMake, and a host C toolchain. The build lives outside the repository under `${STING_RUNTIME_CACHE:-$TMPDIR/stingjs-runtime}`.
 
-## Architecture rule
+## Maintenance policy
 
-This prototype must remain a narrow engine adapter. Do not introduce QuickJS-NG values into public Sting APIs and do not treat the existence of multiple prototypes as justification for a permanent multi-engine abstraction.
+- do not add new Sting product features merely to keep this prototype current;
+- a break in the optional QuickJS-NG lane must not block official-QuickJS product development or releases;
+- do not package QuickJS-NG in normal generated applications;
+- do not expose QuickJS-NG values or engine selection in public Sting APIs;
+- preserve historical source/evidence unless separately archived or removed for a documented reason.
