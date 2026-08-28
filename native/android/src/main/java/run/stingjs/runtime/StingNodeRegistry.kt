@@ -55,6 +55,10 @@ private data class StingNode(
     var originalPaddingTop: Int = 0,
     var originalPaddingRight: Int = 0,
     var originalPaddingBottom: Int = 0,
+    var originalLayoutWidth: Int? = null,
+    var originalLayoutHeight: Int? = null,
+    var hasCapturedOriginalLayoutSize: Boolean = false,
+    var nativeBlurRadiusDp: Float? = null,
 )
 
 private class StingEditText(context: Context) : EditText(context) {
@@ -325,6 +329,9 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     fun viewForNode(id: Int): View? = requireNode(id).view
 
+    /** Narrow diagnostic surface used by native instrumentation to verify modifier cleanup. */
+    fun nativeBlurRadiusForNode(id: Int): Float? = requireNode(id).nativeBlurRadiusDp
+
     fun dispose() {
         if (disposed) return
         disposed = true
@@ -536,12 +543,19 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
+            if (!node.hasCapturedOriginalLayoutSize) {
+                node.originalLayoutWidth = params.width
+                node.originalLayoutHeight = params.height
+                node.hasCapturedOriginalLayoutSize = true
+            }
             if (applyWidth) {
                 params.width = numberOrNull(style, "width")?.let { dp(context, it.toFloat()) }
+                    ?: node.originalLayoutWidth
                     ?: ViewGroup.LayoutParams.WRAP_CONTENT
             }
             if (applyHeight) {
                 params.height = numberOrNull(style, "height")?.let { dp(context, it.toFloat()) }
+                    ?: node.originalLayoutHeight
                     ?: ViewGroup.LayoutParams.WRAP_CONTENT
             }
             view.layoutParams = params
@@ -557,6 +571,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             val value = modifier.optJSONObject("value")
             blurRadius = value?.optDouble("radius", 16.0)?.toFloat() ?: 16f
         }
+        node.nativeBlurRadiusDp = blurRadius
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             view.setRenderEffect(
                 blurRadius?.let {
