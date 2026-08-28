@@ -3,6 +3,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="${1:-$REPO_ROOT/release-artifacts}"
+if [[ "$ARTIFACT_DIR" != /* ]]; then
+  ARTIFACT_DIR="$REPO_ROOT/$ARTIFACT_DIR"
+fi
 PACKAGE_DIR="$REPO_ROOT/tooling/create-sting"
 RUNTIME_DIR="$PACKAGE_DIR/runtime"
 ANDROID_RUNTIME_DIR="$RUNTIME_DIR/android"
