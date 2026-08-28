@@ -17,35 +17,31 @@ import org.junit.runner.RunWith
 class BenchmarkActivityInstrumentedTest {
     @Test
     fun officialQuickJsRunsAttachedSparseMutation() {
-        assertEngineRunsAttachedSparseMutation(BenchmarkActivity.ENGINE_QUICKJS)
-    }
-
-    @Test
-    fun quickJsNgRunsAttachedSparseMutation() {
-        assertEngineRunsAttachedSparseMutation(BenchmarkActivity.ENGINE_QUICKJS_NG)
-    }
-
-    private fun assertEngineRunsAttachedSparseMutation(engine: String) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent = Intent(context, BenchmarkActivity::class.java)
-            .putExtra(BenchmarkActivity.EXTRA_ENGINE, engine)
 
         ActivityScenario.launch<BenchmarkActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->
                 val sparseButton = findButton(activity.window.decorView, "Update row 4,281")
-                assertNotNull("$engine sparse benchmark Button", sparseButton)
-                assertTrue("$engine sparse benchmark Button must be attached", sparseButton!!.isAttachedToWindow)
+                assertNotNull("official QuickJS sparse benchmark Button", sparseButton)
+                assertTrue(
+                    "official QuickJS sparse benchmark Button must be attached",
+                    sparseButton!!.isAttachedToWindow,
+                )
 
                 activity.resetMutationCountsForTesting()
-                assertTrue("$engine sparse native Button should dispatch press", sparseButton.performClick())
+                assertTrue(
+                    "official QuickJS sparse native Button should dispatch press",
+                    sparseButton.performClick(),
+                )
                 val counts = activity.mutationCountsForTesting()
-                assertEquals("$engine sparse replaceText count", 1, counts.replaceText)
-                assertEquals("$engine sparse createElement count", 0, counts.createElement)
-                assertEquals("$engine sparse createTextNode count", 0, counts.createTextNode)
-                assertEquals("$engine sparse setProperty count", 0, counts.setProperty)
-                assertEquals("$engine sparse insertNode count", 0, counts.insertNode)
-                assertEquals("$engine sparse removeNode count", 0, counts.removeNode)
-                assertEquals("$engine sparse setEventEnabled count", 0, counts.setEventEnabled)
+                assertEquals("official QuickJS sparse replaceText count", 1, counts.replaceText)
+                assertEquals("official QuickJS sparse createElement count", 0, counts.createElement)
+                assertEquals("official QuickJS sparse createTextNode count", 0, counts.createTextNode)
+                assertEquals("official QuickJS sparse setProperty count", 0, counts.setProperty)
+                assertEquals("official QuickJS sparse insertNode count", 0, counts.insertNode)
+                assertEquals("official QuickJS sparse removeNode count", 0, counts.removeNode)
+                assertEquals("official QuickJS sparse setEventEnabled count", 0, counts.setEventEnabled)
             }
         }
     }

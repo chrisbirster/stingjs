@@ -33,7 +33,7 @@ readonly DEVICE_COUNT="$(printf '%s\n' "${DEVICE_LINES}" | awk 'NF { count += 1 
   fail "exactly one authorized Android device must be connected; found ${DEVICE_COUNT}"
 readonly DEVICE="$(printf '%s\n' "${DEVICE_LINES}" | awk 'NF { print; exit }')"
 readonly IS_EMULATOR="$(adb -s "${DEVICE}" shell getprop ro.kernel.qemu | tr -d '\r')"
-[[ "${IS_EMULATOR}" != "1" ]] || fail "Android emulator detected; final v0.1 evidence requires a physical device"
+[[ "${IS_EMULATOR}" != "1" ]] || fail "Android emulator detected; final release evidence requires a physical device"
 readonly DEVICE_MODEL="$(adb -s "${DEVICE}" shell getprop ro.product.manufacturer | tr -d '\r') $(adb -s "${DEVICE}" shell getprop ro.product.model | tr -d '\r')"
 readonly DEVICE_API="$(adb -s "${DEVICE}" shell getprop ro.build.version.sdk | tr -d '\r')"
 
@@ -51,27 +51,7 @@ npm install
 npm run build --workspace @stingjs/example-hello-world
 npm run build --workspace @stingjs/benchmark-native
 
-run_sting_candidate() {
-  local engine="$1"
-  local remote_name="sting-${engine}-android.json"
-  local local_capture="${CAPTURE_DIR}/${remote_name}"
-
-  adb -s "${DEVICE}" shell rm -rf "/sdcard/Android/data/run.stingjs.helloworld/files/sting-benchmarks" || true
-  adb -s "${DEVICE}" shell am instrument -w -r \
-    -e class run.stingjs.helloworld.PhysicalEvidenceInstrumentedTest \
-    -e stingPhysicalEvidence 1 \
-    -e stingEngine "${engine}" \
-    -e benchmarkCommit "${BENCHMARK_COMMIT}" \
-    run.stingjs.helloworld.test/androidx.test.runner.AndroidJUnitRunner
-
-  adb -s "${DEVICE}" pull \
-    "/sdcard/Android/data/run.stingjs.helloworld/files/sting-benchmarks/${remote_name}" \
-    "${local_capture}" >/dev/null
-  [[ -s "${local_capture}" ]] || fail "missing ${engine} capture after instrumentation"
-  npm run benchmark:import-evidence -- "${local_capture}" "${EVIDENCE_DIR}"
-}
-
-echo "Building Sting Release app with both QuickJS candidates..."
+echo "Building Sting Release app with official QuickJS..."
 (
   cd "${STING_ANDROID}"
   gradle :app:assembleRelease :app:assembleAndroidTest --no-daemon
@@ -87,8 +67,18 @@ adb -s "${DEVICE}" uninstall run.stingjs.helloworld.test >/dev/null 2>&1 || true
 adb -s "${DEVICE}" install -r "${STING_APP_APK}" >/dev/null
 adb -s "${DEVICE}" install -r "${STING_TEST_APK}" >/dev/null
 
-run_sting_candidate quickjs
-run_sting_candidate quickjs-ng
+readonly STING_CAPTURE="${CAPTURE_DIR}/sting-quickjs-android.json"
+adb -s "${DEVICE}" shell rm -rf "/sdcard/Android/data/run.stingjs.helloworld/files/sting-benchmarks" || true
+adb -s "${DEVICE}" shell am instrument -w -r \
+  -e class run.stingjs.helloworld.PhysicalEvidenceInstrumentedTest \
+  -e stingPhysicalEvidence 1 \
+  -e benchmarkCommit "${BENCHMARK_COMMIT}" \
+  run.stingjs.helloworld.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "${DEVICE}" pull \
+  "/sdcard/Android/data/run.stingjs.helloworld/files/sting-benchmarks/sting-quickjs-android.json" \
+  "${STING_CAPTURE}" >/dev/null
+[[ -s "${STING_CAPTURE}" ]] || fail "missing official QuickJS capture after instrumentation"
+npm run benchmark:import-evidence -- "${STING_CAPTURE}" "${EVIDENCE_DIR}"
 
 adb -s "${DEVICE}" uninstall run.stingjs.helloworld.test >/dev/null 2>&1 || true
 adb -s "${DEVICE}" uninstall run.stingjs.helloworld >/dev/null 2>&1 || true
@@ -130,11 +120,12 @@ npm run benchmark:results -- validate "${EVIDENCE_DIR}"
 npm run benchmark:results -- summarize "${EVIDENCE_DIR}" > "${OUTPUT_ROOT}/summary.json"
 
 echo
-echo "Physical Android evidence collection complete."
+echo "Physical Android production evidence collection complete."
 echo "Device:    ${DEVICE_MODEL}"
 echo "Commit:    ${BENCHMARK_COMMIT}"
 echo "Captures:  ${CAPTURE_DIR}"
 echo "Evidence:  ${EVIDENCE_DIR}"
 echo "Summary:   ${OUTPUT_ROOT}/summary.json"
 echo
+echo "QuickJS-NG is no longer part of the product evidence matrix; its prototype remains under runtime/prototypes/quickjs-ng for optional research."
 echo "Review the evidence before copying it into benchmarks/results/raw/."

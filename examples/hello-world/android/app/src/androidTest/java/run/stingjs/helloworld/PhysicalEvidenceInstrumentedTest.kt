@@ -37,24 +37,15 @@ class PhysicalEvidenceInstrumentedTest {
             arguments.getString("stingPhysicalEvidence") == "1",
         )
 
-        val engine = arguments.getString("stingEngine")
-            ?: error("-e stingEngine quickjs|quickjs-ng is required")
         val benchmarkCommit = arguments.getString("benchmarkCommit")
             ?: error("-e benchmarkCommit <40-char-sha> is required")
 
         require(benchmarkCommit.matches(Regex("^[0-9a-f]{40}$"))) {
             "benchmarkCommit must be a full 40-character Git SHA"
         }
-        require(
-            engine == BenchmarkActivity.ENGINE_QUICKJS ||
-                engine == BenchmarkActivity.ENGINE_QUICKJS_NG,
-        ) {
-            "stingEngine must be quickjs or quickjs-ng"
-        }
 
         val targetContext = instrumentation.targetContext
         val intent = Intent(targetContext, BenchmarkActivity::class.java)
-            .putExtra(BenchmarkActivity.EXTRA_ENGINE, engine)
 
         val sparseSamples = DoubleArray(SAMPLE_COUNT)
         val denseSamples = DoubleArray(SAMPLE_COUNT)
@@ -81,7 +72,7 @@ class PhysicalEvidenceInstrumentedTest {
         val document = JSONObject()
             .put("captureDocumentVersion", 1)
             .put("role", "decision-evidence")
-            .put("metadata", metadata(targetContext, engine, benchmarkCommit))
+            .put("metadata", metadata(targetContext, benchmarkCommit))
             .put(
                 "captures",
                 JSONArray()
@@ -93,7 +84,7 @@ class PhysicalEvidenceInstrumentedTest {
         check(outputDirectory.mkdirs() || outputDirectory.isDirectory) {
             "Unable to create ${outputDirectory.absolutePath}"
         }
-        val output = File(outputDirectory, "sting-${engine}-android.json")
+        val output = File(outputDirectory, "sting-quickjs-android.json")
         output.writeText(document.toString(2) + "\n")
         println("STING_PHYSICAL_EVIDENCE=${output.absolutePath}")
     }
@@ -162,7 +153,7 @@ class PhysicalEvidenceInstrumentedTest {
             .put("samples", JSONArray().apply { samples.forEach { put(it) } })
 
     @Suppress("DEPRECATION")
-    private fun metadata(context: Context, engine: String, benchmarkCommit: String): JSONObject {
+    private fun metadata(context: Context, benchmarkCommit: String): JSONObject {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val recordedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
@@ -177,15 +168,8 @@ class PhysicalEvidenceInstrumentedTest {
             .put("osVersion", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             .put("build", "release")
             .put("system", "sting")
-            .put("engine", engine)
-            .put(
-                "engineVersion",
-                if (engine == BenchmarkActivity.ENGINE_QUICKJS) {
-                    "2026-06-04"
-                } else {
-                    "v0.16.1@954dc53628e36891f93c359aa60895c2ae3dac6b"
-                },
-            )
+            .put("engine", BenchmarkActivity.ENGINE_QUICKJS)
+            .put("engineVersion", "2026-06-04")
             .put("frameworkVersion", "StingJS 0.1.0 / Solid 2.0.0-rc.1")
             .put("displayRefreshHz", windowManager.defaultDisplay.refreshRate.toDouble())
     }
