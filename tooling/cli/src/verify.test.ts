@@ -25,3 +25,13 @@ test('selectedAppScripts allows projects without a test script', () => {
 test('selectedAppScripts still surfaces build-only applications', () => {
   assert.deepEqual(selectedAppScripts({ scripts: { build: 'vite build' } }), ['build']);
 });
+
+test('selectedAppScripts ignores empty and non-string script entries', () => {
+  assert.deepEqual(selectedAppScripts({
+    scripts: {
+      typecheck: '   ',
+      test: false,
+      build: 'vite build',
+    },
+  }), ['build']);
+});
