@@ -84,7 +84,7 @@ let package = Package(
 )
 SWIFT
 
-if grep -R -n -E '(\.\./){2,}(native|packages|runtime)/' "$PACKAGE_DIR" --exclude-dir=.build; then
+if grep -R -I -n -E '(\.\./){2,}(native|packages|runtime)/' "$PACKAGE_DIR" --exclude-dir=.build; then
   echo "error: distributable iOS package must not reference Sting monorepo source paths" >&2
   exit 1
 fi
