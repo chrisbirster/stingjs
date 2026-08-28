@@ -53,10 +53,10 @@ describe('modifier styling', () => {
     expect(resolved.style.borderRadius).toBe(12);
   });
 
-  it('expresses semantic font and corner-radius operations in the same IR', () => {
+  it('canonicalizes semantic font names into web-safe numeric IR values', () => {
     const resolved = resolveStyling({ modifiers: [font('title'), cornerRadius(14)] });
     expect(resolved.style.fontSize).toBe(28);
-    expect(resolved.style.fontWeight).toBe('bold');
+    expect(resolved.style.fontWeight).toBe(700);
     expect(resolved.style.borderRadius).toBe(14);
   });
 
