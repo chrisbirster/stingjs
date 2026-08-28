@@ -1,0 +1,50 @@
+name: Check · Modules
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  android-modules:
+    name: Android Module · ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [haptics, clipboard, device, filesystem]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Build module
+        working-directory: examples/hello-world/android
+        run: gradle ":sting-${{ matrix.module }}:assembleDebug" --no-daemon
+
+  ios-modules:
+    name: iOS Module · ${{ matrix.module }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: haptics
+            scheme: StingHaptics
+          - module: clipboard
+            scheme: StingClipboard
+          - module: device
+            scheme: StingDevice
+          - module: filesystem
+            scheme: StingFilesystem
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build module
+        working-directory: packages/modules/${{ matrix.module }}
+        run: xcodebuild -scheme "${{ matrix.scheme }}" -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
