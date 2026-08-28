@@ -55,6 +55,53 @@ jobs:
             echo 'QuickJS-NG must not be packaged in the normal Sting Android application' >&2
             exit 1
           fi
+      - name: Build create-sting
+        working-directory: tooling/create-sting
+        run: |
+          npm install
+          npm run build
+      - name: Prove create-sting Android output consumes release AARs without Zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts=/tmp/sting-create-host
+          generated=/tmp/sting-generated-app
+          rm -rf "$artifacts" "$generated"
+
+          bash scripts/package-android-host.sh "$artifacts"
+          node tooling/create-sting/dist/cli.js "$generated" \
+            --runtime-artifacts "$artifacts" \
+            --name generated-sting-e2e \
+            --android-package run.stingjs.generated
+
+          mkdir -p "$generated/dist"
+          cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+
+          if grep -R -n -E '\.\./\.\./\.\./(native|packages|runtime)/' "$generated/android" --exclude='*.aar'; then
+            echo 'generated Android project must not reference Sting monorepo source paths' >&2
+            exit 1
+          fi
+
+          consumer_path="$JAVA_HOME/bin:/usr/bin:/bin"
+          if env PATH="$consumer_path" sh -c 'command -v zig >/dev/null 2>&1'; then
+            echo 'Zig unexpectedly remains available in the generated app consumer PATH' >&2
+            exit 1
+          fi
+
+          (
+            cd "$generated/android"
+            env PATH="$consumer_path" ./gradlew :app:assembleDebug --no-daemon
+          )
+
+          apk="$generated/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          unzip -l "$apk" | grep -F 'assets/sting-app.js' >/dev/null
+          unzip -l "$apk" | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so' >/dev/null
+          unzip -l "$apk" | grep -F 'lib/x86_64/libsting_quickjs_android.so' >/dev/null
+          if unzip -l "$apk" | grep -Fq 'libsting_quickjs_ng_android.so'; then
+            echo 'QuickJS-NG must not be packaged in create-sting output' >&2
+            exit 1
+          fi
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
