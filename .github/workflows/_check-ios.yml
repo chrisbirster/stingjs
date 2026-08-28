@@ -13,12 +13,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - name: Install dependencies
         run: npm install
       - name: Test StingRuntime only
         run: bash scripts/test-ios-runtime.sh --runtime-only
+      - name: Prove official QuickJS production runtime on iOS
+        run: npm run test:ios-quickjs-runtime
       - name: Build StingRuntime for iOS Simulator
         working-directory: native/ios
         run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build StingQuickJSRuntime for iOS Simulator
+        working-directory: native/ios/QuickJSRuntime
+        run: xcodebuild -scheme StingQuickJSRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
