@@ -4,7 +4,7 @@
   "title": "Sting Go development manifest v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "runtimeVersion", "engine", "project", "bundle", "capabilities"],
+  "required": ["schemaVersion", "runtimeVersion", "engine", "project", "bundle", "development", "capabilities"],
   "properties": {
     "schemaVersion": { "const": 1 },
     "runtimeVersion": { "type": "string", "minLength": 1 },
@@ -24,6 +24,32 @@
       "properties": {
         "path": { "const": "/bundle" },
         "contentType": { "const": "application/javascript" }
+      }
+    },
+    "development": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reload", "health"],
+      "properties": {
+        "reload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "transport", "contentType"],
+          "properties": {
+            "path": { "const": "/events" },
+            "transport": { "const": "sse" },
+            "contentType": { "const": "text/event-stream" }
+          }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "contentType"],
+          "properties": {
+            "path": { "const": "/health" },
+            "contentType": { "const": "application/json" }
+          }
+        }
       }
     },
     "capabilities": {
