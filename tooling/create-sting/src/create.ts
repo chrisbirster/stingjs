@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -123,6 +124,7 @@ function copyTemplateDirectory(
     } else {
       copyFileSync(source, target);
     }
+    chmodSync(target, stat.mode & 0o777);
   }
 }
 
