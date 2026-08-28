@@ -30,3 +30,7 @@ jobs:
       - name: Build StingQuickJSRuntime for iOS Simulator
         working-directory: native/ios/QuickJSRuntime
         run: xcodebuild -scheme StingQuickJSRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Package distributable production iOS host
+        run: bash scripts/package-ios-host.sh /tmp/sting-ios-host
+      - name: Prove distributable iOS host builds without Zig
+        run: bash scripts/test-ios-distributable-host.sh /tmp/sting-ios-host

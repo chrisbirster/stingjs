@@ -11,6 +11,8 @@ readonly ARCHIVE="${CACHE_ROOT}/quickjs-${QUICKJS_VERSION}.tar.xz"
 readonly SOURCE_DIR="${CACHE_ROOT}/quickjs-${QUICKJS_VERSION}"
 readonly NATIVE_DIR="${SCRIPT_DIR}/native"
 readonly OUTPUT_DIR="${1:-${SCRIPT_DIR}/build/simulator}"
+readonly PLATFORM="${2:-simulator}"
+readonly REQUESTED_ARCH="${3:-$(uname -m)}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "error: official QuickJS iOS runtime must be built on macOS" >&2
@@ -22,25 +24,44 @@ if [[ "$(zig version 2>/dev/null || true)" != "0.16.0" ]]; then
   exit 1
 fi
 
-readonly SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-readonly CC="$(xcrun --sdk iphonesimulator --find clang)"
-readonly LIBTOOL="$(xcrun --find libtool)"
-readonly HOST_ARCH="$(uname -m)"
-
-case "${HOST_ARCH}" in
-  arm64)
-    readonly CLANG_ARCH="arm64"
-    readonly ZIG_TARGET="aarch64-ios-simulator"
+case "${PLATFORM}" in
+  simulator)
+    readonly SDK_NAME="iphonesimulator"
+    readonly VERSION_FLAG="-mios-simulator-version-min=${MIN_IOS_VERSION}"
+    case "${REQUESTED_ARCH}" in
+      arm64)
+        readonly CLANG_ARCH="arm64"
+        readonly ZIG_TARGET="aarch64-ios-simulator"
+        ;;
+      x86_64)
+        readonly CLANG_ARCH="x86_64"
+        readonly ZIG_TARGET="x86_64-ios-simulator"
+        ;;
+      *)
+        echo "error: unsupported iOS Simulator architecture: ${REQUESTED_ARCH}" >&2
+        exit 1
+        ;;
+    esac
     ;;
-  x86_64)
-    readonly CLANG_ARCH="x86_64"
-    readonly ZIG_TARGET="x86_64-ios-simulator"
+  device)
+    readonly SDK_NAME="iphoneos"
+    readonly VERSION_FLAG="-miphoneos-version-min=${MIN_IOS_VERSION}"
+    if [[ "${REQUESTED_ARCH}" != "arm64" ]]; then
+      echo "error: production iOS device builds currently support arm64 only" >&2
+      exit 1
+    fi
+    readonly CLANG_ARCH="arm64"
+    readonly ZIG_TARGET="aarch64-ios"
     ;;
   *)
-    echo "error: unsupported macOS runner architecture: ${HOST_ARCH}" >&2
+    echo "error: platform must be 'simulator' or 'device', got ${PLATFORM}" >&2
     exit 1
     ;;
 esac
+
+readonly SDK="$(xcrun --sdk "${SDK_NAME}" --show-sdk-path)"
+readonly CC="$(xcrun --sdk "${SDK_NAME}" --find clang)"
+readonly LIBTOOL="$(xcrun --find libtool)"
 
 mkdir -p "${CACHE_ROOT}" "${OUTPUT_DIR}"
 
@@ -58,14 +79,14 @@ if [[ ! -d "${SOURCE_DIR}" ]]; then
   tar -xJf "${ARCHIVE}" -C "${CACHE_ROOT}"
 fi
 
-readonly WORK="${CACHE_ROOT}/build/official-quickjs-ios/${HOST_ARCH}"
+readonly WORK="${CACHE_ROOT}/build/official-quickjs-ios/${PLATFORM}/${REQUESTED_ARCH}"
 rm -rf "${WORK}"
 mkdir -p "${WORK}" "${OUTPUT_DIR}"
 
 common_cflags=(
   -arch "${CLANG_ARCH}"
   -isysroot "${SDK}"
-  "-mios-simulator-version-min=${MIN_IOS_VERSION}"
+  "${VERSION_FLAG}"
   -fPIC
   -O2
   -D_GNU_SOURCE
@@ -81,11 +102,10 @@ for source in quickjs.c libregexp.c libunicode.c cutils.c dtoa.c; do
 done
 "${LIBTOOL}" -static -o "${WORK}/libquickjs.a" "${objects[@]}"
 
-# Zig 0.16's Aro C translator does not reliably discover the iPhone Simulator
-# SDK's libc headers from a sysroot. Apple clang already owns that SDK contract,
-# so resolve all includes and target conditionals there first. Zig then
-# translates ordinary preprocessed C declarations and never has to locate
-# <stdio.h>, <stdint.h>, or Darwin's nested system headers itself.
+# Zig 0.16's Aro C translator does not reliably discover Apple's SDK libc
+# headers from a sysroot. Apple clang already owns that SDK contract, so resolve
+# includes and target conditionals there first. Zig then translates ordinary
+# preprocessed C declarations and never has to locate Darwin system headers.
 cat > "${WORK}/quickjs_c.h" <<'EOF'
 #include "quickjs.h"
 #include "sting_quickjs_android.h"
@@ -97,7 +117,7 @@ EOF
   -x c \
   -arch "${CLANG_ARCH}" \
   -isysroot "${SDK}" \
-  "-mios-simulator-version-min=${MIN_IOS_VERSION}" \
+  "${VERSION_FLAG}" \
   -D_GNU_SOURCE \
   -I"${SOURCE_DIR}" \
   -I"${NATIVE_DIR}" \
@@ -144,7 +164,9 @@ zig build-lib \
   "${WORK}/libsting_quickjs_zig.a" \
   "${WORK}/libquickjs.a"
 
-printf 'built %s for %s (%s)\n' \
+printf 'built %s for %s (%s, %s/%s)\n' \
   "${OUTPUT_DIR}/libsting_quickjs_ios.a" \
   "${ZIG_TARGET}" \
-  "${QUICKJS_VERSION}"
+  "${QUICKJS_VERSION}" \
+  "${PLATFORM}" \
+  "${REQUESTED_ARCH}"
