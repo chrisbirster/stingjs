@@ -3,10 +3,12 @@ import {
   background,
   cornerRadius,
   font,
+  foreground,
   m,
   nativeBlur,
   padding,
   paddingX,
+  recipe,
   resolveStyling,
   rounded,
 } from './style';
@@ -45,6 +47,20 @@ describe('modifier styling', () => {
     expect(resolved.style.fontSize).toBe(28);
     expect(resolved.style.fontWeight).toBe('bold');
     expect(resolved.style.borderRadius).toBe(14);
+  });
+
+  it('lowers recipes and variants to ordinary modifiers', () => {
+    const button = recipe({
+      variants: {
+        variant: {
+          primary: [background('#4f46e5'), foreground('#ffffff')],
+        },
+      },
+    });
+
+    const resolved = resolveStyling({ variant: button({ variant: 'primary' }) });
+    expect(resolved.style.backgroundColor).toBe('#4f46e5');
+    expect(resolved.style.color).toBe('#ffffff');
   });
 
   it('deduplicates native modifiers by name using last-wins ordering', () => {
