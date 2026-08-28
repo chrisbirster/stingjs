@@ -57,9 +57,8 @@ const decision = await readText(decisionPath);
 if (!/^- Status:\s*accepted\s*$/im.test(decision)) {
   fail('production JavaScript engine ADR must be accepted before release');
 }
-const engineMatch = decision.match(/^- Engine:\s*(quickjs|quickjs-ng)\s*$/im);
-if (!engineMatch) {
-  fail('production JavaScript engine ADR must name Engine: quickjs or quickjs-ng');
+if (!/^- Engine:\s*official QuickJS `2026-06-04`\s*$/im.test(decision)) {
+  fail('production JavaScript engine ADR must name official QuickJS 2026-06-04');
 }
 
 const evidenceFiles = await collectJsonFiles(join(root, 'benchmarks/results/raw'));
@@ -83,7 +82,6 @@ for (const file of evidenceFiles) {
 
 const requiredSystems = [
   ['sting', 'quickjs'],
-  ['sting', 'quickjs-ng'],
   ['react-native', 'hermes'],
 ];
 
@@ -101,9 +99,6 @@ for (const [system, engine] of requiredSystems) {
   }
 }
 
-// The production comparison is only meaningful when all three systems were
-// measured as one cohort: exact repository commit, same physical phone, same
-// OS, architecture, and active display refresh rate.
 const cohortKeys = new Set(
   evidence
     .filter(({ result }) => requiredSystems.some(([system, engine]) =>
@@ -118,9 +113,9 @@ const cohortKeys = new Set(
     })),
 );
 if (cohortKeys.size !== 1) {
-  fail('QuickJS, QuickJS-NG, and RN/Hermes evidence must share one Android device/OS/refresh-rate/benchmark-commit cohort');
+  fail('QuickJS and RN/Hermes evidence must share one Android device/OS/refresh-rate/benchmark-commit cohort');
 }
 
 process.stdout.write(
-  `v0.1 release gate passed: engine=${engineMatch[1]} physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`,
+  `v0.1 release gate passed: engine=quickjs physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`,
 );
