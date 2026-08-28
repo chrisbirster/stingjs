@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+RUNTIME_ONLY=false
+if [[ "${1:-}" == "--runtime-only" ]]; then
+  RUNTIME_ONLY=true
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FIXTURE_DIR="$REPO_ROOT/native/ios/Tests/StingRuntimeTests/Fixtures"
 HELLO_BUNDLE_SOURCE="$REPO_ROOT/examples/hello-world/dist/sting-app.js"
@@ -41,6 +46,10 @@ xcodebuild \
   -destination "platform=iOS Simulator,id=$DEVICE_ID" \
   CODE_SIGNING_ALLOWED=NO \
   test
+
+if [[ "$RUNTIME_ONLY" == "true" ]]; then
+  exit 0
+fi
 
 cd "$REPO_ROOT/packages/modules/filesystem"
 xcodebuild \
