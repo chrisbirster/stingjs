@@ -6,7 +6,7 @@ on:
 
 jobs:
   ios:
-    name: iOS Runtime
+    name: iOS Runtime + Sting Go
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,31 @@ jobs:
         run: bash scripts/test-ios-runtime.sh --runtime-only
       - name: Prove official QuickJS production runtime on iOS
         run: npm run test:ios-quickjs-runtime
+      - name: Test Sting Go iOS protocol and reload support
+        working-directory: apps/sting-go/ios/Support
+        run: swift test
+      - name: Build and launch Sting Go on iOS Simulator
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(
+            xcrun simctl list devices available \
+              | grep -m1 -E 'iPhone .*[0-9A-Fa-f-]{36}' \
+              | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/'
+          )"
+          test -n "$DEVICE_ID"
+          rm -rf /tmp/sting-go-ios-derived
+          xcodebuild \
+            -project apps/sting-go/ios/StingGo.xcodeproj \
+            -scheme StingGo \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath /tmp/sting-go-ios-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" /tmp/sting-go-ios-derived/Build/Products/Debug-iphonesimulator/StingGo.app
+          xcrun simctl launch "$DEVICE_ID" run.stingjs.go
+          xcrun simctl openurl "$DEVICE_ID" 'sting://go?url=http%3A%2F%2F127.0.0.1%3A8081%2Fmanifest'
       - name: Build StingRuntime for iOS Simulator
         working-directory: native/ios
         run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
