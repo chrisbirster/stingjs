@@ -4,6 +4,7 @@ import { startBuildWatcher } from './build-watch.js';
 import { loadStingConfig } from './config.js';
 import { collectProjectDoctorContext } from './doctor.js';
 import { collectDevices, collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
+import { renderTerminalQr, shouldRenderTerminalQr } from './qr.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
 import { runCi, runTests } from './verify.js';
@@ -25,7 +26,7 @@ function parseTarget(args: string[]): { target?: DevicePlatform; rest: string[] 
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--watch] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  start    Serve a Sting bundle to Sting Go; --watch rebuilds and emits reload events\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--watch] [--qr|--no-qr] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  start    Serve a Sting bundle to Sting Go; --watch rebuilds and emits reload events; QR is shown in interactive terminals\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function printChecks(checks: DoctorCheck[]): void {
@@ -197,6 +198,10 @@ async function start(args: string[]): Promise<void> {
     console.log(`Sting Go: ${started.stingGoUrl}`);
     console.log(`Bundle:   ${started.bundlePath}`);
     console.log(`Watching: ${watch ? 'yes' : 'no'}`);
+    if (shouldRenderTerminalQr(args, process.stdout.isTTY)) {
+      console.log('\nScan with Sting Go:\n');
+      console.log(await renderTerminalQr(started.stingGoUrl));
+    }
     console.log('\nOpen the Sting Go URL on a device connected to the same network.');
   }
 
