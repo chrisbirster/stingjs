@@ -8,6 +8,7 @@
     "packages/core",
     "packages/solid",
     "packages/native",
+    "packages/stylex",
     "packages/modules-core",
     "packages/modules/*",
     "examples/*",
