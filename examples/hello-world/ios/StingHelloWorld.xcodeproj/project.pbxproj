@@ -1,0 +1,305 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		71BC31E54F92D25ED702AA03 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34E1197B5630898DC1DFB154 /* AppDelegate.swift */; };
+		C6EEAE6949EFFEBCE64D10AA /* StingRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = E2D8B8A10A86EBA7B5677B48 /* StingRuntime */; };
+		27B208B622A75737A1C8A141 /* StingHaptics in Frameworks */ = {isa = PBXBuildFile; productRef = 6BC3D47E47F41246F27D871C /* StingHaptics */; };
+		A1B2C3D4E5F60718293A4B5C /* StingClipboard in Frameworks */ = {isa = PBXBuildFile; productRef = C1D2E3F40516273849A5B6C7 /* StingClipboard */; };
+		D1E2F3041526374859A6B7C8 /* StingDevice in Frameworks */ = {isa = PBXBuildFile; productRef = F10213243546576879A8B9C0 /* StingDevice */; };
+		A7B8C9D0E1F2031425364758 /* StingFilesystem in Frameworks */ = {isa = PBXBuildFile; productRef = C9D0E1F2031425364758697A /* StingFilesystem */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		9F40D502873010DB593F0939 /* StingHelloWorld.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StingHelloWorld.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		34E1197B5630898DC1DFB154 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D2AA7B0B2658D149E7591D02 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C6EEAE6949EFFEBCE64D10AA /* StingRuntime in Frameworks */,
+				27B208B622A75737A1C8A141 /* StingHaptics in Frameworks */,
+				A1B2C3D4E5F60718293A4B5C /* StingClipboard in Frameworks */,
+				D1E2F3041526374859A6B7C8 /* StingDevice in Frameworks */,
+				A7B8C9D0E1F2031425364758 /* StingFilesystem in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0EE7C1ECACAA5BDD86C09B73 = {
+			isa = PBXGroup;
+			children = (
+				7791A43D8A352321F58ABFF7 /* StingHelloWorld */,
+				AC876CFCF861F50461261C2E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7791A43D8A352321F58ABFF7 /* StingHelloWorld */ = {
+			isa = PBXGroup;
+			children = (
+				34E1197B5630898DC1DFB154 /* AppDelegate.swift */,
+			);
+			path = StingHelloWorld;
+			sourceTree = "<group>";
+		};
+		AC876CFCF861F50461261C2E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9F40D502873010DB593F0939 /* StingHelloWorld.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		95B7EFFAD2D0BA3A5D4C59EA /* StingHelloWorld */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5FFC6E81C9FC4C4694E7BED9 /* Build configuration list for PBXNativeTarget "StingHelloWorld" */;
+			buildPhases = (
+				39E3879C3057A20904F804CA /* Build Sting JavaScript bundle */,
+				4CA0A031FECC04F6F9F69B7A /* Sources */,
+				D2AA7B0B2658D149E7591D02 /* Frameworks */,
+				E93C21D3D1CE1403EDCAB807 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StingHelloWorld;
+			packageProductDependencies = (
+				E2D8B8A10A86EBA7B5677B48 /* StingRuntime */,
+				6BC3D47E47F41246F27D871C /* StingHaptics */,
+				C1D2E3F40516273849A5B6C7 /* StingClipboard */,
+				F10213243546576879A8B9C0 /* StingDevice */,
+				C9D0E1F2031425364758697A /* StingFilesystem */,
+			);
+			productName = StingHelloWorld;
+			productReference = 9F40D502873010DB593F0939 /* StingHelloWorld.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		71A6CA5F9C56B1207B365EBE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					95B7EFFAD2D0BA3A5D4C59EA = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = 2FC18F1DFF6DD94126554B45 /* Build configuration list for PBXProject "StingHelloWorld" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0EE7C1ECACAA5BDD86C09B73;
+			packageReferences = (
+				C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */,
+				E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */,
+				B1C2D3E4F5061728394A5B6C /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */,
+				E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */,
+				B8C9D0E1F203142536475869 /* XCLocalSwiftPackageReference "../../../packages/modules/filesystem" */,
+			);
+			productRefGroup = AC876CFCF861F50461261C2E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				95B7EFFAD2D0BA3A5D4C59EA /* StingHelloWorld */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E93C21D3D1CE1403EDCAB807 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		39E3879C3057A20904F804CA /* Build Sting JavaScript bundle */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Sting JavaScript bundle";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/sting-app.js",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nREPO_ROOT=\"$(cd \"$SRCROOT/../../..\" && pwd)\"\ncd \"$REPO_ROOT\"\nnpm run build --workspace @stingjs/example-hello-world\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\ncp \"$REPO_ROOT/examples/hello-world/dist/sting-app.js\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/sting-app.js\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4CA0A031FECC04F6F9F69B7A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71BC31E54F92D25ED702AA03 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		DF865F9E33223EB4100C3B60 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E7B3B3F156B7D9B3DC6F2A9A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		EEED8206EEDF58A2E5415628 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stingjs.helloworld;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DACDE5F94BEA4AA04A372414 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.stingjs.helloworld;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2FC18F1DFF6DD94126554B45 /* Build configuration list for PBXProject "StingHelloWorld" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF865F9E33223EB4100C3B60 /* Debug */,
+				E7B3B3F156B7D9B3DC6F2A9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5FFC6E81C9FC4C4694E7BED9 /* Build configuration list for PBXNativeTarget "StingHelloWorld" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EEED8206EEDF58A2E5415628 /* Debug */,
+				DACDE5F94BEA4AA04A372414 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/ios;
+		};
+		E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/haptics;
+		};
+		B1C2D3E4F5061728394A5B6C /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/clipboard;
+		};
+		E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/device;
+		};
+		B8C9D0E1F203142536475869 /* XCLocalSwiftPackageReference "../../../packages/modules/filesystem" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/filesystem;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E2D8B8A10A86EBA7B5677B48 /* StingRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C4369AB5692D577A92B7D827 /* XCLocalSwiftPackageReference "../../../native/ios" */;
+			productName = StingRuntime;
+		};
+		6BC3D47E47F41246F27D871C /* StingHaptics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E3FA149C87C76B63A9ADFE9E /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */;
+			productName = StingHaptics;
+		};
+		C1D2E3F40516273849A5B6C7 /* StingClipboard */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1C2D3E4F5061728394A5B6C /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */;
+			productName = StingClipboard;
+		};
+		F10213243546576879A8B9C0 /* StingDevice */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1F203142536475869A7B8C9 /* XCLocalSwiftPackageReference "../../../packages/modules/device" */;
+			productName = StingDevice;
+		};
+		C9D0E1F2031425364758697A /* StingFilesystem */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B8C9D0E1F203142536475869 /* XCLocalSwiftPackageReference "../../../packages/modules/filesystem" */;
+			productName = StingFilesystem;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 71A6CA5F9C56B1207B365EBE /* Project object */;
+}

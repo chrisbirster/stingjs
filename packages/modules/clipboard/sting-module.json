@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "Clipboard",
+  "package": "@stingjs/clipboard",
+  "version": "0.1.0",
+  "ios": {
+    "module": "ClipboardModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.clipboard.ClipboardModule",
+    "permissions": []
+  },
+  "capabilities": ["sync-functions"]
+}

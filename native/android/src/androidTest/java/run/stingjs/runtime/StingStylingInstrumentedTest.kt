@@ -1,0 +1,107 @@
+package run.stingjs.runtime
+
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class StingStylingInstrumentedTest {
+    @Test
+    fun resolvedStyleAppliesAndResetsNativeState() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val root = FrameLayout(context)
+        val nodes = StingNodeRegistry(root)
+
+        nodes.createElement(1, "view")
+        nodes.insertNode(0, 1, -1)
+        val stack = nodes.viewForNode(1) as LinearLayout
+        val originalWidth = stack.layoutParams.width
+        val originalHeight = stack.layoutParams.height
+
+        nodes.setProperty(
+            1,
+            "style",
+            """
+            {
+              "__stingResolved": true,
+              "flexDirection": "row",
+              "alignItems": "center",
+              "justifyContent": "center",
+              "gap": 12,
+              "paddingTop": 16,
+              "paddingRight": 8,
+              "paddingBottom": 16,
+              "paddingLeft": 8,
+              "width": 120,
+              "height": 48,
+              "backgroundColor": "#112233",
+              "borderRadius": 10,
+              "opacity": 0.75
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(LinearLayout.HORIZONTAL, stack.orientation)
+        assertEquals(0.75f, stack.alpha)
+        assertNotNull(stack.background)
+        assertEquals(16, (stack.paddingTop / context.resources.displayMetrics.density).toInt())
+        assertEquals(8, (stack.paddingLeft / context.resources.displayMetrics.density).toInt())
+        assertEquals(120, (stack.layoutParams.width / context.resources.displayMetrics.density).toInt())
+        assertEquals(48, (stack.layoutParams.height / context.resources.displayMetrics.density).toInt())
+
+        nodes.setProperty(
+            1,
+            "style",
+            """
+            {
+              "__stingResolved": true,
+              "flexDirection": null,
+              "alignItems": null,
+              "justifyContent": null,
+              "gap": null,
+              "paddingTop": null,
+              "paddingRight": null,
+              "paddingBottom": null,
+              "paddingLeft": null,
+              "width": null,
+              "height": null,
+              "backgroundColor": null,
+              "borderRadius": null,
+              "opacity": null
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(LinearLayout.VERTICAL, stack.orientation)
+        assertEquals(1f, stack.alpha)
+        assertEquals(0, stack.paddingTop)
+        assertEquals(0, stack.paddingLeft)
+        assertEquals(originalWidth, stack.layoutParams.width)
+        assertEquals(originalHeight, stack.layoutParams.height)
+    }
+
+    @Test
+    fun nativeBlurDescriptorAppliesAndCleansUp() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val root = FrameLayout(context)
+        val nodes = StingNodeRegistry(root)
+        nodes.createElement(1, "view")
+        nodes.insertNode(0, 1, -1)
+
+        nodes.setProperty(
+            1,
+            "nativeModifiers",
+            "[{\"name\":\"blur\",\"value\":{\"radius\":16}}]",
+        )
+
+        assertEquals(16f, nodes.nativeBlurRadiusForNode(1))
+        nodes.setProperty(1, "nativeModifiers", "[]")
+        assertNull(nodes.nativeBlurRadiusForNode(1))
+    }
+}

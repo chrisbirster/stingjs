@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stingjs.dev/schemas/sting-module-v1.json",
+  "title": "Sting native module manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "package", "version", "ios", "android"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "package": { "type": "string", "pattern": "^@stingjs/[a-z0-9-]+$" },
+    "version": { "type": "string", "minLength": 1 },
+    "ios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module"],
+      "properties": {
+        "module": { "type": "string", "minLength": 1 },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^NS[A-Za-z0-9]+UsageDescription$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "android": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module"],
+      "properties": {
+        "module": { "type": "string", "minLength": 1 },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": ["sync-functions", "async-functions", "events", "native-objects", "native-views", "permissions", "lifecycle"]
+      },
+      "uniqueItems": true
+    }
+  }
+}

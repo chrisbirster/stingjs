@@ -1,0 +1,92 @@
+name: Experimental Runtime Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  quickjs-ng:
+    name: QuickJS-NG
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install Sting workspace dependencies
+        run: npm install
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - name: Build and run QuickJS-NG comparison runtime
+        run: bash runtime/prototypes/quickjs-ng/run-host.sh
+
+  hermes:
+    name: Hermes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install Sting workspace dependencies
+        run: npm install
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - name: Build and run Hermes comparison runtime
+        run: bash runtime/prototypes/hermes/run-host.sh
+
+  react-native-baseline:
+    name: React Native / Hermes Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Generate pinned bare React Native 0.87 baseline
+        env:
+          STING_RN_BASELINE_DIR: ${{ runner.temp }}/StingRNBenchmark
+        run: bash benchmarks/react-native-benchmark/scripts/generate.sh
+      - name: Typecheck baseline workload
+        working-directory: ${{ runner.temp }}/StingRNBenchmark
+        run: npx tsc --noEmit
+      - name: Produce release Metro bundle
+        working-directory: ${{ runner.temp }}/StingRNBenchmark
+        run: npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output ${{ runner.temp }}/index.android.bundle --assets-dest ${{ runner.temp }}/rn-assets
+      - name: Build Android release baseline and instrumentation
+        working-directory: ${{ runner.temp }}/StingRNBenchmark/android
+        run: ./gradlew :app:assembleRelease :app:assembleAndroidTest --no-daemon
+      - name: Verify baseline artifacts
+        run: |
+          test -f ${{ runner.temp }}/StingRNBenchmark/android/app/build/outputs/apk/release/app-release.apk
+          find ${{ runner.temp }}/StingRNBenchmark/android/app/build/outputs/apk/androidTest -name '*.apk' -type f | grep -q .

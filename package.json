@@ -1,35 +1,39 @@
 {
-	"name": "stingjs",
-	"type": "module",
-	"version": "0.1.0",
-	"description": "A TypeScript-first browser game engine built on bitECS with Solid-powered debug tooling",
-	"author": {
-		"name": "Chris Birster",
-		"url": "http://chrisbirster.com"
-	},
-	"license": "MIT",
-	"main": "./src/index.ts",
-	"scripts": {
-		"dev": "vite",
-		"build": "vite build",
-		"preview": "vite preview",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"lint": "eslint . --ext .ts,.tsx",
-		"typecheck": "tsc --noEmit"
-	},
-	"dependencies": {
-		"bitecs": "^0.4.0",
-		"solid-js": "^1.9.11"
-	},
-	"devDependencies": {
-		"@types/node": "^24.0.0",
-		"@typescript-eslint/eslint-plugin": "6.3.0",
-		"@typescript-eslint/parser": "6.3.0",
-		"eslint": "8.47.0",
-		"typescript": "5.1.6",
-		"vite": "^7.1.0",
-		"vite-plugin-solid": "^2.11.11",
-		"vitest": "^4.1.0"
-	}
+  "name": "stingjs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@12.0.2",
+  "workspaces": [
+    "packages/core",
+    "packages/solid",
+    "packages/native",
+    "packages/stylex",
+    "packages/modules-core",
+    "packages/modules/*",
+    "examples/*",
+    "benchmarks/sting-benchmark",
+    "benchmarks/solid2-conformance"
+  ],
+  "scripts": {
+    "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
+    "benchmark:ios-jsc-control": "bash scripts/collect-ios-jsc-control.sh",
+    "benchmark:physical:android": "bash scripts/collect-android-physical.sh",
+    "benchmark:results": "node benchmarks/results/tool.mjs",
+    "build": "npm run build --workspaces --if-present",
+    "modules:config": "node scripts/sting-module-config.mjs",
+    "modules:validate": "node scripts/validate-sting-modules.mjs",
+    "release:check:v0.1": "node scripts/check-v0.1-release.mjs",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && npm run modules:validate",
+    "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vitest": "4.1.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "license": "MIT"
 }
