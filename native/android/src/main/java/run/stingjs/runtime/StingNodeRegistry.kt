@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import java.net.URL
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 
@@ -25,11 +26,13 @@ private data class StingNode(
     val id: Int,
     val type: String,
     val view: View? = null,
+    val nativeModuleView: StingNativeView? = null,
     var textValue: String? = null,
     var parentId: Int? = null,
     val children: MutableList<Int> = mutableListOf(),
     var gapDp: Float = 0f,
     var imageSource: String? = null,
+    val enabledModuleViewEvents: MutableSet<String> = mutableSetOf(),
 )
 
 private class StingEditText(context: Context) : EditText(context) {
@@ -96,14 +99,34 @@ private class StingScrollContainer(context: Context) : FrameLayout(context) {
 
 class StingNodeRegistry(private val rootView: ViewGroup) {
     private val nodes = mutableMapOf<Int, StingNode>()
+    private var disposed = false
     var eventSink: ((nodeId: Int, event: String, payloadJSON: String) -> Unit)? = null
+    var moduleViewFactory: ((module: String, viewType: String, context: Context) -> StingNativeView)? = null
 
     init {
         nodes[0] = StingNode(id = 0, type = "root", view = rootView)
     }
 
     fun createElement(id: Int, type: String) {
+        checkActive()
         requireUnused(id)
+
+        val identity = parseModuleViewIdentity(type)
+        if (identity != null) {
+            val factory = moduleViewFactory ?: throw StingNativeModuleError(
+                code = "E_NATIVE_VIEW_UNAVAILABLE",
+                message = "Native module views are not connected to this Sting host",
+            )
+            val nativeView = factory(identity.first, identity.second, rootView.context)
+            nodes[id] = StingNode(
+                id = id,
+                type = type,
+                view = nativeView.view,
+                nativeModuleView = nativeView,
+            )
+            return
+        }
+
         val normalized = type.lowercase()
         val view = when (normalized) {
             "view" -> LinearLayout(rootView.context).apply {
@@ -123,6 +146,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     }
 
     fun createTextNode(id: Int, value: String) {
+        checkActive()
         requireUnused(id)
         nodes[id] = StingNode(id = id, type = "#text", textValue = value)
     }
@@ -143,6 +167,8 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         node.parentId?.let { previousParentId ->
             nodes[previousParentId]?.let { previousParent ->
                 previousParent.children.removeAll { it == nodeId }
+                node.parentId = null
+                node.nativeModuleView?.didDetach()
                 detachView(node.view)
                 refreshTextContent(previousParentId)
                 refreshGap(previousParent)
@@ -158,6 +184,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         parent.children.add(insertionIndex, nodeId)
         node.parentId = parentId
         attachView(node, parent, insertionIndex)
+        node.nativeModuleView?.didAttach()
         refreshTextContent(parentId)
         refreshGap(parent)
     }
@@ -171,6 +198,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
         parent.children.removeAll { it == nodeId }
         node.parentId = null
+        node.nativeModuleView?.didDetach()
         detachView(node.view)
         refreshTextContent(parentId)
         refreshGap(parent)
@@ -179,6 +207,21 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     fun setProperty(id: Int, name: String, valueJSON: String) {
         val node = requireNode(id)
         val value = JSONTokener(valueJSON).nextValue()
+
+        node.nativeModuleView?.let { nativeView ->
+            when (name) {
+                "style" -> {
+                    val style = value as? JSONObject
+                        ?: throw StingRuntimeException("style must be a JSON object")
+                    applyStyle(style, node)
+                }
+                "accessibilityLabel" -> {
+                    node.view?.contentDescription = if (value == JSONObject.NULL) null else value as? String
+                }
+                else -> nativeView.setProperty(name, if (value == JSONObject.NULL) null else value)
+            }
+            return
+        }
 
         when (name) {
             "style" -> {
@@ -223,6 +266,35 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     fun setEventEnabled(id: Int, event: String, enabled: Boolean) {
         val node = requireNode(id)
+
+        node.nativeModuleView?.let { nativeView ->
+            if (enabled) {
+                node.enabledModuleViewEvents.add(event)
+                try {
+                    nativeView.setEventEnabled(event, true) { payload ->
+                        val current = nodes[id]
+                        if (
+                            disposed ||
+                            current !== node ||
+                            node.parentId == null ||
+                            !node.enabledModuleViewEvents.contains(event)
+                        ) {
+                            return@setEventEnabled
+                        }
+                        eventSink?.invoke(id, event, encodeJSONFragment(payload))
+                    }
+                } catch (error: Throwable) {
+                    node.enabledModuleViewEvents.remove(event)
+                    throw error
+                }
+            } else {
+                // Retire JS dispatchability before native observation is disabled.
+                node.enabledModuleViewEvents.remove(event)
+                nativeView.setEventEnabled(event, false) { _ -> }
+            }
+            return
+        }
+
         when {
             event == "press" && node.view is Button -> {
                 if (enabled) {
@@ -242,24 +314,66 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     fun viewForNode(id: Int): View? = requireNode(id).view
 
+    fun dispose() {
+        if (disposed) return
+        disposed = true
+        eventSink = null
+
+        nodes.keys.sorted().filter { it != 0 }.forEach { id ->
+            val node = nodes[id] ?: return@forEach
+            val nativeView = node.nativeModuleView ?: return@forEach
+
+            if (node.parentId != null) {
+                node.parentId = null
+                nativeView.didDetach()
+            }
+
+            val events = node.enabledModuleViewEvents.toList()
+            node.enabledModuleViewEvents.clear()
+            events.forEach { event ->
+                try {
+                    nativeView.setEventEnabled(event, false) { _ -> }
+                } catch (_: Throwable) {
+                    // Teardown continues through every native module view.
+                }
+            }
+
+            detachView(node.view)
+            try {
+                nativeView.dispose()
+            } catch (_: Throwable) {
+                // A bad module view must not prevent remaining views from disposing.
+            }
+        }
+    }
+
+    private fun checkActive() {
+        if (disposed) throw StingRuntimeException("Sting node registry is disposed")
+    }
+
     private fun requireUnused(id: Int) {
         if (nodes.containsKey(id)) {
             throw StingRuntimeException("Duplicate native node id $id")
         }
     }
 
-    private fun requireNode(id: Int): StingNode = nodes[id]
-        ?: throw StingRuntimeException("Unknown native node id $id")
+    private fun requireNode(id: Int): StingNode {
+        checkActive()
+        return nodes[id] ?: throw StingRuntimeException("Unknown native node id $id")
+    }
 
     private fun attachView(node: StingNode, parent: StingNode, insertionIndex: Int) {
         val childView = node.view ?: return
-        if (parent.type in setOf("text", "button", "image", "textinput")) {
+
+        if (parent.nativeModuleView == null && parent.type in setOf("text", "button", "image", "textinput")) {
             throw StingRuntimeException("Native leaf node ${parent.type} cannot contain view children")
         }
 
-        val parentView = when (val view = parent.view) {
-            is StingScrollContainer -> view.content
-            is ViewGroup -> view
+        val parentView = when {
+            parent.nativeModuleView != null -> parent.nativeModuleView.childContainer
+                ?: throw StingRuntimeException("Native module view ${parent.type} does not accept view children")
+            parent.view is StingScrollContainer -> parent.view.content
+            parent.view is ViewGroup -> parent.view
             else -> throw StingRuntimeException("Cannot insert a native view below a text-only node")
         }
 
@@ -277,6 +391,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     private fun refreshTextContent(parentId: Int) {
         val parent = nodes[parentId] ?: return
+        if (parent.nativeModuleView != null) return
         val text = parent.children.mapNotNull { nodes[it]?.textValue }.joinToString(separator = "")
 
         when (val view = parent.view) {
@@ -370,9 +485,11 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     }
 
     private fun refreshGap(parent: StingNode) {
-        val layout = when (val view = parent.view) {
-            is LinearLayout -> view
-            is StingScrollContainer -> view.content
+        val layout = when {
+            parent.nativeModuleView?.childContainer is LinearLayout ->
+                parent.nativeModuleView.childContainer as LinearLayout
+            parent.view is LinearLayout -> parent.view
+            parent.view is StingScrollContainer -> parent.view.content
             else -> return
         }
         val gap = dp(layout.context, parent.gapDp)
@@ -394,6 +511,30 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         }
     }
 
+    private fun parseModuleViewIdentity(type: String): Pair<String, String>? {
+        if (!type.startsWith(MODULE_VIEW_PREFIX)) return null
+
+        val body = type.removePrefix(MODULE_VIEW_PREFIX)
+        val pieces = body.split(':')
+        if (pieces.size != 2 || pieces.any { !MODULE_VIEW_SEGMENT.matches(it) }) {
+            throw StingNativeModuleError(
+                code = "E_INVALID_VIEW_TYPE",
+                message = "Malformed Sting native module view type $type",
+            )
+        }
+        return pieces[0] to pieces[1]
+    }
+
+    private fun encodeJSONFragment(value: Any?): String {
+        val encoded = JSONArray().put(JSONObject.wrap(value)).toString()
+        return encoded.substring(1, encoded.length - 1)
+    }
+
     private fun dp(context: Context, value: Float): Int =
         (value * context.resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val MODULE_VIEW_PREFIX = "__sting_module_view__:"
+        val MODULE_VIEW_SEGMENT = Regex("^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    }
 }
