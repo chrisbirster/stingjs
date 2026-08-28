@@ -197,7 +197,7 @@ class StingNodeRegistryInstrumentedTest {
     }
 
     @Test
-    fun nativeModuleViewsDetachReattachSuppressGhostEventsAndDisposeOnce() {
+    fun nativeModuleViewsTrackAncestorDetachSuppressGhostEventsAndDisposeOnce() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = ApplicationProvider.getApplicationContext<Context>()
             val root = LinearLayout(context)
@@ -228,21 +228,35 @@ class StingNodeRegistryInstrumentedTest {
             preview.emit("ready", mapOf("value" to 1))
             assertEquals(1, events.size)
 
-            bridge.removeNode(1, 2)
+            // Removing an ancestor leaves the preview inside its immediate native
+            // parent, but the complete subtree is inactive from Sting's point of view.
+            bridge.removeNode(0, 1)
             assertEquals(1, preview.detachedCount)
-            assertNull(preview.view.parent)
-
+            assertEquals(0, root.childCount)
+            assertNotNull(preview.view.parent)
             preview.emit("ready", mapOf("value" to 2))
-            assertEquals("Detached native view emitted a ghost JS event", 1, events.size)
+            assertEquals("Detached subtree emitted a ghost JS event", 1, events.size)
 
-            bridge.insertNode(1, 2, -1)
+            bridge.insertNode(0, 1, -1)
             assertEquals(2, preview.attachedCount)
             preview.emit("ready", mapOf("value" to 3))
             assertEquals(2, events.size)
-            assertEquals(Triple(2, "ready", "{\"value\":3}"), events.last())
+
+            // Direct keyed detach/reinsert also preserves the same native view.
+            bridge.removeNode(1, 2)
+            assertEquals(2, preview.detachedCount)
+            assertNull(preview.view.parent)
+            preview.emit("ready", mapOf("value" to 4))
+            assertEquals(2, events.size)
+
+            bridge.insertNode(1, 2, -1)
+            assertEquals(3, preview.attachedCount)
+            preview.emit("ready", mapOf("value" to 5))
+            assertEquals(3, events.size)
+            assertEquals(Triple(2, "ready", "{\"value\":5}"), events.last())
 
             bridge.disposeNativeViews()
-            assertEquals(2, preview.detachedCount)
+            assertEquals(3, preview.detachedCount)
             assertEquals(1, preview.disposedCount)
             assertNull(preview.view.parent)
 
