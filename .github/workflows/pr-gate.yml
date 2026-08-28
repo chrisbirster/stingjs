@@ -20,6 +20,7 @@ jobs:
       android: ${{ steps.classify.outputs.android }}
       ios: ${{ steps.classify.outputs.ios }}
       modules: ${{ steps.classify.outputs.modules }}
+      tooling: ${{ steps.classify.outputs.tooling }}
       e2e: ${{ steps.classify.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +37,7 @@ jobs:
           android=false
           ios=false
           modules=false
+          tooling=false
           e2e=false
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -44,6 +46,7 @@ jobs:
             android=true
             ios=true
             modules=true
+            tooling=true
             e2e=true
           else
             base="${{ github.event.pull_request.base.sha }}"
@@ -59,6 +62,7 @@ jobs:
                   android=true
                   ios=true
                   modules=true
+                  tooling=true
                   e2e=true
                   ;;
                 package.json|package-lock.json|tsconfig*.json|scripts/test-ios-runtime.sh)
@@ -108,6 +112,12 @@ jobs:
                   js_ts=true
                   ;;
               esac
+
+              case "$file" in
+                tooling/*|apps/sting-go/*)
+                  tooling=true
+                  ;;
+              esac
             done < <(git diff --name-only "$base" "$head")
           fi
 
@@ -116,10 +126,11 @@ jobs:
           echo "android=$android" >> "$GITHUB_OUTPUT"
           echo "ios=$ios" >> "$GITHUB_OUTPUT"
           echo "modules=$modules" >> "$GITHUB_OUTPUT"
+          echo "tooling=$tooling" >> "$GITHUB_OUTPUT"
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
 
-          printf 'JS/TS=%s Runtime=%s Android=%s iOS=%s Modules=%s E2E=%s\n' \
-            "$js_ts" "$runtime" "$android" "$ios" "$modules" "$e2e"
+          printf 'JS/TS=%s Runtime=%s Android=%s iOS=%s Modules=%s Tooling=%s E2E=%s\n' \
+            "$js_ts" "$runtime" "$android" "$ios" "$modules" "$tooling" "$e2e"
 
   js-ts:
     name: JS / TS
@@ -151,6 +162,12 @@ jobs:
     if: needs.classify.outputs.modules == 'true'
     uses: ./.github/workflows/_check-modules.yml
 
+  tooling:
+    name: Tooling
+    needs: classify
+    if: needs.classify.outputs.tooling == 'true'
+    uses: ./.github/workflows/tooling.yml
+
   e2e:
     name: E2E
     needs: classify
@@ -167,6 +184,7 @@ jobs:
       - android
       - ios
       - modules
+      - tooling
       - e2e
     runs-on: ubuntu-latest
     steps:
@@ -178,11 +196,12 @@ jobs:
           ANDROID: ${{ needs.android.result }}
           IOS: ${{ needs.ios.result }}
           MODULES: ${{ needs.modules.result }}
+          TOOLING: ${{ needs.tooling.result }}
           E2E: ${{ needs.e2e.result }}
         shell: bash
         run: |
           set -euo pipefail
-          for result in "$CLASSIFY" "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$E2E"; do
+          for result in "$CLASSIFY" "$JS_TS" "$RUNTIME" "$ANDROID" "$IOS" "$MODULES" "$TOOLING" "$E2E"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "A selected responsibility check did not pass: $result" >&2
               exit 1
