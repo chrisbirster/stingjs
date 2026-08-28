@@ -125,16 +125,19 @@ The server exposes:
 ```text
 GET /manifest
 GET /bundle
+GET /events
 GET /health
 ```
 
-and prints a deep link of the form:
+and prints the connection deep link:
 
 ```text
 sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 ```
 
-The first server slice deliberately does not run Vite itself. Build/watch integration, QR rendering, and reload signaling remain follow-up work.
+In an interactive terminal, `sting start` also renders that exact deep link as a compact QR code that Android or iOS Sting Go can scan/open. Use `--qr` to force QR output when stdout is not a TTY, or `--no-qr` to suppress it. `--json` always remains machine-readable and never mixes terminal QR output into JSON.
+
+Use `sting start --watch` to run the managed build watcher and emit `ready`/`reload` events over the manifest-advertised SSE endpoint. Sting Go reconnects to that endpoint and reloads without reinstalling the native client.
 
 ## Publishing scope
 
