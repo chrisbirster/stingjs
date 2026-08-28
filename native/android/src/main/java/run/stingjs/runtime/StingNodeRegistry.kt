@@ -33,6 +33,7 @@ private data class StingNode(
     var gapDp: Float = 0f,
     var imageSource: String? = null,
     val enabledModuleViewEvents: MutableSet<String> = mutableSetOf(),
+    var isAttached: Boolean = false,
 )
 
 private class StingEditText(context: Context) : EditText(context) {
@@ -104,7 +105,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     var moduleViewFactory: ((module: String, viewType: String, context: Context) -> StingNativeView)? = null
 
     init {
-        nodes[0] = StingNode(id = 0, type = "root", view = rootView)
+        nodes[0] = StingNode(id = 0, type = "root", view = rootView, isAttached = true)
     }
 
     fun createElement(id: Int, type: String) {
@@ -167,8 +168,10 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         node.parentId?.let { previousParentId ->
             nodes[previousParentId]?.let { previousParent ->
                 previousParent.children.removeAll { it == nodeId }
+                if (node.isAttached) {
+                    propagateDetach(nodeId)
+                }
                 node.parentId = null
-                node.nativeModuleView?.didDetach()
                 detachView(node.view)
                 refreshTextContent(previousParentId)
                 refreshGap(previousParent)
@@ -183,8 +186,16 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
         parent.children.add(insertionIndex, nodeId)
         node.parentId = parentId
-        attachView(node, parent, insertionIndex)
-        node.nativeModuleView?.didAttach()
+        try {
+            attachView(node, parent, insertionIndex)
+        } catch (error: Throwable) {
+            parent.children.removeAll { it == nodeId }
+            node.parentId = null
+            throw error
+        }
+        if (parent.isAttached) {
+            propagateAttach(nodeId)
+        }
         refreshTextContent(parentId)
         refreshGap(parent)
     }
@@ -197,8 +208,10 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         }
 
         parent.children.removeAll { it == nodeId }
+        if (node.isAttached) {
+            propagateDetach(nodeId)
+        }
         node.parentId = null
-        node.nativeModuleView?.didDetach()
         detachView(node.view)
         refreshTextContent(parentId)
         refreshGap(parent)
@@ -271,18 +284,18 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             if (enabled) {
                 node.enabledModuleViewEvents.add(event)
                 try {
-                    nativeView.setEventEnabled(event, true) { payload ->
+                    nativeView.setEventEnabled(event, true, emit@{ payload ->
                         val current = nodes[id]
                         if (
                             disposed ||
                             current !== node ||
-                            node.parentId == null ||
+                            !node.isAttached ||
                             !node.enabledModuleViewEvents.contains(event)
                         ) {
-                            return@setEventEnabled
+                            return@emit
                         }
                         eventSink?.invoke(id, event, encodeJSONFragment(payload))
-                    }
+                    })
                 } catch (error: Throwable) {
                     node.enabledModuleViewEvents.remove(event)
                     throw error
@@ -323,8 +336,8 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             val node = nodes[id] ?: return@forEach
             val nativeView = node.nativeModuleView ?: return@forEach
 
-            if (node.parentId != null) {
-                node.parentId = null
+            if (node.isAttached) {
+                node.isAttached = false
                 nativeView.didDetach()
             }
 
@@ -360,6 +373,26 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private fun requireNode(id: Int): StingNode {
         checkActive()
         return nodes[id] ?: throw StingRuntimeException("Unknown native node id $id")
+    }
+
+    private fun propagateAttach(nodeId: Int) {
+        val node = nodes[nodeId] ?: return
+        if (node.isAttached) return
+
+        node.isAttached = true
+        node.children.forEach(::propagateAttach)
+        node.nativeModuleView?.didAttach()
+    }
+
+    private fun propagateDetach(nodeId: Int) {
+        val node = nodes[nodeId] ?: return
+        if (!node.isAttached) return
+
+        // Mark the complete subtree inactive before any parent detach hook runs,
+        // so re-entrant native callbacks cannot observe an attached descendant.
+        node.isAttached = false
+        node.children.forEach(::propagateDetach)
+        node.nativeModuleView?.didDetach()
     }
 
     private fun attachView(node: StingNode, parent: StingNode, insertionIndex: Int) {
@@ -485,9 +518,9 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     }
 
     private fun refreshGap(parent: StingNode) {
+        val moduleChildContainer = parent.nativeModuleView?.childContainer
         val layout = when {
-            parent.nativeModuleView?.childContainer is LinearLayout ->
-                parent.nativeModuleView.childContainer as LinearLayout
+            moduleChildContainer is LinearLayout -> moduleChildContainer
             parent.view is LinearLayout -> parent.view
             parent.view is StingScrollContainer -> parent.view.content
             else -> return
