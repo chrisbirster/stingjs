@@ -1,6 +1,6 @@
 export type FlexDirection = 'row' | 'column';
 export type AlignItems = 'stretch' | 'start' | 'center' | 'end';
-export type JustifyContent = 'start' | 'center' | 'end';
+export type JustifyContent = 'start' | 'center';
 export type FontWeight = 'regular' | 'medium' | 'semibold' | 'bold' | 400 | 500 | 600 | 700;
 
 export interface Style {
