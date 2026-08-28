@@ -18,17 +18,59 @@ Projects that add custom third-party native modules will eventually require a pr
 sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 ```
 
+The v1 manifest is the authoritative discovery document. It identifies the production engine and runtime version, names required standard-SDK capabilities, and publishes the bundle, reload, and health endpoints:
+
+```json
+{
+  "schemaVersion": 1,
+  "runtimeVersion": "0.1.0",
+  "engine": "quickjs",
+  "project": { "name": "my-app" },
+  "bundle": {
+    "path": "/bundle",
+    "contentType": "application/javascript"
+  },
+  "development": {
+    "reload": {
+      "path": "/events",
+      "transport": "sse",
+      "contentType": "text/event-stream"
+    },
+    "health": {
+      "path": "/health",
+      "contentType": "application/json"
+    }
+  },
+  "capabilities": ["clipboard", "haptics"]
+}
+```
+
+Endpoint paths are resolved relative to the manifest URL. Clients must not hard-code a different host or port.
+
+### v1 compatibility rule
+
+Before downloading or evaluating a bundle, Sting Go must reject the project with a native, actionable error when any of these checks fail:
+
+- `schemaVersion` is not `1`;
+- `engine` is not `quickjs`;
+- `runtimeVersion` does not exactly match the runtime compiled into that Sting Go build;
+- the manifest requests a standard-SDK capability that the client does not provide.
+
+Exact runtime matching is deliberately conservative for v1. A future schema can define a broader compatibility range without teaching v1 clients to guess.
+
 The native launcher:
 
 1. extracts the manifest URL from the deep link or manual URL entry;
 2. fetches `/manifest`;
-3. validates `schemaVersion`, `runtimeVersion`, `engine`, and requested capabilities;
-4. resolves the manifest-relative bundle path;
+3. validates the JSON against the v1 shape and compatibility rule;
+4. resolves the manifest-relative bundle and development endpoints;
 5. downloads the JavaScript bundle;
 6. creates/resets the normal Sting QuickJS runtime;
 7. attaches a fresh native root and evaluates the bundle;
 8. surfaces connection, compatibility, bundle, and runtime errors using native UI;
-9. supports reload/reconnect without reinstalling the client.
+9. connects to the advertised SSE reload endpoint and reconnects without reinstalling the client.
+
+`ready` and `reload` events carry a monotonic reload version. On reconnect, the server sends `ready` with its current version so a client can decide whether its currently loaded bundle is stale.
 
 The development server is local-network tooling. Simulator/device loopback and LAN behavior must be tested explicitly; simulator timings are never physical-device performance evidence.
 
@@ -53,7 +95,7 @@ The development server is local-network tooling. Simulator/device loopback and L
 - `sting://go` URL scheme;
 - manifest fetch using `URLSession`;
 - bundle fetch;
-- selected Sting runtime integration;
+- official `StingQuickJSRuntime` integration;
 - real UIKit renderer root;
 - reload/error UI;
 - Simulator test first; physical iPhone validation when hardware is available.
