@@ -22,7 +22,7 @@ for path in \
   fi
 done
 
-if grep -R -n -E '(\.\./){2,}(native|packages|runtime)/' "$PACKAGE_DIR" --exclude-dir=.build; then
+if grep -R -I -n -E '(\.\./){2,}(native|packages|runtime)/' "$PACKAGE_DIR" --exclude-dir=.build; then
   echo "error: external iOS consumer must not reference Sting monorepo source paths" >&2
   exit 1
 fi
