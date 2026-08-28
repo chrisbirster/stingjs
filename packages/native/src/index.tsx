@@ -1,3 +1,4 @@
+import { createMemo } from 'solid-js';
 import {
   bindHostText,
   createElement,
@@ -6,84 +7,129 @@ import {
   spread,
 } from '@stingjs/solid';
 import type { HostNode } from '@stingjs/core';
+import {
+  background,
+  flexDirection,
+  fontSize,
+  fontWeight,
+  foreground,
+  paddingX,
+  paddingY,
+  recipe,
+  resolveStyling,
+  rounded,
+  type ModifierInput,
+  type StyleProps,
+} from './style';
 
-export type FlexDirection = 'row' | 'column';
+export * from './style';
+
 export type ImageResizeMode = 'contain' | 'cover' | 'stretch';
 export type ImageSource = string | { uri: string };
 
-/**
- * Deliberately small v0.1 layout/style surface. Values are device-independent
- * points on iOS and density-independent pixels on Android unless noted.
- */
-export interface Style {
-  flexDirection?: FlexDirection;
-  gap?: number;
-  padding?: number;
-  width?: number;
-  height?: number;
-  backgroundColor?: string;
-  color?: string;
-  fontSize?: number;
-}
-
-export interface ViewProps {
+export interface ViewProps extends StyleProps {
   children?: unknown;
-  style?: Style;
   accessibilityLabel?: string;
 }
 
-export interface TextProps {
+export interface TextProps extends StyleProps {
   children?: unknown;
-  style?: Style;
   accessibilityLabel?: string;
 }
 
-export interface ButtonProps {
+export type ButtonVariant = 'native' | 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+export interface ButtonProps extends StyleProps {
   children?: unknown;
-  style?: Style;
   disabled?: boolean;
   accessibilityLabel?: string;
   onPress?: () => void;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }
 
-export interface ImageProps {
+export interface ImageProps extends StyleProps {
   source?: ImageSource;
   resizeMode?: ImageResizeMode;
-  style?: Style;
   accessibilityLabel?: string;
 }
 
-export interface TextInputProps {
+export interface TextInputProps extends StyleProps {
   value?: string;
   placeholder?: string;
   editable?: boolean;
-  style?: Style;
   accessibilityLabel?: string;
   onChangeText?: (value: string) => void;
 }
 
-export interface ScrollViewProps {
+export interface ScrollViewProps extends StyleProps {
   children?: unknown;
   horizontal?: boolean;
-  style?: Style;
   accessibilityLabel?: string;
 }
 
-function createNativePrimitive(type: string, props: object): HostNode {
+const buttonRecipe = recipe({
+  base: [rounded(8), fontWeight('semibold')],
+  variants: {
+    variant: {
+      primary: [background('#4f46e5'), foreground('#ffffff')],
+      secondary: [background('#f4f4f5'), foreground('#18181b')],
+      ghost: [background('#00000000'), foreground('#4f46e5')],
+      danger: [background('#dc2626'), foreground('#ffffff')],
+    },
+    size: {
+      sm: [paddingX(12), paddingY(6), fontSize(14)],
+      md: [paddingX(16), paddingY(10), fontSize(16)],
+      lg: [paddingX(20), paddingY(12), fontSize(18)],
+    },
+  },
+  defaultVariants: { size: 'md' },
+});
+
+function defineForwardedGetter(
+  target: Record<string, unknown>,
+  key: string,
+  read: () => unknown,
+): void {
+  Object.defineProperty(target, key, {
+    enumerable: true,
+    configurable: false,
+    get: read,
+  });
+}
+
+function createNativePrimitive(
+  type: string,
+  props: StyleProps & Record<string, unknown>,
+  forwardedKeys: readonly string[],
+  defaults?: ModifierInput,
+  variant?: () => ModifierInput,
+): HostNode {
   const node = createElement(type);
-  spread(node, props);
+  const styling = createMemo(() => resolveStyling({
+    defaults,
+    variant: variant?.(),
+    style: props.style,
+    sx: props.sx,
+    props,
+    modifiers: props.modifiers,
+  }));
+
+  const forwarded: Record<string, unknown> = {};
+  for (const key of forwardedKeys) {
+    defineForwardedGetter(forwarded, key, () => props[key]);
+  }
+  defineForwardedGetter(forwarded, 'style', () => styling().style);
+  defineForwardedGetter(forwarded, 'nativeModifiers', () => styling().nativeModifiers);
+  spread(node, forwarded);
   return node;
 }
 
 function stringifyTextChild(value: unknown): string {
-  // Solid's universal JSX transform may preserve dynamic children as accessors.
-  // Text calls this function from bindHostText's createRenderEffect, so invoking
-  // the accessor here both resolves its current value and subscribes the effect
-  // to every signal read by that accessor.
   if (typeof value === 'function') {
     return stringifyTextChild((value as () => unknown)());
   }
-
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
@@ -99,53 +145,115 @@ function stringifyTextChild(value: unknown): string {
 
 /** Native container backed by UIStackView on iOS and LinearLayout on Android. */
 export function View(props: ViewProps): HostNode {
-  return createNativePrimitive('view', props);
+  return createNativePrimitive(
+    'view',
+    props as ViewProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+  );
 }
 
-/**
- * Native text backed by UILabel on iOS and TextView on Android.
- *
- * A Text owns exactly one persistent host text node. Solid tracks the
- * component's children inside bindHostText and every subsequent signal change
- * mutates that node through replaceText. This keeps text updates on Sting's
- * fine-grained hot path and completely avoids child reconciliation.
- */
+/** Semantic neutral container. Box is a View with the Sting styling vocabulary. */
+export function Box(props: ViewProps): HostNode {
+  return View(props);
+}
+
+/** Vertical semantic layout primitive. */
+export function Stack(props: ViewProps): HostNode {
+  return createNativePrimitive(
+    'view',
+    props as ViewProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+    flexDirection('column'),
+  );
+}
+
+/** Horizontal semantic layout primitive. */
+export function HStack(props: ViewProps): HostNode {
+  return createNativePrimitive(
+    'view',
+    props as ViewProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+    flexDirection('row'),
+  );
+}
+
+/** Centers its native children on both axes. */
+export function Center(props: ViewProps): HostNode {
+  return createNativePrimitive(
+    'view',
+    props as ViewProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+    [
+      { $$stingModifier: true, kind: 'style', property: 'alignItems', value: 'center' },
+      { $$stingModifier: true, kind: 'style', property: 'justifyContent', value: 'center' },
+    ],
+  );
+}
+
+/** Native text backed by UILabel on iOS and TextView on Android. */
 export function Text(props: TextProps): HostNode {
   const node = createElement('text');
   const textNode = createTextNode('');
+  const styling = createMemo(() => resolveStyling({
+    style: props.style,
+    sx: props.sx,
+    props,
+    modifiers: props.modifiers,
+  }));
+  const forwarded: Record<string, unknown> = {};
+  defineForwardedGetter(forwarded, 'accessibilityLabel', () => props.accessibilityLabel);
+  defineForwardedGetter(forwarded, 'style', () => styling().style);
+  defineForwardedGetter(forwarded, 'nativeModifiers', () => styling().nativeModifiers);
 
-  // Text content is owned by the explicit binding below; generic spread still
-  // handles styles and accessibility properties but never reconciles children.
-  spread(node, props, true);
+  spread(node, forwarded, true);
   insertNode(node, textNode);
   bindHostText(textNode, () => stringifyTextChild(props.children));
-
   return node;
 }
 
-/** Native pressable button backed by UIButton on iOS and Button on Android. */
+/** Native pressable button with optional design-system variants. */
 export function Button(props: ButtonProps): HostNode {
-  return createNativePrimitive('button', props);
+  const variant = () => {
+    const selected = props.variant ?? 'native';
+    if (selected === 'native' && props.size === undefined) return undefined;
+    return buttonRecipe({
+      variant: selected === 'native' ? undefined : selected,
+      size: props.size,
+    });
+  };
+
+  return createNativePrimitive(
+    'button',
+    props as ButtonProps & Record<string, unknown>,
+    ['children', 'disabled', 'accessibilityLabel', 'onPress'],
+    undefined,
+    variant,
+  );
 }
 
 /** Native image backed by UIImageView on iOS and ImageView on Android. */
 export function Image(props: ImageProps): HostNode {
-  return createNativePrimitive('image', props);
+  return createNativePrimitive(
+    'image',
+    props as ImageProps & Record<string, unknown>,
+    ['source', 'resizeMode', 'accessibilityLabel'],
+  );
 }
 
-/**
- * Controlled native text input. `onChangeText` receives the current native text
- * as a string; assigning `value` from Solid updates the native control without
- * synthesizing another change event.
- */
+/** Controlled native text input. */
 export function TextInput(props: TextInputProps): HostNode {
-  return createNativePrimitive('textinput', props);
+  return createNativePrimitive(
+    'textinput',
+    props as TextInputProps & Record<string, unknown>,
+    ['value', 'placeholder', 'editable', 'accessibilityLabel', 'onChangeText'],
+  );
 }
 
-/**
- * Native scrolling container. Children retain ordinary Sting host identities;
- * the platform host owns only the scroll container/content-view plumbing.
- */
+/** Native scrolling container. */
 export function ScrollView(props: ScrollViewProps): HostNode {
-  return createNativePrimitive('scrollview', props);
+  return createNativePrimitive(
+    'scrollview',
+    props as ScrollViewProps & Record<string, unknown>,
+    ['children', 'horizontal', 'accessibilityLabel'],
+  );
 }
