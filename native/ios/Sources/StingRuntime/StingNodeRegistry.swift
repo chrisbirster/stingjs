@@ -5,6 +5,7 @@ final class StingNode {
     let id: Int
     let type: String
     let view: UIView?
+    let nativeModuleView: (any StingNativeView)?
     var textValue: String?
     var parentId: Int?
     var children: [Int] = []
@@ -12,25 +13,53 @@ final class StingNode {
     var heightConstraint: NSLayoutConstraint?
     var imageTask: URLSessionDataTask?
     var imageSource: String?
+    var enabledModuleViewEvents: Set<String> = []
 
-    init(id: Int, type: String, view: UIView? = nil, textValue: String? = nil) {
+    init(
+        id: Int,
+        type: String,
+        view: UIView? = nil,
+        textValue: String? = nil,
+        nativeModuleView: (any StingNativeView)? = nil
+    ) {
         self.id = id
         self.type = type
         self.view = view
         self.textValue = textValue
+        self.nativeModuleView = nativeModuleView
     }
 }
 
 final class StingNodeRegistry {
     private var nodes: [Int: StingNode] = [:]
+    private var disposed = false
     var eventSink: ((Int, String, String) -> Void)?
+    var moduleViewFactory: ((String, String) throws -> any StingNativeView)?
 
     init(rootView: UIView) {
         nodes[0] = StingNode(id: 0, type: "root", view: rootView)
     }
 
     func createElement(id: Int, type: String) throws {
+        guard !disposed else { throw StingRuntimeError("Cannot create nodes after the Sting node registry is disposed") }
         guard nodes[id] == nil else { throw StingRuntimeError("Duplicate native node id \(id)") }
+
+        if let identity = try Self.parseModuleViewIdentity(type) {
+            guard let moduleViewFactory else {
+                throw StingNativeModuleError(
+                    code: "E_NATIVE_VIEW_UNAVAILABLE",
+                    message: "Native module views are not connected to this Sting host"
+                )
+            }
+            let nativeView = try moduleViewFactory(identity.module, identity.viewType)
+            nodes[id] = StingNode(
+                id: id,
+                type: type,
+                view: nativeView.view,
+                nativeModuleView: nativeView
+            )
+            return
+        }
 
         let normalized = type.lowercased()
         let view: UIView
@@ -78,6 +107,7 @@ final class StingNodeRegistry {
     }
 
     func createTextNode(id: Int, value: String) throws {
+        guard !disposed else { throw StingRuntimeError("Cannot create nodes after the Sting node registry is disposed") }
         guard nodes[id] == nil else { throw StingRuntimeError("Duplicate native node id \(id)") }
         nodes[id] = StingNode(id: id, type: "#text", textValue: value)
     }
@@ -97,7 +127,9 @@ final class StingNodeRegistry {
 
         if let previousParentId = node.parentId, let previousParent = nodes[previousParentId] {
             previousParent.children.removeAll { $0 == nodeId }
-            detachView(node.view, from: previousParent.view)
+            node.parentId = nil
+            node.nativeModuleView?.didDetach()
+            detachView(node.view, from: childContainer(for: previousParent))
             refreshTextContent(previousParentId)
         }
 
@@ -112,6 +144,7 @@ final class StingNodeRegistry {
         node.parentId = parentId
 
         try attachView(node, to: parent, at: insertionIndex)
+        node.nativeModuleView?.didAttach()
         refreshTextContent(parentId)
     }
 
@@ -124,7 +157,8 @@ final class StingNodeRegistry {
 
         parent.children.removeAll { $0 == nodeId }
         node.parentId = nil
-        detachView(node.view, from: parent.view)
+        node.nativeModuleView?.didDetach()
+        detachView(node.view, from: childContainer(for: parent))
         refreshTextContent(parentId)
     }
 
@@ -132,6 +166,21 @@ final class StingNodeRegistry {
         let node = try requireNode(id)
         let data = Data(valueJSON.utf8)
         let value = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+
+        if let nativeView = node.nativeModuleView {
+            switch name {
+            case "style":
+                guard let style = value as? [String: Any] else {
+                    throw StingRuntimeError("style must be a JSON object")
+                }
+                applyStyle(style, to: node)
+            case "accessibilityLabel":
+                node.view?.accessibilityLabel = value is NSNull ? nil : value as? String
+            default:
+                try nativeView.setProperty(name: name, value: value)
+            }
+            return
+        }
 
         switch name {
         case "style":
@@ -173,13 +222,42 @@ final class StingNodeRegistry {
             }
         default:
             // The JS renderer validates the public surface. Keeping unknown
-            // properties harmless here lets the native surface grow incrementally.
+            // properties harmless here lets the built-in native surface grow incrementally.
             break
         }
     }
 
     func setEventEnabled(id: Int, event: String, enabled: Bool) throws {
         let node = try requireNode(id)
+
+        if let nativeView = node.nativeModuleView {
+            if enabled {
+                node.enabledModuleViewEvents.insert(event)
+                do {
+                    try nativeView.setEventEnabled(event: event, enabled: true) { [weak self, weak node] payload in
+                        guard let self,
+                              !self.disposed,
+                              let node,
+                              self.nodes[id] === node,
+                              node.parentId != nil,
+                              node.enabledModuleViewEvents.contains(event) else {
+                            return
+                        }
+                        self.eventSink?(id, event, Self.encodeJSONFragment(payload))
+                    }
+                } catch {
+                    node.enabledModuleViewEvents.remove(event)
+                    throw error
+                }
+            } else {
+                // Make the callback stale before native observation is disabled
+                // so re-entrant emissions cannot reach JavaScript.
+                node.enabledModuleViewEvents.remove(event)
+                try nativeView.setEventEnabled(event: event, enabled: false, emit: { _ in })
+            }
+            return
+        }
+
         switch (event, node.view) {
         case ("press", let button as StingButton):
             button.setPressEnabled(enabled)
@@ -190,18 +268,46 @@ final class StingNodeRegistry {
         }
     }
 
+    func dispose() {
+        guard !disposed else { return }
+        disposed = true
+        eventSink = nil
+
+        for id in nodes.keys.sorted() where id != 0 {
+            guard let node = nodes[id], let nativeView = node.nativeModuleView else { continue }
+
+            if node.parentId != nil {
+                node.parentId = nil
+                nativeView.didDetach()
+            }
+
+            let events = node.enabledModuleViewEvents
+            node.enabledModuleViewEvents.removeAll(keepingCapacity: false)
+            for event in events {
+                try? nativeView.setEventEnabled(event: event, enabled: false, emit: { _ in })
+            }
+
+            detachView(node.view, from: node.view?.superview)
+            nativeView.dispose()
+        }
+    }
+
     private func requireNode(_ id: Int) throws -> StingNode {
+        guard !disposed else { throw StingRuntimeError("Sting node registry is disposed") }
         guard let node = nodes[id] else { throw StingRuntimeError("Unknown native node id \(id)") }
         return node
     }
 
     private func attachView(_ node: StingNode, to parent: StingNode, at index: Int) throws {
         guard let childView = node.view else { return }
-        guard let parentView = parent.view else {
+        guard let parentView = childContainer(for: parent) else {
+            if parent.nativeModuleView != nil {
+                throw StingRuntimeError("Native module view \(parent.type) does not accept view children")
+            }
             throw StingRuntimeError("Cannot insert a native view below a text-only node")
         }
 
-        if ["text", "button", "image", "textinput"].contains(parent.type) {
+        if parent.nativeModuleView == nil && ["text", "button", "image", "textinput"].contains(parent.type) {
             throw StingRuntimeError("Native leaf node \(parent.type) cannot contain view children")
         }
 
@@ -210,8 +316,12 @@ final class StingNodeRegistry {
         } else if let stack = parentView as? UIStackView {
             stack.insertArrangedSubview(childView, at: min(index, stack.arrangedSubviews.count))
         } else {
-            parentView.addSubview(childView)
+            parentView.insertSubview(childView, at: min(index, parentView.subviews.count))
         }
+    }
+
+    private func childContainer(for node: StingNode) -> UIView? {
+        node.nativeModuleView?.childContainer ?? node.view
     }
 
     private func detachView(_ childView: UIView?, from parentView: UIView?) {
@@ -225,7 +335,7 @@ final class StingNodeRegistry {
     }
 
     private func refreshTextContent(_ parentId: Int) {
-        guard let parent = nodes[parentId] else { return }
+        guard let parent = nodes[parentId], parent.nativeModuleView == nil else { return }
         let text = parent.children.compactMap { nodes[$0]?.textValue }.joined()
 
         if let label = parent.view as? UILabel {
@@ -335,14 +445,47 @@ final class StingNodeRegistry {
         }
     }
 
-    private static func encodeJSONFragment(_ value: Any) -> String {
-        guard JSONSerialization.isValidJSONObject([value]),
-              let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
-              let string = String(data: data, encoding: .utf8) else {
+    private static func parseModuleViewIdentity(_ type: String) throws -> (module: String, viewType: String)? {
+        guard type.hasPrefix(moduleViewPrefix) else { return nil }
+
+        let body = String(type.dropFirst(moduleViewPrefix.count))
+        let pieces = body.split(separator: ":", omittingEmptySubsequences: false)
+        guard pieces.count == 2 else {
+            throw StingNativeModuleError(
+                code: "E_INVALID_VIEW_TYPE",
+                message: "Malformed Sting native module view type \(type)"
+            )
+        }
+
+        let module = String(pieces[0])
+        let viewType = String(pieces[1])
+        guard validModuleViewSegment(module), validModuleViewSegment(viewType) else {
+            throw StingNativeModuleError(
+                code: "E_INVALID_VIEW_TYPE",
+                message: "Malformed Sting native module view type \(type)"
+            )
+        }
+        return (module, viewType)
+    }
+
+    private static func validModuleViewSegment(_ value: String) -> Bool {
+        value.range(
+            of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func encodeJSONFragment(_ value: Any?) -> String {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: value ?? NSNull(),
+            options: [.fragmentsAllowed]
+        ), let string = String(data: data, encoding: .utf8) else {
             return "null"
         }
         return string
     }
+
+    private static let moduleViewPrefix = "__sting_module_view__:"
 }
 
 private extension UIColor {
