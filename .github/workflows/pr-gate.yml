@@ -6,6 +6,10 @@ on:
       - dev
   workflow_dispatch:
 
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   classify:
     name: Classify Changes
