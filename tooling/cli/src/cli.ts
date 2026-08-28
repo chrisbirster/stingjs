@@ -5,6 +5,7 @@ import { collectProjectDoctorContext } from './doctor.js';
 import { collectDevices, collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
+import { runCi, runTests } from './verify.js';
 
 function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
@@ -16,8 +17,14 @@ function option(args: string[], name: string): string | undefined {
   return args[index + 1];
 }
 
+function parseTarget(args: string[]): { target?: DevicePlatform; rest: string[] } {
+  const first = args[0];
+  if (first === 'ios' || first === 'android') return { target: first, rest: args.slice(1) };
+  return { rest: args };
+}
+
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function printChecks(checks: DoctorCheck[]): void {
@@ -29,15 +36,13 @@ function printChecks(checks: DoctorCheck[]): void {
 }
 
 async function doctor(args: string[]): Promise<void> {
-  const first = args[0];
-  const target: DevicePlatform | undefined = first === 'ios' || first === 'android' ? first : undefined;
-  const doctorArgs = target ? args.slice(1) : args;
-  const runtimeDevelopment = hasFlag(doctorArgs, '--runtime');
-  const projectRoot = resolve(option(doctorArgs, '--project-root') ?? process.cwd());
+  const parsed = parseTarget(args);
+  const runtimeDevelopment = hasFlag(parsed.rest, '--runtime');
+  const projectRoot = resolve(option(parsed.rest, '--project-root') ?? process.cwd());
 
-  if (runtimeDevelopment && !target) {
+  if (runtimeDevelopment && !parsed.target) {
     const checks = collectDoctorChecks(process.platform, { runtimeDevelopment: true });
-    if (hasFlag(doctorArgs, '--json')) {
+    if (hasFlag(parsed.rest, '--json')) {
       console.log(JSON.stringify({ mode: 'runtime', target: null, projectRoot, platforms: { ios: false, android: false }, checks }));
     } else {
       console.log('Sting doctor (runtime development)\n');
@@ -47,27 +52,27 @@ async function doctor(args: string[]): Promise<void> {
     return;
   }
 
-  const project = await collectProjectDoctorContext(projectRoot, target);
+  const project = await collectProjectDoctorContext(projectRoot, parsed.target);
   const environmentChecks = collectDoctorChecks(process.platform, {
     runtimeDevelopment,
-    target,
-    android: target ? undefined : project.platforms.android,
-    ios: target ? undefined : project.platforms.ios,
+    target: parsed.target,
+    android: parsed.target ? undefined : project.platforms.android,
+    ios: parsed.target ? undefined : project.platforms.ios,
     requireSystemGradle: project.requiresSystemGradle,
   });
   const checks = [...environmentChecks, ...project.checks];
 
-  if (hasFlag(doctorArgs, '--json')) {
+  if (hasFlag(parsed.rest, '--json')) {
     console.log(JSON.stringify({
       mode: runtimeDevelopment ? 'runtime' : 'app',
-      target: target ?? null,
+      target: parsed.target ?? null,
       projectRoot: project.projectRoot,
       configPath: project.configPath,
       platforms: project.platforms,
       checks,
     }));
   } else {
-    const targetLabel = target === 'ios' ? 'iOS' : target === 'android' ? 'Android' : undefined;
+    const targetLabel = parsed.target === 'ios' ? 'iOS' : parsed.target === 'android' ? 'Android' : undefined;
     const modeLabel = runtimeDevelopment ? 'runtime development' : targetLabel;
     console.log(modeLabel ? `Sting doctor (${modeLabel})\n` : 'Sting doctor\n');
     console.log(`Project: ${project.projectRoot}`);
@@ -120,6 +125,16 @@ async function config(args: string[]): Promise<void> {
 
   console.log(`Sting config\n\n${loaded.path}`);
   console.log(JSON.stringify(loaded.config, null, 2));
+}
+
+async function verify(command: 'test' | 'ci', args: string[]): Promise<void> {
+  const parsed = parseTarget(args);
+  const projectRoot = option(parsed.rest, '--project-root');
+  const result = command === 'test'
+    ? await runTests({ projectRoot, target: parsed.target })
+    : await runCi({ projectRoot, target: parsed.target });
+  const target = result.target ? ` + ${result.target} native build` : '';
+  console.log(`\nSting ${command} passed: ${result.scripts.join(', ')}${target}`);
 }
 
 async function run(args: string[]): Promise<void> {
@@ -190,6 +205,12 @@ async function main(): Promise<void> {
       return;
     case 'config':
       await config(args);
+      return;
+    case 'test':
+      await verify('test', args);
+      return;
+    case 'ci':
+      await verify('ci', args);
       return;
     case 'start':
       await start(args);
