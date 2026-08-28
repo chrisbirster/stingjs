@@ -1,7 +1,5 @@
 package run.stingjs.runtime
 
-import android.os.Build
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.test.core.app.ApplicationProvider
@@ -22,6 +20,10 @@ class StingStylingInstrumentedTest {
 
         nodes.createElement(1, "view")
         nodes.insertNode(0, 1, -1)
+        val stack = nodes.viewForNode(1) as LinearLayout
+        val originalWidth = stack.layoutParams.width
+        val originalHeight = stack.layoutParams.height
+
         nodes.setProperty(
             1,
             "style",
@@ -36,6 +38,8 @@ class StingStylingInstrumentedTest {
               "paddingRight": 8,
               "paddingBottom": 16,
               "paddingLeft": 8,
+              "width": 120,
+              "height": 48,
               "backgroundColor": "#112233",
               "borderRadius": 10,
               "opacity": 0.75
@@ -43,12 +47,13 @@ class StingStylingInstrumentedTest {
             """.trimIndent(),
         )
 
-        val stack = nodes.viewForNode(1) as LinearLayout
         assertEquals(LinearLayout.HORIZONTAL, stack.orientation)
         assertEquals(0.75f, stack.alpha)
         assertNotNull(stack.background)
         assertEquals(16, (stack.paddingTop / context.resources.displayMetrics.density).toInt())
         assertEquals(8, (stack.paddingLeft / context.resources.displayMetrics.density).toInt())
+        assertEquals(120, (stack.layoutParams.width / context.resources.displayMetrics.density).toInt())
+        assertEquals(48, (stack.layoutParams.height / context.resources.displayMetrics.density).toInt())
 
         nodes.setProperty(
             1,
@@ -64,6 +69,8 @@ class StingStylingInstrumentedTest {
               "paddingRight": null,
               "paddingBottom": null,
               "paddingLeft": null,
+              "width": null,
+              "height": null,
               "backgroundColor": null,
               "borderRadius": null,
               "opacity": null
@@ -75,10 +82,12 @@ class StingStylingInstrumentedTest {
         assertEquals(1f, stack.alpha)
         assertEquals(0, stack.paddingTop)
         assertEquals(0, stack.paddingLeft)
+        assertEquals(originalWidth, stack.layoutParams.width)
+        assertEquals(originalHeight, stack.layoutParams.height)
     }
 
     @Test
-    fun nativeBlurDescriptorIsAccepted() {
+    fun nativeBlurDescriptorAppliesAndCleansUp() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val root = FrameLayout(context)
         val nodes = StingNodeRegistry(root)
@@ -91,15 +100,8 @@ class StingStylingInstrumentedTest {
             "[{\"name\":\"blur\",\"value\":{\"radius\":16}}]",
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val getter = View::class.java.getMethod("getRenderEffect")
-            assertNotNull(getter.invoke(nodes.viewForNode(1)))
-
-            nodes.setProperty(1, "nativeModifiers", "[]")
-            assertNull(getter.invoke(nodes.viewForNode(1)))
-        } else {
-            // Unsupported platform versions accept the portable descriptor as a no-op.
-            nodes.setProperty(1, "nativeModifiers", "[]")
-        }
+        assertEquals(16f, nodes.nativeBlurRadiusForNode(1))
+        nodes.setProperty(1, "nativeModifiers", "[]")
+        assertNull(nodes.nativeBlurRadiusForNode(1))
     }
 }
