@@ -1,132 +1,202 @@
-# Styling and modifiers
+# Sting styling architecture
 
-Sting uses a **modifier-first** styling architecture. `style={{...}}` remains supported for compatibility, but new application code should prefer semantic components, token props, `sx`, and explicit modifiers.
-
-```tsx
-import * as stylex from '@stingjs/stylex';
-import { Button, Stack, nativeBlur } from '@stingjs/native';
-
-const styles = stylex.create({
-  screen: {
-    backgroundColor: '#09090b',
-  },
-});
-
-<Stack
-  p="4"
-  gap="3"
-  sx={styles.screen}
-  modifiers={[nativeBlur()]}
->
-  <Button variant="primary">Continue</Button>
-</Stack>;
-```
-
-## Layers
-
-All authoring surfaces resolve into one ordered Sting modifier/style representation:
+Sting uses one style IR with four authoring layers above it. It does **not** adopt React Native's `StyleSheet.create()` model.
 
 ```text
-component defaults
-  < variant
-  < legacy style
-  < sx
-  < semantic/token props
-  < explicit modifiers
+          APPLICATION API
+──────────────────────────────────────
+
+<Stack p="4" gap="3">
+<Button variant="primary">
+
+         OR
+
+StyleX / sx={styles.foo}
+
+         OR
+
+modifiers={[
+  padding(16),
+  background(...)
+]}
+
+                ↓
+
+        STING STYLE IR
+──────────────────────────────────────
+
+padding(16)
+gap(12)
+background(surface)
+cornerRadius(12)
+font(title)
+
+                ↓
+
+     PLATFORM IMPLEMENTATION
+──────────────────────────────────────
+
+       Web          Native
+        │              │
+      CSS          layout/native
+                        │
+                  UIKit / Android
 ```
 
-The later layer wins for the same property. Native modifiers are deduplicated by name with the same last-wins rule.
+The web arrow is an architectural target for the shared IR and StyleX integration. Sting's current renderer is native; this PR does not add a DOM renderer.
 
-## Semantic primitives
+## 1. Modifiers
 
-`@stingjs/native` exports:
-
-- `Box` — neutral container
-- `Stack` — vertical container
-- `HStack` — horizontal container
-- `Center` — centers children on both axes
-- the existing `View`, `Text`, `Button`, `Image`, `TextInput`, and `ScrollView`
-
-These are not new renderer node types. `Box`, `Stack`, `HStack`, and `Center` resolve to the same Sting native `view` host and contribute default modifiers.
-
-## Token props
-
-The built-in spacing scale supports `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`, and `gap`.
-
-```tsx
-<Stack p="4" gap="3" bg="surface" rounded="lg" />
-```
-
-Numbers remain available when an application needs an exact device-independent value:
-
-```tsx
-<Box p={18} w={240} />
-```
-
-## Modifiers
-
-Modifiers are the canonical low-level styling API:
+Modifiers are the fundamental low-level Sting styling API.
 
 ```tsx
 import {
   background,
+  cornerRadius,
+  font,
   m,
   padding,
-  rounded,
 } from '@stingjs/native';
 
 <Box
   modifiers={m(
     padding(16),
     background('#09090b'),
-    rounded(12),
+    cornerRadius(12),
+    font('title'),
   )}
 />
 ```
 
-Modifier arrays may contain arrays, `false`, `null`, `undefined`, or accessors, which makes conditional Solid styling natural without a separate conditional-style API.
-
-## Native escape hatches
-
-`nativeModifier()` carries a platform capability beside the portable style representation. `nativeBlur()` is the first built-in descriptor:
+Portable modifiers lower into the shared style IR. Native-only capabilities use the same ordered modifier channel without being added to the portable style vocabulary:
 
 ```tsx
 <Box modifiers={[nativeBlur(20)]} />
 ```
 
-Native descriptors intentionally do not grow the universal style contract. A platform host either implements the descriptor or treats it as unsupported.
+`nativeBlur()` is implemented with UIKit on iOS and `RenderEffect` on Android 12+.
 
-## `@stingjs/stylex`
+Modifier arrays may contain arrays, `false`, `null`, `undefined`, or Solid accessors. Reactive values therefore stay inside Solid's fine-grained graph.
 
-`@stingjs/stylex` provides a StyleX-shaped native authoring adapter:
+State/environment operations such as `pressed(...)` and `responsive(...)` belong at this IR layer, but this PR does not ship placeholder/no-op versions. They should be added only with real state and viewport lowering on every supported platform.
+
+## 2. StyleX integration
+
+`@stingjs/stylex` provides the native half of a StyleX integration using the familiar static `create()` model:
 
 ```tsx
 import * as stylex from '@stingjs/stylex';
 
 const styles = stylex.create({
-  card: {
-    backgroundColor: '#18181b',
-    borderRadius: 12,
+  screen: {
+    backgroundColor: '#09090b',
+  },
+  status: {
+    color: '#a1a1aa',
   },
 });
 
-<Box sx={styles.card} />;
+<Stack sx={styles.screen} />
 ```
 
-Its core API is deliberately small: `create`, `props`, and `compose`. The result is consumed by Sting's `sx` prop and resolves to the modifier IR on native targets.
+On native, those static definitions feed `sx` and lower into Sting's style IR. CSS class names are not interpreted by UIKit or Android.
 
-This package is **not currently a drop-in runtime for compiled `@stylexjs/stylex` class objects**. Real Meta StyleX web compilation emits atomic CSS classes; Sting native intentionally does not carry CSS class semantics. The package establishes the compatible authoring seam so a future build-time transform can target CSS on web and Sting modifier atoms on native without changing application component APIs.
+For a web build, the intended integration is to configure the official StyleX compiler so `@stingjs/stylex` is recognized as a StyleX import source and the same static definitions compile to atomic CSS. This keeps StyleX a compile-time web concern while preserving the same application-facing styling vocabulary on native.
 
-## Variants
+The native adapter intentionally exposes only the StyleX surface Sting currently needs: `create()` and `props()`. Sting does not invent parallel StyleX-only helpers.
 
-The public `recipe()` helper builds design-system variants from modifiers. `Button` currently demonstrates the model with `native`, `primary`, `secondary`, `ghost`, and `danger` variants plus `sm`, `md`, and `lg` sizes.
+## 3. Semantic components and style props
+
+Most application code should use semantic components and terse token props:
 
 ```tsx
-<Button variant="danger" size="sm">Delete</Button>
+<Stack p="4" gap="3">
+  <Heading level={2}>Settings</Heading>
+  <HStack gap="2">
+    <Text>Account</Text>
+  </HStack>
+</Stack>
 ```
 
-`variant="native"` remains the default to preserve the current platform-native button appearance for existing Sting applications.
+The semantic primitives currently include:
 
-## Fine-grained updates
+- `Box` — neutral container
+- `Stack` — vertical container
+- `HStack` — horizontal container
+- `Center` — centered container
+- `Heading` — semantic text with heading typography defaults
+- existing native primitives such as `View`, `Text`, `Button`, `Image`, `TextInput`, and `ScrollView`
 
-Styling is resolved inside a Solid memo. Reactive `sx`, token props, or modifier accessors therefore track only the signals they read. The normalized style object includes every supported property with `null` for removed values so native hosts can reset previously-applied values rather than leaving stale visual state.
+These do not create a second renderer model. Containers resolve to the existing Sting `view` host; `Heading` resolves to the existing native text host.
+
+Style props are token-oriented conveniences over modifiers:
+
+```tsx
+<Stack p="4" gap="3" bg="surface" rounded="lg" />
+```
+
+Supported spacing aliases include `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`, and `gap`, plus `bg`, `rounded`, `opacity`, `w`, `h`, `direction`, `align`, and `justify`.
+
+## 4. Recipes and variants
+
+Recipes are the design-system layer. A recipe resolves names into ordinary modifiers; it is not a separate styling runtime.
+
+```ts
+const button = recipe({
+  variants: {
+    variant: {
+      primary: [
+        background('#4f46e5'),
+        foreground('#ffffff'),
+        cornerRadius(8),
+      ],
+    },
+  },
+});
+```
+
+Sting's built-in `Button` demonstrates this with exactly one opt-in styled variant:
+
+```tsx
+<Button variant="primary">Continue</Button>
+```
+
+The default remains the platform-native button. This styling foundation intentionally does not ship a large framework-owned design-system catalog.
+
+## Interoperability and precedence
+
+All four layers converge before crossing the native bridge:
+
+```tsx
+<Stack
+  p="4"
+  gap="3"
+  sx={styles.screen}
+  modifiers={[
+    nativeBlur(),
+  ]}
+>
+  <Button variant="primary">
+    Continue
+  </Button>
+</Stack>
+```
+
+When the same portable property is supplied by multiple layers, precedence is deterministic:
+
+```text
+component defaults
+  < recipe/variant
+  < legacy style
+  < sx
+  < semantic/style props
+  < explicit modifiers
+```
+
+`style={{ ... }}` remains supported only for compatibility with existing Sting code. New code should use modifiers, StyleX/`sx`, semantic components/style props, or recipes/variants.
+
+## Fine-grained native updates
+
+Styling resolution runs in Solid memos. A signal used by `sx`, a style prop, or a modifier accessor triggers the existing property-mutation path rather than React-style component reconciliation.
+
+The normalized style IR carries explicit reset values after a previously-applied style disappears, so UIKit and Android restore native defaults instead of leaving stale visual state.
