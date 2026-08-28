@@ -17,7 +17,7 @@ packages/modules/filesystem/
   sting-module.json
 ```
 
-`@stingjs/modules-core` is the JavaScript authoring boundary. Module packages should use `createNativeModule()` instead of importing `getHost()` directly.
+`@stingjs/modules-core` is the JavaScript authoring boundary for module functions, events, and native objects. Module-owned native view components are created through `createNativeModuleView()` from `@stingjs/solid` so they remain ordinary Sting renderer nodes.
 
 Synchronous modules use `callSync()`:
 
@@ -64,6 +64,8 @@ Each `addListener()` call owns an independent subscription handle, even when the
 
 Listener fanout is snapshot-based: a listener may remove itself or another subscription while handling an event without corrupting the current delivery. After the final listener is removed, later/stale native emissions are ignored.
 
+Long-lived native resources use the shared opaque-object capability documented in [`native-objects.md`](./native-objects.md). Module-created UIKit/Android view components use the renderer-integrated capability documented in [`native-module-views.md`](./native-module-views.md).
+
 ## Manifest
 
 Every module must provide `sting-module.json` using schema version 1. The manifest identifies the JavaScript package, native module classes, platform permissions, and the runtime capabilities the module needs.
@@ -86,15 +88,21 @@ Every module must provide `sting-module.json` using schema version 1. The manife
 }
 ```
 
-Modules that emit repeated native events declare the existing schema-v1 `events` capability, optionally alongside other capabilities:
+Modules combine only the shared capabilities they require:
 
 ```json
 {
-  "capabilities": ["async-functions", "events"]
+  "capabilities": [
+    "async-functions",
+    "events",
+    "permissions",
+    "native-objects",
+    "native-views"
+  ]
 }
 ```
 
-Run `npm run modules:validate` to validate all first-party manifests and required package structure.
+Run `npm run modules:validate` to validate all first-party manifests and required package structure. `native-views` is already an authoritative schema-v1 capability; this capability does not require a new manifest schema version.
 
 ## Native contract today
 
@@ -103,8 +111,11 @@ The v0.1 module transport supports:
 - synchronous functions through `StingNativeModule.callSync` and `StingModuleRegistry`;
 - real asynchronous functions through `StingNativeModule.callAsync` and `@stingjs/modules-core` Promises;
 - repeated native event streams through `StingNativeModule.setEventEnabled` and `@stingjs/modules-core` subscriptions;
+- generated permission/platform configuration from authoritative `sting-module.json` declarations;
+- opaque native object handles with sync/async methods and deterministic disposal;
+- native module views integrated into the existing Sting host renderer;
 - structured success values and `StingNativeError` failures;
-- lifecycle-safe pending Promise settlement and event subscription disposal;
+- lifecycle-safe pending Promise settlement, event subscription disposal, object disposal, and module-view teardown;
 - background native completion/event callbacks marshalled back to the owning JavaScript runtime thread before engine re-entry.
 
 Haptics, Clipboard, and Device are the reference synchronous modules. Device also proves a structured object can round-trip through the shared module contract while keeping platform-specific environment detection in Swift/Kotlin.
@@ -148,7 +159,26 @@ Unknown events should throw `StingNativeModuleError(code: "E_EVENT_NOT_FOUND", .
 
 Native observation should be stopped when `enabled` becomes false. Sting also keeps its own active-observation registry so callbacks that arrive after unsubscribe or runtime disposal become no-ops. Runtime disposal clears JavaScript listener state before disabling native observations and detaching event sinks.
 
-Renderer/node events such as button presses remain a separate transport keyed by native node IDs. Module events do not reuse renderer node identity or DOM-style event semantics.
+Renderer/node events such as button presses and native module view events remain a separate transport keyed by native node IDs. Module-wide events do not reuse renderer node identity or DOM-style event semantics.
+
+### Native module views
+
+A module package can expose a real UIKit/Android view as a normal Solid component:
+
+```ts
+import { createNativeModuleView } from '@stingjs/solid';
+
+export const CameraPreview = createNativeModuleView<CameraPreviewProps>(
+  'Camera',
+  'Preview',
+);
+```
+
+The component is still rendered by the existing Solid `@solidjs/universal` adapter. Sting routes its creation through the ordinary `createElement` host operation and routes its properties, node events, insertion, removal, and keyed movement through the same host tree as built-in primitives.
+
+`removeNode` only detaches a module view because Solid may reinsert the same keyed host node. Native implementations receive separate attach/detach hooks and one final runtime-owned `dispose()`. Detached or disposed views cannot dispatch stale node events.
+
+See [`native-module-views.md`](./native-module-views.md) for the Swift/Kotlin authoring contract, optional child containers, lifecycle rules, and engine boundaries.
 
 ## Filesystem v0.1
 
@@ -172,18 +202,19 @@ Until autolinking lands, applications explicitly register native modules in thei
 
 ## Modules-core capability roadmap
 
-`@stingjs/modules-core` grows the native contract in small independently tested steps:
+The shared v0.1 capability train is now:
 
 1. sync functions — implemented;
 2. async functions / Promises — implemented;
 3. module event streams and subscription disposal — implemented;
-4. permission declarations and generated platform configuration;
-5. native object handles and deterministic lifetime/disposal;
-6. native module views;
-7. application lifecycle callbacks and background delivery;
-8. autolinking from `sting-module.json` into generated iOS/Android host configuration.
+4. permission declarations and generated platform configuration — implemented;
+5. native object handles and deterministic lifetime/disposal — implemented;
+6. native module views — implemented;
+7. application lifecycle callbacks and background delivery — next;
+8. autolinking from `sting-module.json` into generated iOS/Android host configuration;
+9. module authoring template/scaffolder.
 
-Each capability must work through the portable Sting contract and preserve structured native errors. Engine-specific objects such as QuickJS `JSValue`, Hermes/JSI values, Swift objects, or Kotlin/JNI objects must not become public Sting module types.
+Each capability must work through the portable Sting contract and preserve structured native errors. Engine-specific objects such as QuickJS `JSValue`, Hermes/JSI values, Swift objects, Kotlin/JNI objects, UIKit views, or Android `View` instances must not become public Sting module values.
 
 ## First-party module roadmap
 
@@ -203,4 +234,4 @@ The first useful platform set is expected to include:
 - `@stingjs/camera`;
 - `@stingjs/notifications`.
 
-Location, Network, Sensors, Notifications, Audio, and Camera can now share the generic event transport. Audio and Camera should still wait for the remaining permission/native-object/native-view capabilities rather than adding private bridge mechanisms.
+Location, Network, Sensors, Notifications, Audio, and Camera can share the generic event transport. Audio and Camera can now also consume the shared permission, native-object, and native-view capabilities instead of adding private bridge mechanisms.
