@@ -1,0 +1,285 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B20000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* AppDelegate.swift */; };
+		B20000000000000000000002 /* StingGoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000012 /* StingGoViewController.swift */; };
+		B20000000000000000000003 /* StingQuickJSRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000031 /* StingQuickJSRuntime */; };
+		B20000000000000000000004 /* StingRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000032 /* StingRuntime */; };
+		B20000000000000000000005 /* StingHaptics in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000033 /* StingHaptics */; };
+		B20000000000000000000006 /* StingClipboard in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000034 /* StingClipboard */; };
+		B20000000000000000000007 /* StingGoSupport in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000035 /* StingGoSupport */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B20000000000000000000010 /* StingGo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StingGo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000011 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B20000000000000000000012 /* StingGoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StingGoViewController.swift; sourceTree = "<group>"; };
+		B20000000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B20000000000000000000040 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B20000000000000000000003 /* StingQuickJSRuntime in Frameworks */,
+				B20000000000000000000004 /* StingRuntime in Frameworks */,
+				B20000000000000000000005 /* StingHaptics in Frameworks */,
+				B20000000000000000000006 /* StingClipboard in Frameworks */,
+				B20000000000000000000007 /* StingGoSupport in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B20000000000000000000050 = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000051 /* StingGo */,
+				B20000000000000000000052 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B20000000000000000000051 /* StingGo */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000011 /* AppDelegate.swift */,
+				B20000000000000000000012 /* StingGoViewController.swift */,
+				B20000000000000000000013 /* Info.plist */,
+			);
+			path = StingGo;
+			sourceTree = "<group>";
+		};
+		B20000000000000000000052 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000010 /* StingGo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B20000000000000000000060 /* StingGo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B20000000000000000000081 /* Build configuration list for PBXNativeTarget "StingGo" */;
+			buildPhases = (
+				B20000000000000000000070 /* Sources */,
+				B20000000000000000000040 /* Frameworks */,
+				B20000000000000000000071 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StingGo;
+			packageProductDependencies = (
+				B20000000000000000000031 /* StingQuickJSRuntime */,
+				B20000000000000000000032 /* StingRuntime */,
+				B20000000000000000000033 /* StingHaptics */,
+				B20000000000000000000034 /* StingClipboard */,
+				B20000000000000000000035 /* StingGoSupport */,
+			);
+			productName = StingGo;
+			productReference = B20000000000000000000010 /* StingGo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B20000000000000000000072 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					B20000000000000000000060 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = B20000000000000000000080 /* Build configuration list for PBXProject "StingGo" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B20000000000000000000050;
+			packageReferences = (
+				B20000000000000000000020 /* XCLocalSwiftPackageReference "../../../native/ios/QuickJSRuntime" */,
+				B20000000000000000000021 /* XCLocalSwiftPackageReference "../../../native/ios" */,
+				B20000000000000000000022 /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */,
+				B20000000000000000000023 /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */,
+				B20000000000000000000024 /* XCLocalSwiftPackageReference "Support" */,
+			);
+			productRefGroup = B20000000000000000000052 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B20000000000000000000060 /* StingGo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B20000000000000000000071 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B20000000000000000000070 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B20000000000000000000001 /* AppDelegate.swift in Sources */,
+				B20000000000000000000002 /* StingGoViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B20000000000000000000090 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B20000000000000000000091 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B20000000000000000000092 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = StingGo/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = run.stingjs.go;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B20000000000000000000093 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = StingGo/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = run.stingjs.go;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B20000000000000000000080 /* Build configuration list for PBXProject "StingGo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B20000000000000000000090 /* Debug */,
+				B20000000000000000000091 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B20000000000000000000081 /* Build configuration list for PBXNativeTarget "StingGo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B20000000000000000000092 /* Debug */,
+				B20000000000000000000093 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B20000000000000000000020 /* XCLocalSwiftPackageReference "../../../native/ios/QuickJSRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/ios/QuickJSRuntime;
+		};
+		B20000000000000000000021 /* XCLocalSwiftPackageReference "../../../native/ios" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/ios;
+		};
+		B20000000000000000000022 /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/haptics;
+		};
+		B20000000000000000000023 /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/modules/clipboard;
+		};
+		B20000000000000000000024 /* XCLocalSwiftPackageReference "Support" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Support;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B20000000000000000000031 /* StingQuickJSRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000020 /* XCLocalSwiftPackageReference "../../../native/ios/QuickJSRuntime" */;
+			productName = StingQuickJSRuntime;
+		};
+		B20000000000000000000032 /* StingRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000021 /* XCLocalSwiftPackageReference "../../../native/ios" */;
+			productName = StingRuntime;
+		};
+		B20000000000000000000033 /* StingHaptics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000022 /* XCLocalSwiftPackageReference "../../../packages/modules/haptics" */;
+			productName = StingHaptics;
+		};
+		B20000000000000000000034 /* StingClipboard */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000023 /* XCLocalSwiftPackageReference "../../../packages/modules/clipboard" */;
+			productName = StingClipboard;
+		};
+		B20000000000000000000035 /* StingGoSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20000000000000000000024 /* XCLocalSwiftPackageReference "Support" */;
+			productName = StingGoSupport;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B20000000000000000000072 /* Project object */;
+}

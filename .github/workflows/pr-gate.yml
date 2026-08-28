@@ -101,7 +101,7 @@ jobs:
               esac
 
               case "$file" in
-                native/ios/*|examples/hello-world/ios/*)
+                native/ios/*|examples/hello-world/ios/*|apps/sting-go/ios/*)
                   ios=true
                   ;;
               esac
