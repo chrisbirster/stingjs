@@ -35,7 +35,11 @@ test -d "$IOS_RUNTIME_DIR/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcfra
 
 wrapper_jar="$GRADLE_RUNTIME_DIR/gradle-wrapper.jar"
 curl --fail --location --silent --show-error "$GRADLE_WRAPPER_URL" --output "$wrapper_jar"
-printf '%s  %s\n' "$GRADLE_WRAPPER_SHA256" "$wrapper_jar" | sha256sum --check --strict
+actual_wrapper_sha="$(node -e 'const fs=require("node:fs");const crypto=require("node:crypto");process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$wrapper_jar")"
+if [[ "$actual_wrapper_sha" != "$GRADLE_WRAPPER_SHA256" ]]; then
+  echo "error: Gradle wrapper checksum mismatch: expected $GRADLE_WRAPPER_SHA256, got $actual_wrapper_sha" >&2
+  exit 1
+fi
 
 npm install --prefix "$PACKAGE_DIR"
 npm run build --prefix "$PACKAGE_DIR"
