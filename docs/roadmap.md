@@ -21,7 +21,7 @@ Implementation order:
 
 `Image`, `TextInput`, and `ScrollView` are v0.1 features, but they are deliberately after the first three-component event proof.
 
-Official QuickJS `2026-06-04` is the accepted v0.1 production JavaScript engine. QuickJS-NG remains a temporary secondary conformance/performance lane; React Native + Hermes remains the external competitor/reference baseline; JavaScriptCore/UIKit remains the independent iOS semantic/native reference lane. Physical Android evidence validates and characterizes the accepted QuickJS direction and can reopen the decision only if it exposes a severe blocker.
+Official QuickJS `2026-06-04` is the accepted production JavaScript engine. QuickJS-NG is frozen as an experimental/reference prototype and no longer receives product feature parity; React Native + Hermes remains the external competitor/reference baseline; JavaScriptCore/UIKit remains the independent iOS semantic/native reference lane. Physical Android evidence validates and characterizes the accepted QuickJS direction and can reopen the decision only if it exposes a severe blocker.
 
 ## v0.2 — developer experience
 
