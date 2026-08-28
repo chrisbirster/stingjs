@@ -37,8 +37,11 @@ export interface TextProps extends StyleProps {
   accessibilityLabel?: string;
 }
 
-export type ButtonVariant = 'native' | 'primary' | 'secondary' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export interface HeadingProps extends TextProps {
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+export type ButtonVariant = 'native' | 'primary';
 
 export interface ButtonProps extends StyleProps {
   children?: unknown;
@@ -46,7 +49,6 @@ export interface ButtonProps extends StyleProps {
   accessibilityLabel?: string;
   onPress?: () => void;
   variant?: ButtonVariant;
-  size?: ButtonSize;
 }
 
 export interface ImageProps extends StyleProps {
@@ -69,23 +71,31 @@ export interface ScrollViewProps extends StyleProps {
   accessibilityLabel?: string;
 }
 
+// Recipes are a design-system layer over the modifier IR. Sting ships one
+// deliberately small example so the framework does not become a theme library.
 const buttonRecipe = recipe({
-  base: [rounded(8), fontWeight('semibold')],
   variants: {
     variant: {
-      primary: [background('#4f46e5'), foreground('#ffffff')],
-      secondary: [background('#f4f4f5'), foreground('#18181b')],
-      ghost: [background('#00000000'), foreground('#4f46e5')],
-      danger: [background('#dc2626'), foreground('#ffffff')],
-    },
-    size: {
-      sm: [paddingX(12), paddingY(6), fontSize(14)],
-      md: [paddingX(16), paddingY(10), fontSize(16)],
-      lg: [paddingX(20), paddingY(12), fontSize(18)],
+      primary: [
+        background('#4f46e5'),
+        foreground('#ffffff'),
+        rounded(8),
+        fontWeight('semibold'),
+        paddingX(16),
+        paddingY(10),
+      ],
     },
   },
-  defaultVariants: { size: 'md' },
 });
+
+const headingDefaults: Readonly<Record<NonNullable<HeadingProps['level']>, ModifierInput>> = {
+  1: [fontSize(32), fontWeight('bold')],
+  2: [fontSize(28), fontWeight('bold')],
+  3: [fontSize(24), fontWeight('semibold')],
+  4: [fontSize(20), fontWeight('semibold')],
+  5: [fontSize(18), fontWeight('semibold')],
+  6: [fontSize(16), fontWeight('semibold')],
+};
 
 function defineForwardedGetter(
   target: Record<string, unknown>,
@@ -167,7 +177,7 @@ export function View(props: ViewProps): HostNode {
   );
 }
 
-/** Semantic neutral container. Box is a View with the Sting styling vocabulary. */
+/** Semantic neutral container. Box resolves to the same native View host. */
 export function Box(props: ViewProps): HostNode {
   return View(props);
 }
@@ -206,14 +216,11 @@ export function Center(props: ViewProps): HostNode {
   );
 }
 
-/**
- * Native text backed by UILabel on iOS and TextView on Android.
- * A Text owns exactly one persistent host text node, preserving fine-grained updates.
- */
-export function Text(props: TextProps): HostNode {
+function createNativeText(props: TextProps, defaults?: ModifierInput): HostNode {
   const node = createElement('text');
   const textNode = createTextNode('');
   const styling = createMemo(() => resolveStyling({
+    defaults,
     style: props.style,
     sx: props.sx,
     props,
@@ -240,15 +247,24 @@ export function Text(props: TextProps): HostNode {
   return node;
 }
 
-/** Native pressable button with optional design-system variants. */
+/**
+ * Native text backed by UILabel on iOS and TextView on Android.
+ * A Text owns exactly one persistent host text node, preserving fine-grained updates.
+ */
+export function Text(props: TextProps): HostNode {
+  return createNativeText(props);
+}
+
+/** Semantic heading. On native it remains a Text host with heading typography defaults. */
+export function Heading(props: HeadingProps): HostNode {
+  return createNativeText(props, headingDefaults[props.level ?? 1]);
+}
+
+/** Native pressable button. `primary` demonstrates the recipe/variant layer. */
 export function Button(props: ButtonProps): HostNode {
   const variant = () => {
     const selected = props.variant ?? 'native';
-    if (selected === 'native' && props.size === undefined) return undefined;
-    return buttonRecipe({
-      variant: selected === 'native' ? undefined : selected,
-      size: props.size,
-    });
+    return selected === 'native' ? undefined : buttonRecipe({ variant: selected });
   };
 
   return createNativePrimitive(
