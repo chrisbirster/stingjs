@@ -1,7 +1,10 @@
 export type FlexDirection = 'row' | 'column';
 export type AlignItems = 'stretch' | 'start' | 'center' | 'end';
 export type JustifyContent = 'start' | 'center';
-export type FontWeight = 'regular' | 'medium' | 'semibold' | 'bold' | 400 | 500 | 600 | 700;
+/** CSS/StyleX-safe canonical font weights carried by the portable Style IR. */
+export type FontWeight = 'normal' | 'bold' | number;
+/** Semantic names accepted by Sting modifier helpers before canonicalization. */
+export type FontWeightValue = FontWeight | 'regular' | 'medium' | 'semibold';
 
 export interface Style {
   flexDirection?: FlexDirection;
@@ -9,8 +12,6 @@ export interface Style {
   justifyContent?: JustifyContent;
   gap?: number;
   padding?: number;
-  paddingHorizontal?: number;
-  paddingVertical?: number;
   paddingTop?: number;
   paddingRight?: number;
   paddingBottom?: number;
@@ -189,6 +190,22 @@ function resolveColor(value: ColorValue): string {
     : value;
 }
 
+function resolveFontWeight(value: FontWeightValue): FontWeight {
+  switch (value) {
+    case 'regular':
+    case 'normal':
+      return 400;
+    case 'medium':
+      return 500;
+    case 'semibold':
+      return 600;
+    case 'bold':
+      return 700;
+    default:
+      return value;
+  }
+}
+
 export const flexDirection = (value: FlexDirection) => makeStyleModifier('flexDirection', value);
 export const alignItems = (value: AlignItems) => makeStyleModifier('alignItems', value);
 export const justifyContent = (value: JustifyContent) => makeStyleModifier('justifyContent', value);
@@ -211,7 +228,7 @@ export const height = (value: number) => makeStyleModifier('height', value);
 export const background = (value: ColorValue) => makeStyleModifier('backgroundColor', resolveColor(value));
 export const foreground = (value: ColorValue) => makeStyleModifier('color', resolveColor(value));
 export const fontSize = (value: number) => makeStyleModifier('fontSize', value);
-export const fontWeight = (value: FontWeight) => makeStyleModifier('fontWeight', value);
+export const fontWeight = (value: FontWeightValue) => makeStyleModifier('fontWeight', resolveFontWeight(value));
 export const rounded = (value: RadiusValue) => makeStyleModifier('borderRadius', resolveRadius(value));
 export const cornerRadius = rounded;
 export const opacity = (value: number) => makeStyleModifier('opacity', value);
@@ -256,14 +273,6 @@ function applyStyleObject(
     target.paddingRight = style.padding;
     target.paddingBottom = style.padding;
     target.paddingLeft = style.padding;
-  }
-  if (style.paddingHorizontal !== undefined) {
-    target.paddingLeft = style.paddingHorizontal;
-    target.paddingRight = style.paddingHorizontal;
-  }
-  if (style.paddingVertical !== undefined) {
-    target.paddingTop = style.paddingVertical;
-    target.paddingBottom = style.paddingVertical;
   }
 
   for (const key of CANONICAL_STYLE_KEYS) {
@@ -312,14 +321,6 @@ function applyModifier(
       target.paddingRight = value as number;
       target.paddingBottom = value as number;
       target.paddingLeft = value as number;
-      break;
-    case 'paddingHorizontal':
-      target.paddingLeft = value as number;
-      target.paddingRight = value as number;
-      break;
-    case 'paddingVertical':
-      target.paddingTop = value as number;
-      target.paddingBottom = value as number;
       break;
     default:
       (target as Record<string, unknown>)[property] = value;
