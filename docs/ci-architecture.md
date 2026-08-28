@@ -11,23 +11,24 @@ Sting CI is split by responsibility. A responsibility check validates its own la
 | `Check · Android` | Android `StingRuntime` library compile and real runtime instrumentation |
 | `Check · iOS` | Swift/UIKit `StingRuntime` tests and simulator build |
 | `Check · Modules` | Native module packages built independently on Android and iOS |
+| `Check · Tooling` | Sting CLI/tooling checks across Linux, macOS, and Windows |
 | `Check · E2E` | Complete Hello World application with runtime, production engine, and modules assembled together |
-| `Tooling` | CLI/tooling responsibility, path-scoped separately |
 | `Experimental Runtime Benchmarks` | QuickJS-NG, Hermes, and React Native/Hermes comparison evidence; never a feature merge gate |
 
-The reusable responsibility workflows are named `_check-*.yml`. They can also be launched manually with `workflow_dispatch`.
+The responsibility workflows are reusable through `workflow_call` and can also be launched manually with `workflow_dispatch`.
 
 ## Trigger model
 
 ### Feature pull request → `dev`
 
-`PR Gate` classifies changed files and runs only affected responsibility checks. E2E does not run here by default.
+`PR Gate` classifies changed files and runs only affected responsibility checks. E2E does not run for ordinary feature work. Changes to CI workflow definitions intentionally run E2E so the integration workflow itself is validated before merge.
 
 Examples:
 
 - styling change in `packages/native` → JS/TS + StingRuntime + Android + iOS
 - Android host-only change → Android
 - native module change → JS/TS + Modules
+- tooling change → Tooling
 - docs-only change → classifier + required gate only
 
 `PR Gate / Required` is the single aggregation check intended for branch protection.
@@ -47,6 +48,10 @@ Examples:
 ### Release
 
 Release workflows remain responsible for release-specific packaging, distributable artifacts, tags, and release evidence. They should consume the same production assumptions rather than redefining which JavaScript engine is authoritative.
+
+## Superseded runs
+
+`PR Gate`, `Dev Integration`, and `Promotion Gate` use concurrency groups with `cancel-in-progress: true`. A newer commit replaces obsolete platform/E2E work instead of allowing stale Android/iOS runs to consume runners in parallel.
 
 ## Boundary rule
 
