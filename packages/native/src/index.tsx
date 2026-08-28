@@ -99,6 +99,10 @@ function defineForwardedGetter(
   });
 }
 
+function hasResolvedStyle(styling: ReturnType<typeof resolveStyling>): boolean {
+  return Object.entries(styling.style).some(([key, value]) => key !== '__stingResolved' && value !== null);
+}
+
 function createNativePrimitive(
   type: string,
   props: StyleProps & Record<string, unknown>,
@@ -117,11 +121,21 @@ function createNativePrimitive(
   }));
 
   const forwarded: Record<string, unknown> = {};
+  let hasEmittedStyle = false;
+  let hasEmittedNativeModifiers = false;
   for (const key of forwardedKeys) {
     defineForwardedGetter(forwarded, key, () => props[key]);
   }
-  defineForwardedGetter(forwarded, 'style', () => styling().style);
-  defineForwardedGetter(forwarded, 'nativeModifiers', () => styling().nativeModifiers);
+  defineForwardedGetter(forwarded, 'style', () => {
+    const resolved = styling();
+    if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
+    return hasEmittedStyle ? resolved.style : undefined;
+  });
+  defineForwardedGetter(forwarded, 'nativeModifiers', () => {
+    const resolved = styling();
+    if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
+    return hasEmittedNativeModifiers ? resolved.nativeModifiers : undefined;
+  });
   spread(node, forwarded);
   return node;
 }
@@ -130,6 +144,7 @@ function stringifyTextChild(value: unknown): string {
   if (typeof value === 'function') {
     return stringifyTextChild((value as () => unknown)());
   }
+
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
@@ -184,13 +199,17 @@ export function Center(props: ViewProps): HostNode {
     props as ViewProps & Record<string, unknown>,
     ['children', 'accessibilityLabel'],
     [
+      flexDirection('column'),
       { $$stingModifier: true, kind: 'style', property: 'alignItems', value: 'center' },
       { $$stingModifier: true, kind: 'style', property: 'justifyContent', value: 'center' },
     ],
   );
 }
 
-/** Native text backed by UILabel on iOS and TextView on Android. */
+/**
+ * Native text backed by UILabel on iOS and TextView on Android.
+ * A Text owns exactly one persistent host text node, preserving fine-grained updates.
+ */
 export function Text(props: TextProps): HostNode {
   const node = createElement('text');
   const textNode = createTextNode('');
@@ -201,9 +220,19 @@ export function Text(props: TextProps): HostNode {
     modifiers: props.modifiers,
   }));
   const forwarded: Record<string, unknown> = {};
+  let hasEmittedStyle = false;
+  let hasEmittedNativeModifiers = false;
   defineForwardedGetter(forwarded, 'accessibilityLabel', () => props.accessibilityLabel);
-  defineForwardedGetter(forwarded, 'style', () => styling().style);
-  defineForwardedGetter(forwarded, 'nativeModifiers', () => styling().nativeModifiers);
+  defineForwardedGetter(forwarded, 'style', () => {
+    const resolved = styling();
+    if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
+    return hasEmittedStyle ? resolved.style : undefined;
+  });
+  defineForwardedGetter(forwarded, 'nativeModifiers', () => {
+    const resolved = styling();
+    if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
+    return hasEmittedNativeModifiers ? resolved.nativeModifiers : undefined;
+  });
 
   spread(node, forwarded, true);
   insertNode(node, textNode);
