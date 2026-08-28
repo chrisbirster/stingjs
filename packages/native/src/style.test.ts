@@ -4,6 +4,7 @@ import {
   cornerRadius,
   font,
   foreground,
+  gap,
   m,
   nativeBlur,
   padding,
@@ -42,6 +43,16 @@ describe('modifier styling', () => {
     expect(resolved.style.borderRadius).toBe(12);
   });
 
+  it('resolves shared tokens directly through low-level modifiers', () => {
+    const resolved = resolveStyling({
+      modifiers: [padding('4'), gap('3'), background('surface'), cornerRadius('lg')],
+    });
+    expect(resolved.style.paddingTop).toBe(16);
+    expect(resolved.style.gap).toBe(12);
+    expect(resolved.style.backgroundColor).toBe('#ffffff');
+    expect(resolved.style.borderRadius).toBe(12);
+  });
+
   it('expresses semantic font and corner-radius operations in the same IR', () => {
     const resolved = resolveStyling({ modifiers: [font('title'), cornerRadius(14)] });
     expect(resolved.style.fontSize).toBe(28);
@@ -53,7 +64,7 @@ describe('modifier styling', () => {
     const button = recipe({
       variants: {
         variant: {
-          primary: [background('#4f46e5'), foreground('#ffffff')],
+          primary: [background('accent'), foreground('onAccent')],
         },
       },
     });
