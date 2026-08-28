@@ -26,4 +26,8 @@ sting run ios
 sting run android
 ```
 
+## Gradle wrapper
+
+Generated Android projects use the standard Gradle wrapper scripts and `gradle-wrapper.properties` pinned to Gradle 9.5.0. During creation, Sting obtains Gradle's official `gradle-9.5.0-wrapper.jar` from `services.gradle.org` and verifies its published SHA-256 (`497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7`) before writing it into the generated project. A packaged creator may cache that same verified JAR under `runtime/gradle/gradle-wrapper.jar`.
+
 Official QuickJS is the production engine on both native platforms. The generated iOS application links the packaged `StingQuickJSRuntime`; it does not use the JavaScriptCore reference host as a production substitute.

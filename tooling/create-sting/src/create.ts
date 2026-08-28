@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -16,6 +18,9 @@ import { fileURLToPath } from 'node:url';
 const TEXT_EXTENSIONS = new Set([
   '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.pbxproj', '.properties', '.swift', '.ts', '.tsx', '.xml', '.sh', '.xcscheme',
 ]);
+const GRADLE_WRAPPER_VERSION = '9.5.0';
+const GRADLE_WRAPPER_URL = `https://services.gradle.org/distributions/gradle-${GRADLE_WRAPPER_VERSION}-wrapper.jar`;
+const GRADLE_WRAPPER_SHA256 = '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7';
 
 export interface CreateStingProjectOptions {
   targetDir: string;
@@ -24,6 +29,7 @@ export interface CreateStingProjectOptions {
   iosBundleIdentifier?: string;
   runtimeArtifactsDir?: string;
   iosRuntimeArtifactsDir?: string;
+  gradleWrapperJarPath?: string;
   force?: boolean;
 }
 
@@ -117,6 +123,61 @@ function resolveIosRuntimeArtifacts(explicit?: string): string {
   );
 }
 
+function sha256(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function verifyOfficialGradleWrapper(path: string): void {
+  const actual = sha256(path);
+  if (actual !== GRADLE_WRAPPER_SHA256) {
+    throw new Error(
+      `Gradle ${GRADLE_WRAPPER_VERSION} wrapper checksum mismatch: expected ${GRADLE_WRAPPER_SHA256}, got ${actual}`,
+    );
+  }
+}
+
+function downloadOfficialGradleWrapper(target: string): void {
+  mkdirSync(dirname(target), { recursive: true });
+  const script = `
+const { writeFileSync } = require('node:fs');
+const [url, target] = process.argv.slice(1);
+fetch(url).then(async (response) => {
+  if (!response.ok) throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+  writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+}).catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
+`;
+  try {
+    execFileSync(process.execPath, ['-e', script, GRADLE_WRAPPER_URL, target], { stdio: 'inherit' });
+  } catch {
+    throw new Error(`Unable to download the official Gradle ${GRADLE_WRAPPER_VERSION} wrapper from ${GRADLE_WRAPPER_URL}.`);
+  }
+  verifyOfficialGradleWrapper(target);
+}
+
+function installGradleWrapperJar(target: string, explicit?: string): void {
+  const trustedOverride = explicit ?? process.env.STING_GRADLE_WRAPPER_JAR;
+  if (trustedOverride) {
+    const source = resolve(trustedOverride);
+    if (!existsSync(source)) throw new Error(`Gradle wrapper JAR was not found: ${source}`);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+    return;
+  }
+
+  const packaged = fileURLToPath(new URL('../runtime/gradle/gradle-wrapper.jar', import.meta.url));
+  if (existsSync(packaged)) {
+    verifyOfficialGradleWrapper(packaged);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(packaged, target);
+    return;
+  }
+
+  downloadOfficialGradleWrapper(target);
+}
+
 function assertTargetAvailable(targetDir: string, force: boolean): void {
   if (!existsSync(targetDir)) return;
   const entries = readdirSync(targetDir);
@@ -195,6 +256,10 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
   mkdirSync(libs, { recursive: true });
   cpSync(join(runtimeArtifactsDir, 'sting-runtime.aar'), join(libs, 'sting-runtime.aar'));
   cpSync(join(runtimeArtifactsDir, 'sting-quickjs.aar'), join(libs, 'sting-quickjs.aar'));
+  installGradleWrapperJar(
+    join(targetDir, 'android', 'gradle', 'wrapper', 'gradle-wrapper.jar'),
+    options.gradleWrapperJarPath,
+  );
 
   const iosRuntimeTarget = join(targetDir, 'ios', 'StingQuickJSRuntime');
   rmSync(iosRuntimeTarget, { recursive: true, force: true });

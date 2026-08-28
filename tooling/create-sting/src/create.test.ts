@@ -9,17 +9,20 @@ function fixture(): {
   root: string;
   androidArtifacts: string;
   iosArtifacts: string;
+  gradleWrapperJar: string;
   target: string;
 } {
   const root = mkdtempSync(join(tmpdir(), 'create-sting-'));
   const androidArtifacts = join(root, 'android-artifacts');
   const iosArtifacts = join(root, 'ios-artifacts');
   const iosPackage = join(iosArtifacts, 'StingQuickJSRuntime');
+  const gradleWrapperJar = join(root, 'gradle-wrapper.jar');
   const target = join(root, 'my-app');
 
   mkdirSync(androidArtifacts, { recursive: true });
   writeFileSync(join(androidArtifacts, 'sting-runtime.aar'), 'runtime-aar');
   writeFileSync(join(androidArtifacts, 'sting-quickjs.aar'), 'quickjs-aar');
+  writeFileSync(gradleWrapperJar, 'test-wrapper-jar');
 
   mkdirSync(join(iosPackage, 'Artifacts', 'StingQuickJSBinary.xcframework'), { recursive: true });
   mkdirSync(join(iosPackage, 'Sources', 'StingQuickJSRuntime'), { recursive: true });
@@ -27,11 +30,11 @@ function fixture(): {
   writeFileSync(join(iosPackage, 'Sources', 'StingQuickJSRuntime', 'marker.swift'), '// marker\n');
   writeFileSync(join(iosPackage, 'Artifacts', 'StingQuickJSBinary.xcframework', 'Info.plist'), '<plist/>\n');
 
-  return { root, androidArtifacts, iosArtifacts, target };
+  return { root, androidArtifacts, iosArtifacts, gradleWrapperJar, target };
 }
 
 test('creates a standalone Android and iOS Sting project from prebuilt hosts', () => {
-  const { androidArtifacts, iosArtifacts, target } = fixture();
+  const { androidArtifacts, iosArtifacts, gradleWrapperJar, target } = fixture();
   const result = createStingProject({
     targetDir: target,
     projectName: 'my-app',
@@ -39,6 +42,7 @@ test('creates a standalone Android and iOS Sting project from prebuilt hosts', (
     iosBundleIdentifier: 'com.example.myapp.ios',
     runtimeArtifactsDir: androidArtifacts,
     iosRuntimeArtifactsDir: iosArtifacts,
+    gradleWrapperJarPath: gradleWrapperJar,
   });
 
   assert.equal(result.projectName, 'my-app');
@@ -56,8 +60,12 @@ test('creates a standalone Android and iOS Sting project from prebuilt hosts', (
 
   const gradlew = readFileSync(join(target, 'android/gradlew'), 'utf8');
   const gradlewBat = readFileSync(join(target, 'android/gradlew.bat'), 'utf8');
-  assert.match(gradlew, /VERSION=9\.5\.0/);
-  assert.match(gradlewBat, /set VERSION=9\.5\.0/);
+  const wrapperProperties = readFileSync(join(target, 'android/gradle/wrapper/gradle-wrapper.properties'), 'utf8');
+  assert.match(gradlew, /gradle\/wrapper\/gradle-wrapper\.jar/);
+  assert.match(gradlewBat, /gradle\\wrapper\\gradle-wrapper\.jar/);
+  assert.match(wrapperProperties, /gradle-9\.5\.0-bin\.zip/);
+  assert.match(wrapperProperties, /553c78f50dafcd54d65b9a444649057857469edf836431389695608536d6b746/);
+  assert.equal(readFileSync(join(target, 'android/gradle/wrapper/gradle-wrapper.jar'), 'utf8'), 'test-wrapper-jar');
 
   if (process.platform !== 'win32') {
     const mode = statSync(join(target, 'android/gradlew')).mode;
@@ -106,18 +114,19 @@ test('creates a standalone Android and iOS Sting project from prebuilt hosts', (
 });
 
 test('accepts the iOS package directory directly', () => {
-  const { androidArtifacts, iosArtifacts, target } = fixture();
+  const { androidArtifacts, iosArtifacts, gradleWrapperJar, target } = fixture();
   const iosPackage = join(iosArtifacts, 'StingQuickJSRuntime');
   const result = createStingProject({
     targetDir: target,
     runtimeArtifactsDir: androidArtifacts,
     iosRuntimeArtifactsDir: iosPackage,
+    gradleWrapperJarPath: gradleWrapperJar,
   });
   assert.equal(result.iosRuntimeArtifactsDir, iosPackage);
 });
 
 test('rejects a non-empty target unless force is used', () => {
-  const { androidArtifacts, iosArtifacts, target } = fixture();
+  const { androidArtifacts, iosArtifacts, gradleWrapperJar, target } = fixture();
   mkdirSync(target, { recursive: true });
   writeFileSync(join(target, 'existing.txt'), 'keep me');
   assert.throws(
@@ -125,6 +134,7 @@ test('rejects a non-empty target unless force is used', () => {
       targetDir: target,
       runtimeArtifactsDir: androidArtifacts,
       iosRuntimeArtifactsDir: iosArtifacts,
+      gradleWrapperJarPath: gradleWrapperJar,
     }),
     /Target directory is not empty/,
   );
@@ -133,14 +143,17 @@ test('rejects a non-empty target unless force is used', () => {
 test('requires distributable Android host artifacts', () => {
   const root = mkdtempSync(join(tmpdir(), 'create-sting-missing-android-'));
   const iosPackage = join(root, 'ios', 'StingQuickJSRuntime');
+  const gradleWrapperJar = join(root, 'gradle-wrapper.jar');
   mkdirSync(join(iosPackage, 'Artifacts', 'StingQuickJSBinary.xcframework'), { recursive: true });
   mkdirSync(join(iosPackage, 'Sources', 'StingQuickJSRuntime'), { recursive: true });
   writeFileSync(join(iosPackage, 'Package.swift'), '// package\n');
+  writeFileSync(gradleWrapperJar, 'test-wrapper-jar');
   assert.throws(
     () => createStingProject({
       targetDir: join(root, 'app'),
       runtimeArtifactsDir: join(root, 'missing'),
       iosRuntimeArtifactsDir: iosPackage,
+      gradleWrapperJarPath: gradleWrapperJar,
     }),
     /Sting Android host artifacts were not found/,
   );
@@ -149,14 +162,17 @@ test('requires distributable Android host artifacts', () => {
 test('requires distributable iOS host artifacts', () => {
   const root = mkdtempSync(join(tmpdir(), 'create-sting-missing-ios-'));
   const androidArtifacts = join(root, 'android');
+  const gradleWrapperJar = join(root, 'gradle-wrapper.jar');
   mkdirSync(androidArtifacts, { recursive: true });
   writeFileSync(join(androidArtifacts, 'sting-runtime.aar'), 'runtime-aar');
   writeFileSync(join(androidArtifacts, 'sting-quickjs.aar'), 'quickjs-aar');
+  writeFileSync(gradleWrapperJar, 'test-wrapper-jar');
   assert.throws(
     () => createStingProject({
       targetDir: join(root, 'app'),
       runtimeArtifactsDir: androidArtifacts,
       iosRuntimeArtifactsDir: join(root, 'missing'),
+      gradleWrapperJarPath: gradleWrapperJar,
     }),
     /Sting iOS host artifacts were not found/,
   );
