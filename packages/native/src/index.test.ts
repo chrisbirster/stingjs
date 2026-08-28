@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createSignal } from 'solid-js';
+import { createSignal, flush } from 'solid-js';
 import {
   STING_PROTOCOL_VERSION,
   installNativeBridge,
@@ -11,6 +11,7 @@ import {
   Button,
   Heading,
   Stack,
+  View,
   background,
   nativeBlur,
 } from './index';
@@ -42,6 +43,18 @@ function propertyPayloads(bridge: StingNativeBridge, name: string): unknown[] {
 afterEach(() => resetNativeBridgeForTests());
 
 describe('@stingjs/native styling integration', () => {
+  it('keeps a completely unstyled primitive off both styling bridge channels', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+
+    const dispose = render(() => View({}), host.root);
+
+    expect(propertyPayloads(bridge, 'style')).toEqual([]);
+    expect(propertyPayloads(bridge, 'nativeModifiers')).toEqual([]);
+
+    dispose();
+  });
+
   it('converges semantic props, sx, and explicit modifiers into one Style IR', () => {
     const bridge = makeBridge();
     const host = installNativeBridge(bridge);
@@ -129,9 +142,33 @@ describe('@stingjs/native styling integration', () => {
     expect(styles.at(-1)?.opacity).toBe(0.5);
 
     setActive(false);
+    flush();
     styles = propertyPayloads(bridge, 'style') as Array<Record<string, unknown>>;
     expect(styles.at(-1)?.__stingResolved).toBe(true);
     expect(styles.at(-1)?.opacity).toBeNull();
+
+    dispose();
+  });
+
+  it('removes reactive native modifiers through the same bridge channel', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const [active, setActive] = createSignal(true);
+
+    const dispose = render(
+      () => Stack({
+        modifiers: () => active() ? nativeBlur(18) : [],
+      }),
+      host.root,
+    );
+
+    let modifiers = propertyPayloads(bridge, 'nativeModifiers');
+    expect(modifiers.at(-1)).toEqual([{ name: 'blur', value: { radius: 18 } }]);
+
+    setActive(false);
+    flush();
+    modifiers = propertyPayloads(bridge, 'nativeModifiers');
+    expect(modifiers.at(-1)).toEqual([]);
 
     dispose();
   });
