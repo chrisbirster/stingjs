@@ -2,7 +2,7 @@ import { createSignal } from 'solid-js';
 import * as stylex from '@stingjs/stylex';
 import { Clipboard } from '@stingjs/clipboard';
 import { Haptics } from '@stingjs/haptics';
-import { Button, Stack, Text, fontSize, nativeBlur } from '@stingjs/native';
+import { Button, Heading, Stack, Text, nativeBlur } from '@stingjs/native';
 
 const styles = stylex.create({
   screen: {
@@ -25,7 +25,7 @@ export default function App() {
       sx={styles.screen}
       modifiers={[nativeBlur()]}
     >
-      <Text modifiers={[fontSize(24)]}>Count: {count()}</Text>
+      <Heading level={2}>Count: {count()}</Heading>
       <Button
         variant="primary"
         onPress={() => {
@@ -37,7 +37,6 @@ export default function App() {
       </Button>
       <Text sx={styles.status}>{clipboardStatus()}</Text>
       <Button
-        variant="secondary"
         onPress={() => {
           setCount(count() + 1);
           Haptics.impact('medium');
