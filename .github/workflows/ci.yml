@@ -8,6 +8,11 @@ on:
       - dev
       - main
 
+# Engine policy:
+# - Official QuickJS is Sting's production JavaScript engine and is a required CI gate.
+# - QuickJS-NG and Hermes are comparison/experimental lanes only and must never block feature PRs.
+# - The React Native/Hermes baseline is benchmark evidence only and must never block Sting changes.
+
 jobs:
   typescript:
     runs-on: ubuntu-latest
@@ -62,6 +67,7 @@ jobs:
   runtime-hermes-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,6 +93,7 @@ jobs:
   react-native-baseline-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -152,18 +159,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.5.0'
-      - name: Compile Android host, both QuickJS candidates, release app, and instrumentation APKs
+      - name: Compile Android production host, release app, and instrumentation APKs
         working-directory: examples/hello-world/android
         run: gradle :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest :sting-runtime:assembleDebugAndroidTest --no-daemon
-      - name: Verify compiled Sting bundles and native candidates are packaged
+      - name: Verify official QuickJS is packaged in the normal application
         run: |
           test -f examples/hello-world/android/app/build/outputs/apk/release/app-release.apk
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-app.js'
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-benchmark.js'
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so'
           unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_android.so'
-          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_ng_android.so'
-          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_ng_android.so'
+          if unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -Fq 'libsting_quickjs_ng_android.so'; then
+            echo 'QuickJS-NG must not be packaged in the normal Sting Android application' >&2
+            exit 1
+          fi
           find examples/hello-world/android/app/build/outputs/apk/androidTest -name '*.apk' -type f | grep -q .
       - name: Enable KVM for Android emulator
         run: |
