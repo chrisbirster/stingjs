@@ -58,11 +58,18 @@ export const tokens = {
     danger: '#dc2626',
     onDanger: '#ffffff',
   },
+  fonts: {
+    body: { size: 16, weight: 'regular' as const },
+    title: { size: 28, weight: 'bold' as const },
+    heading: { size: 24, weight: 'semibold' as const },
+    caption: { size: 13, weight: 'medium' as const },
+  },
 } as const;
 
 export type SpaceToken = keyof typeof tokens.space;
 export type RadiusToken = keyof typeof tokens.radii;
 export type ColorToken = keyof typeof tokens.colors;
+export type FontToken = keyof typeof tokens.fonts;
 export type SpaceValue = SpaceToken | number;
 export type RadiusValue = RadiusToken | number;
 export type ColorValue = ColorToken | string;
@@ -190,7 +197,14 @@ export const foreground = (value: string) => makeStyleModifier('color', value);
 export const fontSize = (value: number) => makeStyleModifier('fontSize', value);
 export const fontWeight = (value: FontWeight) => makeStyleModifier('fontWeight', value);
 export const rounded = (value: number) => makeStyleModifier('borderRadius', value);
+export const cornerRadius = rounded;
 export const opacity = (value: number) => makeStyleModifier('opacity', value);
+
+/** Semantic typography modifier composed from the shared Sting font tokens. */
+export function font(value: FontToken): ModifierInput {
+  const token = tokens.fonts[value];
+  return [fontSize(token.size), fontWeight(token.weight)];
+}
 
 export function nativeModifier(name: string, value?: unknown): NativeModifier {
   return {
@@ -380,6 +394,7 @@ export interface RecipeDefinition {
 
 export type RecipeSelection = Readonly<Record<string, string | undefined>>;
 
+/** Design-system layer: resolve named variants into ordinary modifiers. */
 export function recipe(definition: RecipeDefinition) {
   return (selection: RecipeSelection = {}): readonly ModifierInput[] => {
     const result: ModifierInput[] = [definition.base];
