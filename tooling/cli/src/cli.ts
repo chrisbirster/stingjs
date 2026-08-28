@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { resolve } from 'node:path';
+import { loadStingConfig } from './config.js';
 import { collectDevices, collectDoctorChecks } from './platform.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
@@ -14,7 +16,7 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--no-bundle]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Check local Sting app prerequisites; add --runtime for Sting runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function doctor(args: string[]): void {
@@ -57,7 +59,23 @@ function devices(args: string[]): void {
   }
 }
 
-function run(args: string[]): void {
+async function config(args: string[]): Promise<void> {
+  const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
+  const loaded = await loadStingConfig(projectRoot);
+  if (!loaded) {
+    throw new Error(`No sting.config.ts (or supported JS config) found in ${projectRoot}`);
+  }
+
+  if (hasFlag(args, '--json')) {
+    console.log(JSON.stringify({ path: loaded.path, config: loaded.config }));
+    return;
+  }
+
+  console.log(`Sting config\n\n${loaded.path}`);
+  console.log(JSON.stringify(loaded.config, null, 2));
+}
+
+async function run(args: string[]): Promise<void> {
   const [platform, ...runArgs] = args;
   if (platform !== 'ios' && platform !== 'android') {
     throw new Error('Usage: sting run <ios|android> [options]');
@@ -67,14 +85,17 @@ function run(args: string[]): void {
     projectRoot: option(runArgs, '--project-root'),
     device: option(runArgs, '--device'),
     configuration: option(runArgs, '--configuration'),
+    variant: option(runArgs, '--variant'),
     skipBundle: hasFlag(runArgs, '--no-bundle'),
   };
-  const result = platform === 'ios' ? runIos(runOptions) : runAndroid(runOptions);
+  const result = platform === 'ios' ? await runIos(runOptions) : await runAndroid(runOptions);
   console.log(`\nSting app launched on ${result.device.name} (${result.device.id})`);
   console.log(`Application: ${result.applicationId}`);
 }
 
 async function start(args: string[]): Promise<void> {
+  const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
+  const loaded = await loadStingConfig(projectRoot);
   const portValue = option(args, '--port');
   const port = portValue === undefined ? undefined : Number.parseInt(portValue, 10);
   if (portValue !== undefined && (!Number.isInteger(port) || (port ?? -1) < 0 || (port ?? 0) > 65535)) {
@@ -82,8 +103,8 @@ async function start(args: string[]): Promise<void> {
   }
 
   const started = await startStingServer({
-    projectRoot: option(args, '--project-root'),
-    bundlePath: option(args, '--bundle'),
+    projectRoot,
+    bundlePath: option(args, '--bundle') ?? loaded?.config.bundle,
     host: option(args, '--host'),
     port,
   });
@@ -120,11 +141,14 @@ async function main(): Promise<void> {
     case 'devices':
       devices(args);
       return;
+    case 'config':
+      await config(args);
+      return;
     case 'start':
       await start(args);
       return;
     case 'run':
-      run(args);
+      await run(args);
       return;
     case undefined:
     case '--help':
