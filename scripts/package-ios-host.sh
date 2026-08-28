@@ -4,8 +4,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/dist/ios-host}"
 PACKAGE_DIR="$OUTPUT_DIR/StingQuickJSRuntime"
-QUICKJS_BUILD_DIR="$OUTPUT_DIR/build/simulator"
-QUICKJS_LIBRARY="$QUICKJS_BUILD_DIR/libsting_quickjs_ios.a"
+BUILD_DIR="$OUTPUT_DIR/build"
+SIM_ARM64_DIR="$BUILD_DIR/simulator-arm64"
+SIM_X86_64_DIR="$BUILD_DIR/simulator-x86_64"
+SIM_UNIVERSAL_DIR="$BUILD_DIR/simulator-universal"
+DEVICE_ARM64_DIR="$BUILD_DIR/device-arm64"
 ABI_HEADERS="$REPO_ROOT/native/ios/QuickJSRuntime/Sources/StingQuickJSABI/include"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -14,13 +17,32 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 rm -rf "$OUTPUT_DIR"
-mkdir -p "$QUICKJS_BUILD_DIR"
+mkdir -p "$SIM_ARM64_DIR" "$SIM_X86_64_DIR" "$SIM_UNIVERSAL_DIR" "$DEVICE_ARM64_DIR"
 
 # Producer boundary: building Sting from source is allowed to require Zig.
-# The package copied below contains only Swift/C source plus a prebuilt
-# official-QuickJS/Sting binary and is verified separately with Zig absent.
-bash "$REPO_ROOT/runtime/prototypes/quickjs/ios/build-ios.sh" "$QUICKJS_BUILD_DIR"
-test -f "$QUICKJS_LIBRARY"
+# Build both simulator architectures plus the production device architecture so
+# the distributed XCFramework is independent of the producer Mac architecture.
+bash "$REPO_ROOT/runtime/prototypes/quickjs/ios/build-ios.sh" "$SIM_ARM64_DIR" simulator arm64
+bash "$REPO_ROOT/runtime/prototypes/quickjs/ios/build-ios.sh" "$SIM_X86_64_DIR" simulator x86_64
+bash "$REPO_ROOT/runtime/prototypes/quickjs/ios/build-ios.sh" "$DEVICE_ARM64_DIR" device arm64
+
+SIM_ARM64_LIBRARY="$SIM_ARM64_DIR/libsting_quickjs_ios.a"
+SIM_X86_64_LIBRARY="$SIM_X86_64_DIR/libsting_quickjs_ios.a"
+SIM_UNIVERSAL_LIBRARY="$SIM_UNIVERSAL_DIR/libsting_quickjs_ios.a"
+DEVICE_ARM64_LIBRARY="$DEVICE_ARM64_DIR/libsting_quickjs_ios.a"
+
+for library in "$SIM_ARM64_LIBRARY" "$SIM_X86_64_LIBRARY" "$DEVICE_ARM64_LIBRARY"; do
+  test -f "$library"
+done
+
+xcrun lipo -create \
+  "$SIM_ARM64_LIBRARY" \
+  "$SIM_X86_64_LIBRARY" \
+  -output "$SIM_UNIVERSAL_LIBRARY"
+
+xcrun lipo -info "$SIM_UNIVERSAL_LIBRARY" | grep -F 'arm64' >/dev/null
+xcrun lipo -info "$SIM_UNIVERSAL_LIBRARY" | grep -F 'x86_64' >/dev/null
+xcrun lipo -info "$DEVICE_ARM64_LIBRARY" | grep -F 'arm64' >/dev/null
 
 mkdir -p \
   "$PACKAGE_DIR/Sources" \
@@ -31,7 +53,9 @@ cp -R "$REPO_ROOT/native/ios/QuickJSRuntime/Sources/StingQuickJSRuntime" "$PACKA
 cp "$REPO_ROOT/LICENSE" "$PACKAGE_DIR/LICENSE"
 
 xcodebuild -create-xcframework \
-  -library "$QUICKJS_LIBRARY" \
+  -library "$SIM_UNIVERSAL_LIBRARY" \
+  -headers "$ABI_HEADERS" \
+  -library "$DEVICE_ARM64_LIBRARY" \
   -headers "$ABI_HEADERS" \
   -output "$PACKAGE_DIR/Artifacts/StingQuickJSBinary.xcframework"
 
@@ -94,6 +118,6 @@ fi
   ditto -c -k --sequesterRsrc --keepParent StingQuickJSRuntime sting-ios-host.zip
 )
 
-printf 'packaged iOS host:\n  %s\n  %s\n' \
+printf 'packaged iOS host (device arm64 + simulator arm64/x86_64):\n  %s\n  %s\n' \
   "$PACKAGE_DIR" \
   "$OUTPUT_DIR/sting-ios-host.zip"
