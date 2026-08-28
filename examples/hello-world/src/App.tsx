@@ -1,16 +1,33 @@
 import { createSignal } from 'solid-js';
+import * as stylex from '@stingjs/stylex';
 import { Clipboard } from '@stingjs/clipboard';
 import { Haptics } from '@stingjs/haptics';
-import { Button, Text, View } from '@stingjs/native';
+import { Button, Heading, Stack, Text, nativeBlur } from '@stingjs/native';
+
+const styles = stylex.create({
+  screen: {
+    backgroundColor: '#09090b',
+    color: '#ffffff',
+  },
+  status: {
+    color: '#a1a1aa',
+  },
+});
 
 export default function App() {
   const [count, setCount] = createSignal(0);
   const [clipboardStatus, setClipboardStatus] = createSignal('Clipboard ready');
 
   return (
-    <View style={{ flexDirection: 'column', gap: 12, padding: 24 }}>
-      <Text style={{ fontSize: 24 }}>Count: {count()}</Text>
+    <Stack
+      p="6"
+      gap="3"
+      sx={styles.screen}
+      modifiers={[nativeBlur()]}
+    >
+      <Heading level={2}>Count: {count()}</Heading>
       <Button
+        variant="primary"
         onPress={() => {
           Clipboard.setString(`Count: ${count()}`);
           setClipboardStatus(`Copied Count: ${count()}`);
@@ -18,7 +35,7 @@ export default function App() {
       >
         Copy count
       </Button>
-      <Text>{clipboardStatus()}</Text>
+      <Text sx={styles.status}>{clipboardStatus()}</Text>
       <Button
         onPress={() => {
           setCount(count() + 1);
@@ -27,6 +44,6 @@ export default function App() {
       >
         Add
       </Button>
-    </View>
+    </Stack>
   );
 }

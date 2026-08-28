@@ -1,12 +1,20 @@
 package run.stingjs.runtime
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -34,6 +42,23 @@ private data class StingNode(
     var imageSource: String? = null,
     val enabledModuleViewEvents: MutableSet<String> = mutableSetOf(),
     var isAttached: Boolean = false,
+    val styledKeys: MutableSet<String> = mutableSetOf(),
+    var backgroundColor: Int? = null,
+    var borderRadiusDp: Float = 0f,
+    var alignItems: String = "stretch",
+    var justifyContent: String = "start",
+    var originalBackground: Drawable? = null,
+    var originalTextColors: ColorStateList? = null,
+    var originalTypeface: Typeface? = null,
+    var originalTextSizePx: Float? = null,
+    var originalPaddingLeft: Int = 0,
+    var originalPaddingTop: Int = 0,
+    var originalPaddingRight: Int = 0,
+    var originalPaddingBottom: Int = 0,
+    var originalLayoutWidth: Int? = null,
+    var originalLayoutHeight: Int? = null,
+    var hasCapturedOriginalLayoutSize: Boolean = false,
+    var nativeBlurRadiusDp: Float? = null,
 )
 
 private class StingEditText(context: Context) : EditText(context) {
@@ -91,10 +116,7 @@ private class StingScrollContainer(context: Context) : FrameLayout(context) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
-        addView(
-            scroller,
-            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT),
-        )
+        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 }
 
@@ -105,7 +127,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     var moduleViewFactory: ((module: String, viewType: String, context: Context) -> StingNativeView)? = null
 
     init {
-        nodes[0] = StingNode(id = 0, type = "root", view = rootView, isAttached = true)
+        nodes[0] = makeNode(id = 0, type = "root", view = rootView, isAttached = true)
     }
 
     fun createElement(id: Int, type: String) {
@@ -119,20 +141,13 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 message = "Native module views are not connected to this Sting host",
             )
             val nativeView = factory(identity.first, identity.second, rootView.context)
-            nodes[id] = StingNode(
-                id = id,
-                type = type,
-                view = nativeView.view,
-                nativeModuleView = nativeView,
-            )
+            nodes[id] = makeNode(id, type, nativeView.view, nativeView)
             return
         }
 
         val normalized = type.lowercase()
         val view = when (normalized) {
-            "view" -> LinearLayout(rootView.context).apply {
-                orientation = LinearLayout.VERTICAL
-            }
+            "view" -> LinearLayout(rootView.context).apply { orientation = LinearLayout.VERTICAL }
             "text" -> TextView(rootView.context)
             "button" -> Button(rootView.context)
             "image" -> ImageView(rootView.context).apply {
@@ -143,7 +158,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             "scrollview" -> StingScrollContainer(rootView.context)
             else -> throw StingRuntimeException("Unsupported native element type: $type")
         }
-        nodes[id] = StingNode(id = id, type = normalized, view = view)
+        nodes[id] = makeNode(id, normalized, view)
     }
 
     fun createTextNode(id: Int, value: String) {
@@ -154,9 +169,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     fun replaceText(id: Int, value: String) {
         val node = requireNode(id)
-        if (node.type != "#text") {
-            throw StingRuntimeException("Node $id is not a text node")
-        }
+        if (node.type != "#text") throw StingRuntimeException("Node $id is not a text node")
         node.textValue = value
         node.parentId?.let(::refreshTextContent)
     }
@@ -168,9 +181,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         node.parentId?.let { previousParentId ->
             nodes[previousParentId]?.let { previousParent ->
                 previousParent.children.removeAll { it == nodeId }
-                if (node.isAttached) {
-                    propagateDetach(nodeId)
-                }
+                if (node.isAttached) propagateDetach(nodeId)
                 node.parentId = null
                 detachView(node.view)
                 refreshTextContent(previousParentId)
@@ -193,9 +204,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             node.parentId = null
             throw error
         }
-        if (parent.isAttached) {
-            propagateAttach(nodeId)
-        }
+        if (parent.isAttached) propagateAttach(nodeId)
         refreshTextContent(parentId)
         refreshGap(parent)
     }
@@ -203,14 +212,10 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     fun removeNode(parentId: Int, nodeId: Int) {
         val parent = requireNode(parentId)
         val node = requireNode(nodeId)
-        if (node.parentId != parentId) {
-            throw StingRuntimeException("Node $nodeId is not a child of $parentId")
-        }
+        if (node.parentId != parentId) throw StingRuntimeException("Node $nodeId is not a child of $parentId")
 
         parent.children.removeAll { it == nodeId }
-        if (node.isAttached) {
-            propagateDetach(nodeId)
-        }
+        if (node.isAttached) propagateDetach(nodeId)
         node.parentId = null
         detachView(node.view)
         refreshTextContent(parentId)
@@ -224,9 +229,12 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         node.nativeModuleView?.let { nativeView ->
             when (name) {
                 "style" -> {
-                    val style = value as? JSONObject
-                        ?: throw StingRuntimeException("style must be a JSON object")
+                    val style = value as? JSONObject ?: throw StingRuntimeException("style must be a JSON object")
                     applyStyle(style, node)
+                }
+                "nativeModifiers" -> {
+                    val modifiers = value as? JSONArray ?: throw StingRuntimeException("nativeModifiers must be a JSON array")
+                    applyNativeModifiers(modifiers, node)
                 }
                 "accessibilityLabel" -> {
                     node.view?.contentDescription = if (value == JSONObject.NULL) null else value as? String
@@ -238,9 +246,12 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
         when (name) {
             "style" -> {
-                val style = value as? JSONObject
-                    ?: throw StingRuntimeException("style must be a JSON object")
+                val style = value as? JSONObject ?: throw StingRuntimeException("style must be a JSON object")
                 applyStyle(style, node)
+            }
+            "nativeModifiers" -> {
+                val modifiers = value as? JSONArray ?: throw StingRuntimeException("nativeModifiers must be a JSON array")
+                applyNativeModifiers(modifiers, node)
             }
             "disabled" -> {
                 val disabled = value as? Boolean ?: return
@@ -286,12 +297,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 try {
                     nativeView.setEventEnabled(event, true, emit@{ payload ->
                         val current = nodes[id]
-                        if (
-                            disposed ||
-                            current !== node ||
-                            !node.isAttached ||
-                            !node.enabledModuleViewEvents.contains(event)
-                        ) {
+                        if (disposed || current !== node || !node.isAttached || !node.enabledModuleViewEvents.contains(event)) {
                             return@emit
                         }
                         eventSink?.invoke(id, event, encodeJSONFragment(payload))
@@ -301,7 +307,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                     throw error
                 }
             } else {
-                // Retire JS dispatchability before native observation is disabled.
                 node.enabledModuleViewEvents.remove(event)
                 nativeView.setEventEnabled(event, false) { _ -> }
             }
@@ -310,11 +315,8 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
         when {
             event == "press" && node.view is Button -> {
-                if (enabled) {
-                    node.view.setOnClickListener { eventSink?.invoke(id, "press", "null") }
-                } else {
-                    node.view.setOnClickListener(null)
-                }
+                if (enabled) node.view.setOnClickListener { eventSink?.invoke(id, "press", "null") }
+                else node.view.setOnClickListener(null)
             }
             event == "changeText" && node.view is StingEditText -> {
                 node.view.setChangeTextEnabled(enabled) { value ->
@@ -327,6 +329,9 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     fun viewForNode(id: Int): View? = requireNode(id).view
 
+    /** Narrow diagnostic surface used by native instrumentation to verify modifier cleanup. */
+    fun nativeBlurRadiusForNode(id: Int): Float? = requireNode(id).nativeBlurRadiusDp
+
     fun dispose() {
         if (disposed) return
         disposed = true
@@ -335,29 +340,43 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         nodes.keys.sorted().filter { it != 0 }.forEach { id ->
             val node = nodes[id] ?: return@forEach
             val nativeView = node.nativeModuleView ?: return@forEach
-
             if (node.isAttached) {
                 node.isAttached = false
                 nativeView.didDetach()
             }
-
             val events = node.enabledModuleViewEvents.toList()
             node.enabledModuleViewEvents.clear()
             events.forEach { event ->
-                try {
-                    nativeView.setEventEnabled(event, false) { _ -> }
-                } catch (_: Throwable) {
-                    // Teardown continues through every native module view.
-                }
+                try { nativeView.setEventEnabled(event, false) { _ -> } } catch (_: Throwable) { }
             }
-
             detachView(node.view)
-            try {
-                nativeView.dispose()
-            } catch (_: Throwable) {
-                // A bad module view must not prevent remaining views from disposing.
-            }
+            try { nativeView.dispose() } catch (_: Throwable) { }
         }
+    }
+
+    private fun makeNode(
+        id: Int,
+        type: String,
+        view: View?,
+        nativeModuleView: StingNativeView? = null,
+        isAttached: Boolean = false,
+    ): StingNode {
+        val text = view as? TextView
+        return StingNode(
+            id = id,
+            type = type,
+            view = view,
+            nativeModuleView = nativeModuleView,
+            isAttached = isAttached,
+            originalBackground = view?.background,
+            originalTextColors = text?.textColors,
+            originalTypeface = text?.typeface,
+            originalTextSizePx = text?.textSize,
+            originalPaddingLeft = view?.paddingLeft ?: 0,
+            originalPaddingTop = view?.paddingTop ?: 0,
+            originalPaddingRight = view?.paddingRight ?: 0,
+            originalPaddingBottom = view?.paddingBottom ?: 0,
+        )
     }
 
     private fun checkActive() {
@@ -365,9 +384,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     }
 
     private fun requireUnused(id: Int) {
-        if (nodes.containsKey(id)) {
-            throw StingRuntimeException("Duplicate native node id $id")
-        }
+        if (nodes.containsKey(id)) throw StingRuntimeException("Duplicate native node id $id")
     }
 
     private fun requireNode(id: Int): StingNode {
@@ -378,7 +395,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private fun propagateAttach(nodeId: Int) {
         val node = nodes[nodeId] ?: return
         if (node.isAttached) return
-
         node.isAttached = true
         node.children.forEach(::propagateAttach)
         node.nativeModuleView?.didAttach()
@@ -387,9 +403,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private fun propagateDetach(nodeId: Int) {
         val node = nodes[nodeId] ?: return
         if (!node.isAttached) return
-
-        // Mark the complete subtree inactive before any parent detach hook runs,
-        // so re-entrant native callbacks cannot observe an attached descendant.
         node.isAttached = false
         node.children.forEach(::propagateDetach)
         node.nativeModuleView?.didDetach()
@@ -397,7 +410,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     private fun attachView(node: StingNode, parent: StingNode, insertionIndex: Int) {
         val childView = node.view ?: return
-
         if (parent.nativeModuleView == null && parent.type in setOf("text", "button", "image", "textinput")) {
             throw StingRuntimeException("Native leaf node ${parent.type} cannot contain view children")
         }
@@ -410,10 +422,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             else -> throw StingRuntimeException("Cannot insert a native view below a text-only node")
         }
 
-        val viewIndex = parent.children
-            .take(insertionIndex)
-            .count { nodes[it]?.view != null }
-            .coerceAtMost(parentView.childCount)
+        val viewIndex = parent.children.take(insertionIndex).count { nodes[it]?.view != null }.coerceAtMost(parentView.childCount)
         parentView.addView(childView, viewIndex)
     }
 
@@ -426,7 +435,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         val parent = nodes[parentId] ?: return
         if (parent.nativeModuleView != null) return
         val text = parent.children.mapNotNull { nodes[it]?.textValue }.joinToString(separator = "")
-
         when (val view = parent.view) {
             is Button -> view.text = text
             is TextView -> view.text = text
@@ -447,9 +455,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         val parsed = Uri.parse(uri)
         if (parsed.scheme == "http" || parsed.scheme == "https") {
             Thread {
-                val bitmap = runCatching {
-                    URL(uri).openStream().use(BitmapFactory::decodeStream)
-                }.getOrNull() ?: return@Thread
+                val bitmap = runCatching { URL(uri).openStream().use(BitmapFactory::decodeStream) }.getOrNull() ?: return@Thread
                 imageView.post {
                     if (nodes[node.id]?.imageSource == uri) imageView.setImageBitmap(bitmap)
                 }
@@ -462,9 +468,21 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private fun applyStyle(style: JSONObject, node: StingNode) {
         val view = node.view ?: return
         val context = view.context
+        val resolved = style.optBoolean("__stingResolved", false)
 
-        if (style.has("backgroundColor")) {
-            view.setBackgroundColor(Color.parseColor(style.getString("backgroundColor")))
+        var refreshBackground = false
+        if (shouldApply(style, "backgroundColor", node, resolved)) {
+            node.backgroundColor = stringOrNull(style, "backgroundColor")?.let(Color::parseColor)
+            refreshBackground = true
+        }
+        if (shouldApply(style, "borderRadius", node, resolved)) {
+            node.borderRadiusDp = numberOrNull(style, "borderRadius")?.toFloat() ?: 0f
+            refreshBackground = true
+        }
+        if (refreshBackground) refreshBackground(node)
+
+        if (shouldApply(style, "opacity", node, resolved)) {
+            view.alpha = numberOrNull(style, "opacity")?.toFloat() ?: 1f
         }
 
         val stack = when (view) {
@@ -473,47 +491,196 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             else -> null
         }
         if (stack != null) {
-            if (style.has("flexDirection") && view !is StingScrollContainer) {
-                stack.orientation = if (style.getString("flexDirection") == "row") {
-                    LinearLayout.HORIZONTAL
-                } else {
-                    LinearLayout.VERTICAL
-                }
+            if (view !is StingScrollContainer && shouldApply(style, "flexDirection", node, resolved)) {
+                stack.orientation = if (stringOrNull(style, "flexDirection") == "row") LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                refreshGap(node)
+                refreshGravity(node)
             }
-            if (style.has("gap")) {
-                node.gapDp = style.getDouble("gap").toFloat()
+            if (shouldApply(style, "gap", node, resolved)) {
+                node.gapDp = numberOrNull(style, "gap")?.toFloat() ?: 0f
                 refreshGap(node)
             }
-            if (style.has("padding")) {
-                val padding = dp(context, style.getDouble("padding").toFloat())
-                stack.setPadding(padding, padding, padding, padding)
+            if (shouldApply(style, "alignItems", node, resolved)) {
+                node.alignItems = stringOrNull(style, "alignItems") ?: "stretch"
+                refreshGravity(node)
+            }
+            if (shouldApply(style, "justifyContent", node, resolved)) {
+                node.justifyContent = stringOrNull(style, "justifyContent") ?: "start"
+                refreshGravity(node)
             }
         }
 
-        if (style.has("color")) {
-            val color = Color.parseColor(style.getString("color"))
-            when (view) {
-                is Button -> view.setTextColor(color)
-                is TextView -> view.setTextColor(color)
+        if (shouldApplyPadding(style, node, resolved)) {
+            val target = if (view is StingScrollContainer) view.content else view
+            val edges = paddingEdges(style, context, node)
+            target.setPadding(edges[0], edges[1], edges[2], edges[3])
+        }
+
+        if (shouldApply(style, "color", node, resolved)) {
+            val color = stringOrNull(style, "color")?.let(Color::parseColor)
+            val text = view as? TextView
+            if (text != null) {
+                if (color != null) text.setTextColor(color)
+                else node.originalTextColors?.let(text::setTextColor)
             }
         }
 
-        if (style.has("fontSize")) {
-            val size = style.getDouble("fontSize").toFloat()
-            when (view) {
-                is Button -> view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-                is TextView -> view.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+        val applyFontSize = shouldApply(style, "fontSize", node, resolved)
+        val applyFontWeight = shouldApply(style, "fontWeight", node, resolved)
+        if (applyFontSize || applyFontWeight) {
+            (view as? TextView)?.let { text ->
+                val size = numberOrNull(style, "fontSize")?.toFloat()
+                if (size != null) text.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+                else node.originalTextSizePx?.let { text.setTextSize(TypedValue.COMPLEX_UNIT_PX, it) }
+                text.typeface = styledTypeface(node.originalTypeface, style.opt("fontWeight"))
             }
         }
 
-        if (style.has("width") || style.has("height")) {
+        val applyWidth = shouldApply(style, "width", node, resolved)
+        val applyHeight = shouldApply(style, "height", node, resolved)
+        if (applyWidth || applyHeight) {
             val params = view.layoutParams ?: ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             )
-            if (style.has("width")) params.width = dp(context, style.getDouble("width").toFloat())
-            if (style.has("height")) params.height = dp(context, style.getDouble("height").toFloat())
+            if (!node.hasCapturedOriginalLayoutSize) {
+                node.originalLayoutWidth = params.width
+                node.originalLayoutHeight = params.height
+                node.hasCapturedOriginalLayoutSize = true
+            }
+            if (applyWidth) {
+                params.width = numberOrNull(style, "width")?.let { dp(context, it.toFloat()) }
+                    ?: node.originalLayoutWidth
+                    ?: ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+            if (applyHeight) {
+                params.height = numberOrNull(style, "height")?.let { dp(context, it.toFloat()) }
+                    ?: node.originalLayoutHeight
+                    ?: ViewGroup.LayoutParams.WRAP_CONTENT
+            }
             view.layoutParams = params
+        }
+    }
+
+    private fun applyNativeModifiers(modifiers: JSONArray, node: StingNode) {
+        val view = node.view ?: return
+        var blurRadius: Float? = null
+        for (index in 0 until modifiers.length()) {
+            val modifier = modifiers.optJSONObject(index) ?: continue
+            if (modifier.optString("name") != "blur") continue
+            val value = modifier.optJSONObject("value")
+            blurRadius = value?.optDouble("radius", 16.0)?.toFloat() ?: 16f
+        }
+        node.nativeBlurRadiusDp = blurRadius
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            view.setRenderEffect(
+                blurRadius?.let {
+                    val px = dp(view.context, it).toFloat().coerceAtLeast(0.1f)
+                    RenderEffect.createBlurEffect(px, px, Shader.TileMode.CLAMP)
+                },
+            )
+        }
+    }
+
+    private fun shouldApply(style: JSONObject, key: String, node: StingNode, resolved: Boolean): Boolean {
+        if (style.has(key) && !style.isNull(key)) {
+            node.styledKeys.add(key)
+            return true
+        }
+        if (resolved && node.styledKeys.remove(key)) return true
+        return false
+    }
+
+    private fun shouldApplyPadding(style: JSONObject, node: StingNode, resolved: Boolean): Boolean {
+        var apply = false
+        for (key in listOf("padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft")) {
+            if (shouldApply(style, key, node, resolved)) apply = true
+        }
+        return apply
+    }
+
+    private fun paddingEdges(style: JSONObject, context: Context, node: StingNode): IntArray {
+        val shorthand = numberOrNull(style, "padding")?.toFloat()
+        fun edge(key: String, original: Int): Int {
+            val value = numberOrNull(style, key)?.toFloat() ?: shorthand
+            return value?.let { dp(context, it) } ?: original
+        }
+        val resetToOriginal = listOf("padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft")
+            .none(node.styledKeys::contains)
+        return if (resetToOriginal) {
+            intArrayOf(node.originalPaddingLeft, node.originalPaddingTop, node.originalPaddingRight, node.originalPaddingBottom)
+        } else {
+            intArrayOf(
+                edge("paddingLeft", 0),
+                edge("paddingTop", 0),
+                edge("paddingRight", 0),
+                edge("paddingBottom", 0),
+            )
+        }
+    }
+
+    private fun refreshBackground(node: StingNode) {
+        val view = node.view ?: return
+        if (node.backgroundColor == null && node.borderRadiusDp == 0f) {
+            view.background = node.originalBackground
+            return
+        }
+        view.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(node.backgroundColor ?: Color.TRANSPARENT)
+            cornerRadius = dp(view.context, node.borderRadiusDp).toFloat()
+        }
+    }
+
+    private fun refreshGravity(node: StingNode) {
+        val layout = when (val view = node.view) {
+            is LinearLayout -> view
+            is StingScrollContainer -> view.content
+            else -> return
+        }
+        val horizontal: Int
+        val vertical: Int
+        if (layout.orientation == LinearLayout.VERTICAL) {
+            horizontal = when (node.alignItems) {
+                "center" -> Gravity.CENTER_HORIZONTAL
+                "end" -> Gravity.END
+                "stretch" -> Gravity.FILL_HORIZONTAL
+                else -> Gravity.START
+            }
+            vertical = when (node.justifyContent) {
+                "center" -> Gravity.CENTER_VERTICAL
+                "end" -> Gravity.BOTTOM
+                else -> Gravity.TOP
+            }
+        } else {
+            horizontal = when (node.justifyContent) {
+                "center" -> Gravity.CENTER_HORIZONTAL
+                "end" -> Gravity.END
+                else -> Gravity.START
+            }
+            vertical = when (node.alignItems) {
+                "center" -> Gravity.CENTER_VERTICAL
+                "end" -> Gravity.BOTTOM
+                "stretch" -> Gravity.FILL_VERTICAL
+                else -> Gravity.TOP
+            }
+        }
+        layout.gravity = horizontal or vertical
+    }
+
+    private fun styledTypeface(original: Typeface?, raw: Any?): Typeface? {
+        if (raw == null || raw == JSONObject.NULL) return original
+        val weight = when (raw) {
+            is Number -> raw.toInt()
+            "bold" -> 700
+            "semibold" -> 600
+            "medium" -> 500
+            else -> 400
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Typeface.create(original ?: Typeface.DEFAULT, weight, false)
+        } else {
+            Typeface.create(original ?: Typeface.DEFAULT, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
         }
     }
 
@@ -527,17 +694,12 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         }
         val gap = dp(layout.context, parent.gapDp)
         val childViews = parent.children.mapNotNull { nodes[it]?.view }
-
         childViews.forEachIndexed { index, child ->
             val existing = child.layoutParams
-            val params = if (existing is LinearLayout.LayoutParams) {
-                existing
-            } else {
-                LinearLayout.LayoutParams(
-                    existing?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
-                    existing?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-            }
+            val params = if (existing is LinearLayout.LayoutParams) existing else LinearLayout.LayoutParams(
+                existing?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+                existing?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
             params.leftMargin = if (layout.orientation == LinearLayout.HORIZONTAL && index > 0) gap else 0
             params.topMargin = if (layout.orientation == LinearLayout.VERTICAL && index > 0) gap else 0
             child.layoutParams = params
@@ -546,7 +708,6 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     private fun parseModuleViewIdentity(type: String): Pair<String, String>? {
         if (!type.startsWith(MODULE_VIEW_PREFIX)) return null
-
         val body = type.removePrefix(MODULE_VIEW_PREFIX)
         val pieces = body.split(':')
         if (pieces.size != 2 || pieces.any { !MODULE_VIEW_SEGMENT.matches(it) }) {
@@ -557,6 +718,12 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         }
         return pieces[0] to pieces[1]
     }
+
+    private fun stringOrNull(style: JSONObject, key: String): String? =
+        if (style.has(key) && !style.isNull(key)) style.getString(key) else null
+
+    private fun numberOrNull(style: JSONObject, key: String): Double? =
+        if (style.has(key) && !style.isNull(key)) style.getDouble(key) else null
 
     private fun encodeJSONFragment(value: Any?): String {
         val encoded = JSONArray().put(JSONObject.wrap(value)).toString()

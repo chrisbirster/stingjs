@@ -15,6 +15,22 @@ final class StingNode {
     var imageSource: String?
     var enabledModuleViewEvents: Set<String> = []
     var isAttached = false
+    var blurView: UIVisualEffectView?
+    var styledKeys: Set<String> = []
+    let originalBackgroundColor: UIColor?
+    let originalAlpha: CGFloat
+    let originalCornerRadius: CGFloat
+    let originalMasksToBounds: Bool
+    let originalFont: UIFont?
+    let originalTextColor: UIColor?
+    let originalButtonTitleColor: UIColor?
+    let originalButtonInsets: UIEdgeInsets?
+    let originalStackAxis: NSLayoutConstraint.Axis?
+    let originalStackAlignment: UIStackView.Alignment?
+    let originalStackDistribution: UIStackView.Distribution?
+    let originalStackSpacing: CGFloat?
+    let originalStackMargins: NSDirectionalEdgeInsets?
+    let originalStackUsesMargins: Bool?
 
     init(
         id: Int,
@@ -28,6 +44,45 @@ final class StingNode {
         self.view = view
         self.textValue = textValue
         self.nativeModuleView = nativeModuleView
+        self.originalBackgroundColor = view?.backgroundColor
+        self.originalAlpha = view?.alpha ?? 1
+        self.originalCornerRadius = view?.layer.cornerRadius ?? 0
+        self.originalMasksToBounds = view?.layer.masksToBounds ?? false
+        if let label = view as? UILabel {
+            self.originalFont = label.font
+            self.originalTextColor = label.textColor
+        } else if let button = view as? UIButton {
+            self.originalFont = button.titleLabel?.font
+            self.originalTextColor = nil
+        } else if let input = view as? UITextField {
+            self.originalFont = input.font
+            self.originalTextColor = input.textColor
+        } else {
+            self.originalFont = nil
+            self.originalTextColor = nil
+        }
+        if let button = view as? UIButton {
+            self.originalButtonTitleColor = button.titleColor(for: .normal)
+            self.originalButtonInsets = button.contentEdgeInsets
+        } else {
+            self.originalButtonTitleColor = nil
+            self.originalButtonInsets = nil
+        }
+        if let stack = view as? UIStackView {
+            self.originalStackAxis = stack.axis
+            self.originalStackAlignment = stack.alignment
+            self.originalStackDistribution = stack.distribution
+            self.originalStackSpacing = stack.spacing
+            self.originalStackMargins = stack.directionalLayoutMargins
+            self.originalStackUsesMargins = stack.isLayoutMarginsRelativeArrangement
+        } else {
+            self.originalStackAxis = nil
+            self.originalStackAlignment = nil
+            self.originalStackDistribution = nil
+            self.originalStackSpacing = nil
+            self.originalStackMargins = nil
+            self.originalStackUsesMargins = nil
+        }
     }
 }
 
@@ -66,7 +121,6 @@ final class StingNodeRegistry {
 
         let normalized = type.lowercased()
         let view: UIView
-
         switch normalized {
         case "view":
             let stack = UIStackView()
@@ -105,7 +159,6 @@ final class StingNodeRegistry {
         default:
             throw StingRuntimeError("Unsupported native element type: \(type)")
         }
-
         nodes[id] = StingNode(id: id, type: normalized, view: view)
     }
 
@@ -119,9 +172,7 @@ final class StingNodeRegistry {
         let node = try requireNode(id)
         guard node.type == "#text" else { throw StingRuntimeError("Node \(id) is not a text node") }
         node.textValue = value
-        if let parentId = node.parentId {
-            refreshTextContent(parentId)
-        }
+        if let parentId = node.parentId { refreshTextContent(parentId) }
     }
 
     func insertNode(parentId: Int, nodeId: Int, anchorId: Int) throws {
@@ -130,9 +181,7 @@ final class StingNodeRegistry {
 
         if let previousParentId = node.parentId, let previousParent = nodes[previousParentId] {
             previousParent.children.removeAll { $0 == nodeId }
-            if node.isAttached {
-                propagateDetach(nodeId)
-            }
+            if node.isAttached { propagateDetach(nodeId) }
             node.parentId = nil
             detachView(node.view, from: childContainer(for: previousParent))
             refreshTextContent(previousParentId)
@@ -147,7 +196,6 @@ final class StingNodeRegistry {
 
         parent.children.insert(nodeId, at: insertionIndex)
         node.parentId = parentId
-
         do {
             try attachView(node, to: parent, at: insertionIndex)
         } catch {
@@ -155,10 +203,7 @@ final class StingNodeRegistry {
             node.parentId = nil
             throw error
         }
-
-        if parent.isAttached {
-            propagateAttach(nodeId)
-        }
+        if parent.isAttached { propagateAttach(nodeId) }
         refreshTextContent(parentId)
     }
 
@@ -168,11 +213,8 @@ final class StingNodeRegistry {
         guard node.parentId == parentId else {
             throw StingRuntimeError("Node \(nodeId) is not a child of \(parentId)")
         }
-
         parent.children.removeAll { $0 == nodeId }
-        if node.isAttached {
-            propagateDetach(nodeId)
-        }
+        if node.isAttached { propagateDetach(nodeId) }
         node.parentId = nil
         detachView(node.view, from: childContainer(for: parent))
         refreshTextContent(parentId)
@@ -190,6 +232,11 @@ final class StingNodeRegistry {
                     throw StingRuntimeError("style must be a JSON object")
                 }
                 applyStyle(style, to: node)
+            case "nativeModifiers":
+                guard let modifiers = value as? [[String: Any]] else {
+                    throw StingRuntimeError("nativeModifiers must be a JSON array")
+                }
+                applyNativeModifiers(modifiers, to: node)
             case "accessibilityLabel":
                 node.view?.accessibilityLabel = value is NSNull ? nil : value as? String
             default:
@@ -204,12 +251,17 @@ final class StingNodeRegistry {
                 throw StingRuntimeError("style must be a JSON object")
             }
             applyStyle(style, to: node)
+        case "nativeModifiers":
+            guard let modifiers = value as? [[String: Any]] else {
+                throw StingRuntimeError("nativeModifiers must be a JSON array")
+            }
+            applyNativeModifiers(modifiers, to: node)
         case "disabled":
             if let button = node.view as? UIButton, let disabled = value as? Bool {
                 button.isEnabled = !disabled
             }
         case "accessibilityLabel":
-            node.view?.accessibilityLabel = value as? String
+            node.view?.accessibilityLabel = value is NSNull ? nil : value as? String
         case "source":
             applyImageSource(value, to: node)
         case "resizeMode":
@@ -237,8 +289,6 @@ final class StingNodeRegistry {
                 scroll.setHorizontal(horizontal)
             }
         default:
-            // The JS renderer validates the public surface. Keeping unknown
-            // properties harmless here lets the built-in native surface grow incrementally.
             break
         }
     }
@@ -256,9 +306,7 @@ final class StingNodeRegistry {
                               let node,
                               self.nodes[id] === node,
                               node.isAttached,
-                              node.enabledModuleViewEvents.contains(event) else {
-                            return
-                        }
+                              node.enabledModuleViewEvents.contains(event) else { return }
                         self.eventSink?(id, event, Self.encodeJSONFragment(payload))
                     }
                 } catch {
@@ -266,8 +314,6 @@ final class StingNodeRegistry {
                     throw error
                 }
             } else {
-                // Make the callback stale before native observation is disabled
-                // so re-entrant emissions cannot reach JavaScript.
                 node.enabledModuleViewEvents.remove(event)
                 try nativeView.setEventEnabled(event: event, enabled: false, emit: { _ in })
             }
@@ -291,18 +337,15 @@ final class StingNodeRegistry {
 
         for id in nodes.keys.sorted() where id != 0 {
             guard let node = nodes[id], let nativeView = node.nativeModuleView else { continue }
-
             if node.isAttached {
                 node.isAttached = false
                 nativeView.didDetach()
             }
-
             let events = node.enabledModuleViewEvents
             node.enabledModuleViewEvents.removeAll(keepingCapacity: false)
             for event in events {
                 try? nativeView.setEventEnabled(event: event, enabled: false, emit: { _ in })
             }
-
             detachView(node.view, from: node.view?.superview)
             nativeView.dispose()
         }
@@ -316,23 +359,15 @@ final class StingNodeRegistry {
 
     private func propagateAttach(_ nodeId: Int) {
         guard let node = nodes[nodeId], !node.isAttached else { return }
-
         node.isAttached = true
-        for childId in node.children {
-            propagateAttach(childId)
-        }
+        for childId in node.children { propagateAttach(childId) }
         node.nativeModuleView?.didAttach()
     }
 
     private func propagateDetach(_ nodeId: Int) {
         guard let node = nodes[nodeId], node.isAttached else { return }
-
-        // Mark the complete subtree inactive before any parent detach hook runs,
-        // so re-entrant native callbacks cannot observe an attached descendant.
         node.isAttached = false
-        for childId in node.children {
-            propagateDetach(childId)
-        }
+        for childId in node.children { propagateDetach(childId) }
         node.nativeModuleView?.didDetach()
     }
 
@@ -344,11 +379,9 @@ final class StingNodeRegistry {
             }
             throw StingRuntimeError("Cannot insert a native view below a text-only node")
         }
-
         if parent.nativeModuleView == nil && ["text", "button", "image", "textinput"].contains(parent.type) {
             throw StingRuntimeError("Native leaf node \(parent.type) cannot contain view children")
         }
-
         if let scroll = parentView as? StingScrollView {
             scroll.contentStack.insertArrangedSubview(childView, at: min(index, scroll.contentStack.arrangedSubviews.count))
         } else if let stack = parentView as? UIStackView {
@@ -375,7 +408,6 @@ final class StingNodeRegistry {
     private func refreshTextContent(_ parentId: Int) {
         guard let parent = nodes[parentId], parent.nativeModuleView == nil else { return }
         let text = parent.children.compactMap { nodes[$0]?.textValue }.joined()
-
         if let label = parent.view as? UILabel {
             label.text = text
         } else if let button = parent.view as? UIButton {
@@ -422,104 +454,257 @@ final class StingNodeRegistry {
 
     private func applyStyle(_ style: [String: Any], to node: StingNode) {
         guard let view = node.view else { return }
+        let resolved = style["__stingResolved"] as? Bool == true
 
-        if let backgroundColor = style["backgroundColor"] as? String {
-            view.backgroundColor = UIColor(stingHex: backgroundColor)
+        if shouldApply(style, "backgroundColor", to: node, resolved: resolved) {
+            view.backgroundColor = string(style, "backgroundColor").flatMap { UIColor(stingHex: $0) }
+                ?? node.originalBackgroundColor
+        }
+        if shouldApply(style, "opacity", to: node, resolved: resolved) {
+            view.alpha = number(style, "opacity") ?? node.originalAlpha
+        }
+        if shouldApply(style, "borderRadius", to: node, resolved: resolved) {
+            if let radius = number(style, "borderRadius") {
+                view.layer.cornerRadius = radius
+                view.layer.masksToBounds = radius > 0
+            } else {
+                view.layer.cornerRadius = node.originalCornerRadius
+                view.layer.masksToBounds = node.originalMasksToBounds
+            }
         }
 
         if let stack = view as? UIStackView {
-            if let direction = style["flexDirection"] as? String {
-                stack.axis = direction == "row" ? .horizontal : .vertical
+            if shouldApply(style, "flexDirection", to: node, resolved: resolved) {
+                if let direction = string(style, "flexDirection") {
+                    stack.axis = direction == "row" ? .horizontal : .vertical
+                } else if let original = node.originalStackAxis {
+                    stack.axis = original
+                }
             }
-            if let gap = style["gap"] as? NSNumber {
-                stack.spacing = CGFloat(truncating: gap)
+            if shouldApply(style, "gap", to: node, resolved: resolved) {
+                stack.spacing = number(style, "gap") ?? node.originalStackSpacing ?? 0
             }
-            if let padding = style["padding"] as? NSNumber {
-                let amount = CGFloat(truncating: padding)
-                stack.isLayoutMarginsRelativeArrangement = true
-                stack.directionalLayoutMargins = NSDirectionalEdgeInsets(
-                    top: amount,
-                    leading: amount,
-                    bottom: amount,
-                    trailing: amount
-                )
+            applyStackAlignment(style, to: stack, node: node, resolved: resolved)
+            applyPadding(style, to: stack, node: node, resolved: resolved)
+        } else if let scroll = view as? StingScrollView {
+            applyPadding(style, to: scroll.contentStack, node: node, resolved: resolved)
+        } else if let button = view as? UIButton {
+            if shouldApplyPadding(style, to: node, resolved: resolved) {
+                button.contentEdgeInsets = paddingEdges(style) ?? node.originalButtonInsets ?? .zero
             }
         }
 
-        if let scroll = view as? StingScrollView, let padding = style["padding"] as? NSNumber {
-            let amount = CGFloat(truncating: padding)
-            scroll.contentStack.isLayoutMarginsRelativeArrangement = true
-            scroll.contentStack.directionalLayoutMargins = NSDirectionalEdgeInsets(
-                top: amount,
-                leading: amount,
-                bottom: amount,
-                trailing: amount
-            )
+        if shouldApply(style, "color", to: node, resolved: resolved) {
+            let parsed = string(style, "color").flatMap { UIColor(stingHex: $0) }
+            if let label = view as? UILabel { label.textColor = parsed ?? node.originalTextColor ?? .label }
+            if let button = view as? UIButton {
+                button.setTitleColor(parsed ?? node.originalButtonTitleColor ?? button.tintColor, for: .normal)
+            }
+            if let input = view as? UITextField { input.textColor = parsed ?? node.originalTextColor ?? .label }
         }
 
-        if let color = style["color"] as? String, let parsed = UIColor(stingHex: color) {
-            if let label = view as? UILabel { label.textColor = parsed }
-            if let button = view as? UIButton { button.setTitleColor(parsed, for: .normal) }
-            if let input = view as? UITextField { input.textColor = parsed }
+        let applyFontSize = shouldApply(style, "fontSize", to: node, resolved: resolved)
+        let applyFontWeight = shouldApply(style, "fontWeight", to: node, resolved: resolved)
+        if applyFontSize || applyFontWeight {
+            let original = node.originalFont ?? UIFont.systemFont(ofSize: UIFont.labelFontSize)
+            let size = number(style, "fontSize") ?? original.pointSize
+            let hasWeight = string(style, "fontWeight") != nil || style["fontWeight"] is NSNumber
+            let font: UIFont
+            if hasWeight {
+                let weight = Self.fontWeight(string(style, "fontWeight"), number: style["fontWeight"] as? NSNumber)
+                font = UIFont.systemFont(ofSize: size, weight: weight)
+            } else {
+                font = original.withSize(size)
+            }
+            if let label = view as? UILabel { label.font = font }
+            if let button = view as? UIButton { button.titleLabel?.font = font }
+            if let input = view as? UITextField { input.font = font }
         }
 
-        if let fontSize = style["fontSize"] as? NSNumber {
-            let size = CGFloat(truncating: fontSize)
-            if let label = view as? UILabel { label.font = label.font.withSize(size) }
-            if let button = view as? UIButton { button.titleLabel?.font = button.titleLabel?.font.withSize(size) }
-            if let input = view as? UITextField { input.font = (input.font ?? UIFont.systemFont(ofSize: size)).withSize(size) }
-        }
-
-        if let width = style["width"] as? NSNumber {
+        if shouldApply(style, "width", to: node, resolved: resolved) {
             node.widthConstraint?.isActive = false
-            node.widthConstraint = view.widthAnchor.constraint(equalToConstant: CGFloat(truncating: width))
-            node.widthConstraint?.isActive = true
+            if let width = number(style, "width") {
+                node.widthConstraint = view.widthAnchor.constraint(equalToConstant: width)
+                node.widthConstraint?.isActive = true
+            } else {
+                node.widthConstraint = nil
+            }
+        }
+        if shouldApply(style, "height", to: node, resolved: resolved) {
+            node.heightConstraint?.isActive = false
+            if let height = number(style, "height") {
+                node.heightConstraint = view.heightAnchor.constraint(equalToConstant: height)
+                node.heightConstraint?.isActive = true
+            } else {
+                node.heightConstraint = nil
+            }
+        }
+    }
+
+    private func applyNativeModifiers(_ modifiers: [[String: Any]], to node: StingNode) {
+        guard let view = node.view else { return }
+        let blur = modifiers.last { $0["name"] as? String == "blur" }
+        guard blur != nil else {
+            node.blurView?.removeFromSuperview()
+            node.blurView = nil
+            return
         }
 
-        if let height = style["height"] as? NSNumber {
-            node.heightConstraint?.isActive = false
-            node.heightConstraint = view.heightAnchor.constraint(equalToConstant: CGFloat(truncating: height))
-            node.heightConstraint?.isActive = true
+        if node.blurView == nil {
+            let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+            effectView.translatesAutoresizingMaskIntoConstraints = false
+            effectView.isUserInteractionEnabled = false
+            view.insertSubview(effectView, at: 0)
+            NSLayoutConstraint.activate([
+                effectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                effectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                effectView.topAnchor.constraint(equalTo: view.topAnchor),
+                effectView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            node.blurView = effectView
+        }
+    }
+
+    private func applyPadding(
+        _ style: [String: Any],
+        to stack: UIStackView,
+        node: StingNode,
+        resolved: Bool
+    ) {
+        guard shouldApplyPadding(style, to: node, resolved: resolved) else { return }
+        guard let edges = paddingEdges(style) else {
+            stack.isLayoutMarginsRelativeArrangement = node.originalStackUsesMargins ?? false
+            stack.directionalLayoutMargins = node.originalStackMargins ?? .zero
+            return
+        }
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: edges.top,
+            leading: edges.left,
+            bottom: edges.bottom,
+            trailing: edges.right
+        )
+    }
+
+    private func shouldApplyPadding(_ style: [String: Any], to node: StingNode, resolved: Bool) -> Bool {
+        let keys = ["padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]
+        var apply = false
+        for key in keys where shouldApply(style, key, to: node, resolved: resolved) {
+            apply = true
+        }
+        return apply
+    }
+
+    private func paddingEdges(_ style: [String: Any]) -> UIEdgeInsets? {
+        let shorthand = number(style, "padding")
+        let hasEdge = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"].contains {
+            style[$0] != nil && !(style[$0] is NSNull)
+        }
+        guard shorthand != nil || hasEdge else { return nil }
+        return UIEdgeInsets(
+            top: number(style, "paddingTop") ?? shorthand ?? 0,
+            left: number(style, "paddingLeft") ?? shorthand ?? 0,
+            bottom: number(style, "paddingBottom") ?? shorthand ?? 0,
+            right: number(style, "paddingRight") ?? shorthand ?? 0
+        )
+    }
+
+    private func applyStackAlignment(
+        _ style: [String: Any],
+        to stack: UIStackView,
+        node: StingNode,
+        resolved: Bool
+    ) {
+        if shouldApply(style, "alignItems", to: node, resolved: resolved) {
+            if let alignment = string(style, "alignItems") {
+                switch alignment {
+                case "center": stack.alignment = .center
+                case "start": stack.alignment = stack.axis == .vertical ? .leading : .top
+                case "end": stack.alignment = stack.axis == .vertical ? .trailing : .bottom
+                default: stack.alignment = .fill
+                }
+            } else if let original = node.originalStackAlignment {
+                stack.alignment = original
+            }
+        }
+        if shouldApply(style, "justifyContent", to: node, resolved: resolved) {
+            if let justify = string(style, "justifyContent") {
+                switch justify {
+                case "center": stack.distribution = .equalCentering
+                default: stack.distribution = .fill
+                }
+            } else if let original = node.originalStackDistribution {
+                stack.distribution = original
+            }
+        }
+    }
+
+    private func shouldApply(
+        _ style: [String: Any],
+        _ key: String,
+        to node: StingNode,
+        resolved: Bool
+    ) -> Bool {
+        if let value = style[key], !(value is NSNull) {
+            node.styledKeys.insert(key)
+            return true
+        }
+        if resolved, node.styledKeys.remove(key) != nil {
+            return true
+        }
+        return false
+    }
+
+    private func number(_ style: [String: Any], _ key: String) -> CGFloat? {
+        guard let value = style[key] as? NSNumber else { return nil }
+        return CGFloat(truncating: value)
+    }
+
+    private func string(_ style: [String: Any], _ key: String) -> String? {
+        style[key] as? String
+    }
+
+    private static func fontWeight(_ string: String?, number: NSNumber?) -> UIFont.Weight {
+        if let number {
+            switch number.intValue {
+            case 700...: return .bold
+            case 600...: return .semibold
+            case 500...: return .medium
+            default: return .regular
+            }
+        }
+        switch string {
+        case "bold": return .bold
+        case "semibold": return .semibold
+        case "medium": return .medium
+        default: return .regular
         }
     }
 
     private static func parseModuleViewIdentity(_ type: String) throws -> (module: String, viewType: String)? {
         guard type.hasPrefix(moduleViewPrefix) else { return nil }
-
         let body = String(type.dropFirst(moduleViewPrefix.count))
         let pieces = body.split(separator: ":", omittingEmptySubsequences: false)
         guard pieces.count == 2 else {
-            throw StingNativeModuleError(
-                code: "E_INVALID_VIEW_TYPE",
-                message: "Malformed Sting native module view type \(type)"
-            )
+            throw StingNativeModuleError(code: "E_INVALID_VIEW_TYPE", message: "Malformed Sting native module view type \(type)")
         }
-
         let module = String(pieces[0])
         let viewType = String(pieces[1])
         guard validModuleViewSegment(module), validModuleViewSegment(viewType) else {
-            throw StingNativeModuleError(
-                code: "E_INVALID_VIEW_TYPE",
-                message: "Malformed Sting native module view type \(type)"
-            )
+            throw StingNativeModuleError(code: "E_INVALID_VIEW_TYPE", message: "Malformed Sting native module view type \(type)")
         }
         return (module, viewType)
     }
 
     private static func validModuleViewSegment(_ value: String) -> Bool {
-        value.range(
-            of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
-            options: .regularExpression
-        ) != nil
+        value.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]*$", options: .regularExpression) != nil
     }
 
     private static func encodeJSONFragment(_ value: Any?) -> String {
         guard let data = try? JSONSerialization.data(
             withJSONObject: value ?? NSNull(),
             options: [.fragmentsAllowed]
-        ), let string = String(data: data, encoding: .utf8) else {
-            return "null"
-        }
+        ), let string = String(data: data, encoding: .utf8) else { return "null" }
         return string
     }
 
@@ -530,13 +715,23 @@ private extension UIColor {
     convenience init?(stingHex value: String) {
         var hex = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if hex.hasPrefix("#") { hex.removeFirst() }
-        guard hex.count == 6, let integer = Int(hex, radix: 16) else { return nil }
+        guard (hex.count == 6 || hex.count == 8), let integer = UInt64(hex, radix: 16) else { return nil }
 
-        self.init(
-            red: CGFloat((integer >> 16) & 0xff) / 255,
-            green: CGFloat((integer >> 8) & 0xff) / 255,
-            blue: CGFloat(integer & 0xff) / 255,
-            alpha: 1
-        )
+        let red: CGFloat
+        let green: CGFloat
+        let blue: CGFloat
+        let alpha: CGFloat
+        if hex.count == 8 {
+            red = CGFloat((integer >> 24) & 0xff) / 255
+            green = CGFloat((integer >> 16) & 0xff) / 255
+            blue = CGFloat((integer >> 8) & 0xff) / 255
+            alpha = CGFloat(integer & 0xff) / 255
+        } else {
+            red = CGFloat((integer >> 16) & 0xff) / 255
+            green = CGFloat((integer >> 8) & 0xff) / 255
+            blue = CGFloat(integer & 0xff) / 255
+            alpha = 1
+        }
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
