@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   background,
+  cornerRadius,
+  font,
   m,
   nativeBlur,
   padding,
@@ -36,6 +38,13 @@ describe('modifier styling', () => {
     expect(resolved.style.paddingTop).toBe(16);
     expect(resolved.style.gap).toBe(12);
     expect(resolved.style.borderRadius).toBe(12);
+  });
+
+  it('expresses semantic font and corner-radius operations in the same IR', () => {
+    const resolved = resolveStyling({ modifiers: [font('title'), cornerRadius(14)] });
+    expect(resolved.style.fontSize).toBe(28);
+    expect(resolved.style.fontWeight).toBe('bold');
+    expect(resolved.style.borderRadius).toBe(14);
   });
 
   it('deduplicates native modifiers by name using last-wins ordering', () => {
