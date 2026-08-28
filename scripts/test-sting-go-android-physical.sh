@@ -111,6 +111,7 @@ adb -s "${DEVICE}" shell am start -W \
 
 adb -s "${DEVICE}" shell am instrument -w -r \
   -e class run.stingjs.go.StingGoPhysicalDeviceInstrumentedTest \
+  -e stingGoPhysicalEvidence 1 \
   -e stingGoManifestUrl "${MANIFEST_URL}" \
   run.stingjs.go.test/androidx.test.runner.AndroidJUnitRunner
 
