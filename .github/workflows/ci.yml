@@ -8,6 +8,11 @@ on:
       - dev
       - main
 
+# Engine policy:
+# - Official QuickJS is Sting's production JavaScript engine and is a required CI gate.
+# - QuickJS-NG and Hermes are comparison/experimental lanes only and must never block feature PRs.
+# - The React Native/Hermes baseline is benchmark evidence only and must never block Sting changes.
+
 jobs:
   typescript:
     runs-on: ubuntu-latest
@@ -62,6 +67,7 @@ jobs:
   runtime-hermes-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,6 +93,7 @@ jobs:
   react-native-baseline-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
