@@ -1,0 +1,86 @@
+name: Check · E2E
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  android-e2e:
+    name: Android Hello World E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install Sting workspace dependencies
+        run: npm install
+      - name: Build Hello World and benchmark bundles
+        run: |
+          npm run build --workspace @stingjs/example-hello-world
+          npm run build --workspace @stingjs/benchmark-native
+      - name: Install Android SDK and pinned NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Build complete Android application and E2E instrumentation
+        working-directory: examples/hello-world/android
+        run: gradle :app:assembleDebug :app:assembleRelease :app:assembleAndroidTest --no-daemon
+      - name: Verify production engine packaging
+        run: |
+          test -f examples/hello-world/android/app/build/outputs/apk/release/app-release.apk
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'assets/sting-app.js'
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so'
+          unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/x86_64/libsting_quickjs_android.so'
+          if unzip -l examples/hello-world/android/app/build/outputs/apk/debug/app-debug.apk | grep -Fq 'libsting_quickjs_ng_android.so'; then
+            echo 'QuickJS-NG must not be packaged in the normal Sting Android application' >&2
+            exit 1
+          fi
+      - name: Enable KVM for Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run complete Android application instrumentation
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd examples/hello-world/android && gradle :app:connectedAndroidTest --no-daemon
+
+  ios-e2e:
+    name: iOS Hello World E2E
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - name: Install dependencies
+        run: npm install
+      - name: Build complete iOS application
+        run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
