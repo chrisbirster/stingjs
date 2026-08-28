@@ -2,7 +2,7 @@
 import { resolve } from 'node:path';
 import { loadStingConfig } from './config.js';
 import { collectProjectDoctorContext } from './doctor.js';
-import { collectDevices, collectDoctorChecks } from './platform.js';
+import { collectDevices, collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
 
@@ -17,40 +17,67 @@ function option(args: string[], name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Check the Sting project and its required local platform toolchain; add --runtime for runtime contributor checks\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+}
+
+function printChecks(checks: DoctorCheck[]): void {
+  for (const check of checks) {
+    const symbol = check.skipped ? '-' : check.ok ? '✓' : check.required ? '✗' : '!';
+    const qualifier = check.skipped ? ' (not required)' : check.required ? '' : ' (optional)';
+    console.log(`${symbol} ${check.name}${qualifier}: ${check.detail}`);
+  }
 }
 
 async function doctor(args: string[]): Promise<void> {
-  const runtimeDevelopment = hasFlag(args, '--runtime');
-  const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
-  const project = await collectProjectDoctorContext(projectRoot);
+  const first = args[0];
+  const target: DevicePlatform | undefined = first === 'ios' || first === 'android' ? first : undefined;
+  const doctorArgs = target ? args.slice(1) : args;
+  const runtimeDevelopment = hasFlag(doctorArgs, '--runtime');
+  const projectRoot = resolve(option(doctorArgs, '--project-root') ?? process.cwd());
+
+  if (runtimeDevelopment && !target) {
+    const checks = collectDoctorChecks(process.platform, { runtimeDevelopment: true });
+    if (hasFlag(doctorArgs, '--json')) {
+      console.log(JSON.stringify({ mode: 'runtime', target: null, projectRoot, platforms: { ios: false, android: false }, checks }));
+    } else {
+      console.log('Sting doctor (runtime development)\n');
+      printChecks(checks);
+    }
+    if (checks.some((check) => check.required && !check.ok)) process.exitCode = 1;
+    return;
+  }
+
+  const project = await collectProjectDoctorContext(projectRoot, target);
   const environmentChecks = collectDoctorChecks(process.platform, {
     runtimeDevelopment,
-    android: project.platforms.android,
-    ios: project.platforms.ios,
+    target,
+    android: target ? undefined : project.platforms.android,
+    ios: target ? undefined : project.platforms.ios,
     requireSystemGradle: project.requiresSystemGradle,
   });
-  const checks = [...project.checks, ...environmentChecks];
+  const checks = [...environmentChecks, ...project.checks];
 
-  if (hasFlag(args, '--json')) {
+  if (hasFlag(doctorArgs, '--json')) {
     console.log(JSON.stringify({
       mode: runtimeDevelopment ? 'runtime' : 'app',
+      target: target ?? null,
       projectRoot: project.projectRoot,
       configPath: project.configPath,
       platforms: project.platforms,
       checks,
     }));
   } else {
-    console.log(runtimeDevelopment ? 'Sting doctor (runtime development)\n' : 'Sting doctor\n');
+    const targetLabel = target === 'ios' ? 'iOS' : target === 'android' ? 'Android' : undefined;
+    const modeLabel = runtimeDevelopment ? 'runtime development' : targetLabel;
+    console.log(modeLabel ? `Sting doctor (${modeLabel})\n` : 'Sting doctor\n');
     console.log(`Project: ${project.projectRoot}`);
     const targets = [project.platforms.ios ? 'ios' : undefined, project.platforms.android ? 'android' : undefined]
-      .filter((target): target is string => target !== undefined);
+      .filter((platform): platform is string => platform !== undefined);
     console.log(`Targets: ${targets.length > 0 ? targets.join(', ') : 'none detected'}\n`);
-    for (const check of checks) {
-      const symbol = check.skipped ? '-' : check.ok ? '✓' : check.required ? '✗' : '!';
-      const qualifier = check.skipped ? ' (not required)' : check.required ? '' : ' (optional)';
-      console.log(`${symbol} ${check.name}${qualifier}: ${check.detail}`);
-    }
+    console.log('Environment');
+    printChecks(environmentChecks);
+    console.log('\nProject');
+    printChecks(project.checks);
   }
   if (checks.some((check) => check.required && !check.ok)) process.exitCode = 1;
 }

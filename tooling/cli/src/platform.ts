@@ -22,6 +22,7 @@ export interface DoctorCheck {
 
 export interface DoctorOptions {
   runtimeDevelopment?: boolean;
+  target?: DevicePlatform;
   android?: boolean;
   ios?: boolean;
   requireSystemGradle?: boolean;
@@ -52,6 +53,27 @@ function checkCommand(name: string, command: string, args: string[], required: b
   return { name, ok: result.ok, detail, required };
 }
 
+export function parseJavaMajor(value: string): number | undefined {
+  const quoted = value.match(/version\s+"(?:1\.)?(\d+)/i);
+  if (quoted) return Number.parseInt(quoted[1], 10);
+  const unquoted = value.match(/(?:openjdk|java)\s+(?:version\s+)?(?:1\.)?(\d+)/i);
+  return unquoted ? Number.parseInt(unquoted[1], 10) : undefined;
+}
+
+function checkJava(required: boolean): DoctorCheck {
+  const result = runCommand('java', ['-version']);
+  const output = result.stdout || result.stderr;
+  const detail = firstLine(output) || 'not found';
+  if (!result.ok) return { name: 'java', ok: false, detail, required };
+  const major = parseJavaMajor(output);
+  return {
+    name: 'java',
+    ok: major !== undefined && major >= 17,
+    detail: major === undefined ? `${detail}; could not determine major version` : detail,
+    required,
+  };
+}
+
 function checkAndroidSdk(required: boolean): DoctorCheck {
   const sdkRoot = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME;
   if (!sdkRoot) {
@@ -70,12 +92,21 @@ function checkAndroidSdk(required: boolean): DoctorCheck {
   };
 }
 
+function unsupportedIosHost(required: boolean): DoctorCheck[] {
+  return [
+    { name: 'xcode', ok: false, detail: 'iOS development requires macOS and Xcode', required },
+    { name: 'simctl', ok: false, detail: 'iOS Simulator requires macOS and Xcode', required },
+  ];
+}
+
 export function collectDoctorChecks(
   platform = process.platform,
   options: DoctorOptions = {},
 ): DoctorCheck[] {
   const [major, minor] = process.versions.node.split('.').map(Number);
   const nodeOk = major > 22 || (major === 22 && minor >= 12);
+  const androidRequired = options.target === 'android' || options.android === true;
+  const iosRequired = options.target === 'ios' || options.ios === true;
   const checks: DoctorCheck[] = [
     { name: 'node', ok: nodeOk, detail: process.version, required: true },
     checkCommand('npm', 'npm', ['--version'], true),
@@ -93,8 +124,7 @@ export function collectDoctorChecks(
     });
   }
 
-  const androidRequired = options.android === true;
-  checks.push(checkCommand('java', 'java', ['-version'], androidRequired));
+  checks.push(checkJava(androidRequired));
   checks.push(checkAndroidSdk(androidRequired));
   checks.push(checkCommand('adb', 'adb', ['version'], androidRequired));
   if (options.requireSystemGradle) {
@@ -102,9 +132,10 @@ export function collectDoctorChecks(
   }
 
   if (platform === 'darwin') {
-    const iosRequired = options.ios === true;
     checks.push(checkCommand('xcode', 'xcodebuild', ['-version'], iosRequired));
     checks.push(checkCommand('simctl', 'xcrun', ['simctl', 'help'], iosRequired));
+  } else if (options.target === 'ios') {
+    checks.push(...unsupportedIosHost(true));
   } else if (options.ios) {
     checks.push({
       name: 'ios toolchain',

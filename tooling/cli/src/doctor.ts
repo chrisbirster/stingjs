@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { findStingConfig, loadStingConfig, type LoadedStingConfig } from './config.js';
-import type { DoctorCheck } from './platform.js';
+import type { DevicePlatform, DoctorCheck } from './platform.js';
 
 export interface DoctorPlatforms {
   ios: boolean;
@@ -19,10 +19,27 @@ export interface ProjectDoctorContext {
 
 interface PackageJson {
   scripts?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+  peerDependencies?: Record<string, unknown>;
 }
 
 function failureDetail(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function declaredVersion(packageJson: PackageJson | undefined, name: string): string | undefined {
+  const value = packageJson?.dependencies?.[name]
+    ?? packageJson?.devDependencies?.[name]
+    ?? packageJson?.peerDependencies?.[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function supportsSolid2(versionSpec: string): boolean {
+  const spec = versionSpec.trim();
+  if (spec.startsWith('workspace:')) return true;
+  if (/^[~^]?2(?:\.|$)/.test(spec)) return true;
+  return /(?:^|\s|\|)\s*>=?\s*2(?:\.|\s|$)/.test(spec) && /<\s*3(?:\.|\s|$)/.test(spec);
 }
 
 function pathCheck(name: string, path: string, required = true): DoctorCheck {
@@ -40,9 +57,9 @@ function readPackageJson(projectRoot: string): { check: DoctorCheck; packageJson
   if (!existsSync(packagePath)) {
     return {
       check: {
-        name: 'package.json',
+        name: 'sting project',
         ok: false,
-        detail: `${packagePath} does not exist`,
+        detail: `package.json not found in ${projectRoot}`,
         required: true,
       },
     };
@@ -51,22 +68,45 @@ function readPackageJson(projectRoot: string): { check: DoctorCheck; packageJson
   try {
     const value = JSON.parse(readFileSync(packagePath, 'utf8')) as unknown;
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      throw new Error('must contain a JSON object');
+      throw new Error('package.json must contain a JSON object');
     }
     return {
-      check: { name: 'package.json', ok: true, detail: packagePath, required: true },
+      check: { name: 'sting project', ok: true, detail: projectRoot, required: true },
       packageJson: value as PackageJson,
     };
   } catch (error) {
     return {
       check: {
-        name: 'package.json',
+        name: 'sting project',
         ok: false,
-        detail: `${packagePath}: ${failureDetail(error)}`,
+        detail: `invalid package.json: ${failureDetail(error)}`,
         required: true,
       },
     };
   }
+}
+
+function packageCheck(packageJson: PackageJson | undefined, name: string): DoctorCheck {
+  const version = declaredVersion(packageJson, name);
+  return {
+    name,
+    ok: version !== undefined,
+    detail: version ?? 'not declared in package.json',
+    required: true,
+  };
+}
+
+function solidVersionCheck(packageJson: PackageJson | undefined): DoctorCheck {
+  const version = declaredVersion(packageJson, 'solid-js');
+  if (!version) {
+    return { name: 'solid-js 2', ok: false, detail: 'solid-js is not declared in package.json', required: true };
+  }
+  return {
+    name: 'solid-js 2',
+    ok: supportsSolid2(version),
+    detail: version,
+    required: true,
+  };
 }
 
 function buildScriptCheck(packageJson: PackageJson | undefined): DoctorCheck {
@@ -101,7 +141,10 @@ function configCheck(sourcePath: string | undefined, loaded: LoadedStingConfig |
   };
 }
 
-export async function collectProjectDoctorContext(projectRoot = process.cwd()): Promise<ProjectDoctorContext> {
+export async function collectProjectDoctorContext(
+  projectRoot = process.cwd(),
+  target?: DevicePlatform,
+): Promise<ProjectDoctorContext> {
   const root = resolve(projectRoot);
   const sourcePath = findStingConfig(root);
   let loaded: LoadedStingConfig | undefined;
@@ -115,30 +158,33 @@ export async function collectProjectDoctorContext(projectRoot = process.cwd()): 
     }
   }
 
-  const checks: DoctorCheck[] = [configCheck(sourcePath, loaded, configError)];
   const packageResult = readPackageJson(root);
-  checks.push(packageResult.check, buildScriptCheck(packageResult.packageJson));
+  const checks: DoctorCheck[] = [
+    packageResult.check,
+    packageCheck(packageResult.packageJson, '@stingjs/solid'),
+    solidVersionCheck(packageResult.packageJson),
+    buildScriptCheck(packageResult.packageJson),
+    configCheck(sourcePath, loaded, configError),
+  ];
 
-  const iosConfigured = loaded?.config.ios !== undefined;
-  const androidConfigured = loaded?.config.android !== undefined;
   const defaultIosDirectory = join(root, 'ios');
   const defaultAndroidDirectory = join(root, 'android');
-  const ios = iosConfigured || existsSync(defaultIosDirectory);
-  const android = androidConfigured || existsSync(defaultAndroidDirectory);
+  const inferredIos = loaded?.config.ios !== undefined || existsSync(defaultIosDirectory);
+  const inferredAndroid = loaded?.config.android !== undefined || existsSync(defaultAndroidDirectory);
+  const ios = target ? target === 'ios' : inferredIos;
+  const android = target ? target === 'android' : inferredAndroid;
 
   if (ios) {
     const configuredProject = loaded?.config.ios?.project;
-    if (configuredProject) {
-      checks.push(pathCheck('ios project', resolve(root, configuredProject)));
-    } else {
-      checks.push(pathCheck('ios project directory', defaultIosDirectory));
-    }
+    checks.push(configuredProject
+      ? pathCheck('ios project', resolve(root, configuredProject))
+      : pathCheck('ios project', defaultIosDirectory));
   }
 
   let androidGradleWrapper = false;
   if (android) {
     const androidDirectory = resolve(root, loaded?.config.android?.directory ?? 'android');
-    checks.push(pathCheck('android project directory', androidDirectory));
+    checks.push(pathCheck('android project', androidDirectory));
     androidGradleWrapper = existsSync(join(androidDirectory, 'gradlew')) || existsSync(join(androidDirectory, 'gradlew.bat'));
     checks.push({
       name: 'android gradle wrapper',

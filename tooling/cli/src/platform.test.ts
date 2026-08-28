@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectDoctorChecks, parseAdbDevices, parseSimctlDevices } from './platform.js';
+import { collectDoctorChecks, parseAdbDevices, parseJavaMajor, parseSimctlDevices } from './platform.js';
 
 test('doctor does not require Zig for normal Sting app development', () => {
   const zig = collectDoctorChecks('linux').find((check) => check.name === 'zig');
@@ -26,17 +26,35 @@ test('Android project doctor makes the Android toolchain required', () => {
   }
 });
 
+test('explicit iOS doctor fails clearly on a non-macOS host', () => {
+  const checks = collectDoctorChecks('linux', { target: 'ios' });
+  assert.deepEqual([
+    checks.find((check) => check.name === 'xcode')?.required,
+    checks.find((check) => check.name === 'xcode')?.ok,
+  ], [true, false]);
+  assert.deepEqual([
+    checks.find((check) => check.name === 'simctl')?.required,
+    checks.find((check) => check.name === 'simctl')?.ok,
+  ], [true, false]);
+});
+
+test('inferred iOS project skips the iOS toolchain off macOS', () => {
+  const check = collectDoctorChecks('linux', { ios: true }).find((candidate) => candidate.name === 'ios toolchain');
+  assert.ok(check);
+  assert.equal(check.required, false);
+  assert.equal(check.skipped, true);
+});
+
 test('iOS project doctor requires Xcode tools on macOS', () => {
   const checks = collectDoctorChecks('darwin', { ios: true });
   assert.equal(checks.find((check) => check.name === 'xcode')?.required, true);
   assert.equal(checks.find((check) => check.name === 'simctl')?.required, true);
 });
 
-test('iOS project doctor skips the iOS toolchain off macOS', () => {
-  const check = collectDoctorChecks('linux', { ios: true }).find((candidate) => candidate.name === 'ios toolchain');
-  assert.ok(check);
-  assert.equal(check.required, false);
-  assert.equal(check.skipped, true);
+test('parseJavaMajor understands common Java version output', () => {
+  assert.equal(parseJavaMajor('openjdk version "17.0.16" 2026-07-15'), 17);
+  assert.equal(parseJavaMajor('java version "1.8.0_402"'), 8);
+  assert.equal(parseJavaMajor('openjdk 21.0.8 2026-07-15'), 21);
 });
 
 test('parseAdbDevices classifies physical devices and emulators', () => {
