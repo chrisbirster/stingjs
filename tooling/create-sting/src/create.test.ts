@@ -122,6 +122,8 @@ test('accepts the iOS package directory directly', () => {
     iosRuntimeArtifactsDir: iosPackage,
     gradleWrapperJarPath: gradleWrapperJar,
   });
+  assert.equal(result.androidPackage, 'run.stingjs.apps.my_app');
+  assert.equal(result.iosBundleIdentifier, 'run.stingjs.apps.my-app');
   assert.equal(result.iosRuntimeArtifactsDir, iosPackage);
 });
 
