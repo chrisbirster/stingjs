@@ -6,7 +6,7 @@ import { collectProjectDoctorContext } from './doctor.js';
 import { collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
 
 interface PackageJson {
-  scripts?: Record<string, string>;
+  scripts?: Record<string, unknown>;
 }
 
 export interface VerifyOptions {
@@ -41,12 +41,16 @@ function execute(command: string, args: string[], cwd: string): void {
   if (result.status !== 0) throw new Error(`${command} exited with code ${result.status}`);
 }
 
+function hasScript(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 export function selectedAppScripts(packageJson: PackageJson): string[] {
   const scripts = packageJson.scripts ?? {};
   const selected: string[] = [];
-  if (scripts.typecheck) selected.push('typecheck');
-  if (scripts.test) selected.push('test');
-  if (scripts.build) selected.push('build');
+  if (hasScript(scripts.typecheck)) selected.push('typecheck');
+  if (hasScript(scripts.test)) selected.push('test');
+  if (hasScript(scripts.build)) selected.push('build');
   return selected;
 }
 
