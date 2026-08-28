@@ -1,6 +1,6 @@
 export type FlexDirection = 'row' | 'column';
 export type AlignItems = 'stretch' | 'start' | 'center' | 'end';
-export type JustifyContent = 'start' | 'center' | 'end' | 'space-between';
+export type JustifyContent = 'start' | 'center' | 'end';
 export type FontWeight = 'regular' | 'medium' | 'semibold' | 'bold' | 400 | 500 | 600 | 700;
 
 export interface Style {
@@ -173,30 +173,46 @@ function makeStyleModifier<K extends StyleProperty>(
   return { $$stingModifier: true, kind: 'style', property, value };
 }
 
+function resolveSpace(value: SpaceValue): number {
+  if (typeof value === 'number') return value;
+  return tokens.space[value];
+}
+
+function resolveRadius(value: RadiusValue): number {
+  if (typeof value === 'number') return value;
+  return tokens.radii[value];
+}
+
+function resolveColor(value: ColorValue): string {
+  return Object.prototype.hasOwnProperty.call(tokens.colors, value)
+    ? tokens.colors[value as ColorToken]
+    : value;
+}
+
 export const flexDirection = (value: FlexDirection) => makeStyleModifier('flexDirection', value);
 export const alignItems = (value: AlignItems) => makeStyleModifier('alignItems', value);
 export const justifyContent = (value: JustifyContent) => makeStyleModifier('justifyContent', value);
-export const gap = (value: number) => makeStyleModifier('gap', value);
-export const padding = (value: number) => makeStyleModifier('padding', value);
-export const paddingX = (value: number): ModifierInput => [
-  makeStyleModifier('paddingLeft', value),
-  makeStyleModifier('paddingRight', value),
+export const gap = (value: SpaceValue) => makeStyleModifier('gap', resolveSpace(value));
+export const padding = (value: SpaceValue) => makeStyleModifier('padding', resolveSpace(value));
+export const paddingX = (value: SpaceValue): ModifierInput => [
+  makeStyleModifier('paddingLeft', resolveSpace(value)),
+  makeStyleModifier('paddingRight', resolveSpace(value)),
 ];
-export const paddingY = (value: number): ModifierInput => [
-  makeStyleModifier('paddingTop', value),
-  makeStyleModifier('paddingBottom', value),
+export const paddingY = (value: SpaceValue): ModifierInput => [
+  makeStyleModifier('paddingTop', resolveSpace(value)),
+  makeStyleModifier('paddingBottom', resolveSpace(value)),
 ];
-export const paddingTop = (value: number) => makeStyleModifier('paddingTop', value);
-export const paddingRight = (value: number) => makeStyleModifier('paddingRight', value);
-export const paddingBottom = (value: number) => makeStyleModifier('paddingBottom', value);
-export const paddingLeft = (value: number) => makeStyleModifier('paddingLeft', value);
+export const paddingTop = (value: SpaceValue) => makeStyleModifier('paddingTop', resolveSpace(value));
+export const paddingRight = (value: SpaceValue) => makeStyleModifier('paddingRight', resolveSpace(value));
+export const paddingBottom = (value: SpaceValue) => makeStyleModifier('paddingBottom', resolveSpace(value));
+export const paddingLeft = (value: SpaceValue) => makeStyleModifier('paddingLeft', resolveSpace(value));
 export const width = (value: number) => makeStyleModifier('width', value);
 export const height = (value: number) => makeStyleModifier('height', value);
-export const background = (value: string) => makeStyleModifier('backgroundColor', value);
-export const foreground = (value: string) => makeStyleModifier('color', value);
+export const background = (value: ColorValue) => makeStyleModifier('backgroundColor', resolveColor(value));
+export const foreground = (value: ColorValue) => makeStyleModifier('color', resolveColor(value));
 export const fontSize = (value: number) => makeStyleModifier('fontSize', value);
 export const fontWeight = (value: FontWeight) => makeStyleModifier('fontWeight', value);
-export const rounded = (value: number) => makeStyleModifier('borderRadius', value);
+export const rounded = (value: RadiusValue) => makeStyleModifier('borderRadius', resolveRadius(value));
 export const cornerRadius = rounded;
 export const opacity = (value: number) => makeStyleModifier('opacity', value);
 
@@ -222,20 +238,6 @@ export function nativeBlur(radius = 16): NativeModifier {
 /** Compose modifiers without introducing another runtime object model. */
 export function m(...inputs: readonly ModifierInput[]): readonly ModifierInput[] {
   return inputs;
-}
-
-function resolveSpace(value: SpaceValue): number {
-  if (typeof value === 'number') return value;
-  return tokens.space[value];
-}
-
-function resolveRadius(value: RadiusValue): number {
-  if (typeof value === 'number') return value;
-  return tokens.radii[value];
-}
-
-function resolveColor(value: ColorValue): string {
-  return value in tokens.colors ? tokens.colors[value as ColorToken] : value;
 }
 
 function emptyResolvedStyle(): Record<CanonicalStyleKey, Style[CanonicalStyleKey] | null> {
@@ -327,16 +329,16 @@ function applyModifier(
 
 export function stylePropsToModifiers(props: StyleProps): readonly ModifierInput[] {
   const result: ModifierInput[] = [];
-  if (props.p !== undefined) result.push(padding(resolveSpace(props.p)));
-  if (props.px !== undefined) result.push(paddingX(resolveSpace(props.px)));
-  if (props.py !== undefined) result.push(paddingY(resolveSpace(props.py)));
-  if (props.pt !== undefined) result.push(paddingTop(resolveSpace(props.pt)));
-  if (props.pr !== undefined) result.push(paddingRight(resolveSpace(props.pr)));
-  if (props.pb !== undefined) result.push(paddingBottom(resolveSpace(props.pb)));
-  if (props.pl !== undefined) result.push(paddingLeft(resolveSpace(props.pl)));
-  if (props.gap !== undefined) result.push(gap(resolveSpace(props.gap)));
-  if (props.bg !== undefined) result.push(background(resolveColor(props.bg)));
-  if (props.rounded !== undefined) result.push(rounded(resolveRadius(props.rounded)));
+  if (props.p !== undefined) result.push(padding(props.p));
+  if (props.px !== undefined) result.push(paddingX(props.px));
+  if (props.py !== undefined) result.push(paddingY(props.py));
+  if (props.pt !== undefined) result.push(paddingTop(props.pt));
+  if (props.pr !== undefined) result.push(paddingRight(props.pr));
+  if (props.pb !== undefined) result.push(paddingBottom(props.pb));
+  if (props.pl !== undefined) result.push(paddingLeft(props.pl));
+  if (props.gap !== undefined) result.push(gap(props.gap));
+  if (props.bg !== undefined) result.push(background(props.bg));
+  if (props.rounded !== undefined) result.push(rounded(props.rounded));
   if (props.opacity !== undefined) result.push(opacity(props.opacity));
   if (props.w !== undefined) result.push(width(props.w));
   if (props.h !== undefined) result.push(height(props.h));
