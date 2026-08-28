@@ -1,4 +1,4 @@
-import { createMemo, createRenderEffect } from 'solid-js';
+import { createRenderEffect } from 'solid-js';
 import {
   bindHostText,
   createElement,
@@ -124,19 +124,17 @@ function hasResolvedStyle(styling: ReturnType<typeof resolveStyling>): boolean {
  */
 function bindStyling(
   node: HostNode,
-  styling: () => ReturnType<typeof resolveStyling>,
+  readStyling: () => ReturnType<typeof resolveStyling>,
 ): void {
   let hasEmittedStyle = false;
   let hasEmittedNativeModifiers = false;
 
-  createRenderEffect(styling, resolved => {
+  createRenderEffect(readStyling, resolved => {
     if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
     if (hasEmittedStyle) {
       getHost().setProperty(node, 'style', resolved.style);
     }
-  });
 
-  createRenderEffect(styling, resolved => {
     if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
     if (hasEmittedNativeModifiers) {
       getHost().setProperty(node, 'nativeModifiers', resolved.nativeModifiers);
@@ -152,21 +150,21 @@ function createNativePrimitive(
   variant?: () => ModifierInput,
 ): HostNode {
   const node = createElement(type);
-  const styling = createMemo(() => resolveStyling({
+  const readStyling = () => resolveStyling({
     defaults,
     variant: variant?.(),
     style: props.style,
     sx: props.sx,
     props,
     modifiers: props.modifiers,
-  }));
+  });
 
   const forwarded: Record<string, unknown> = {};
   for (const key of forwardedKeys) {
     defineForwardedGetter(forwarded, key, () => props[key]);
   }
   spread(node, forwarded);
-  bindStyling(node, styling);
+  bindStyling(node, readStyling);
   return node;
 }
 
@@ -235,18 +233,18 @@ export function Center(props: ViewProps): HostNode {
 function createNativeText(props: TextProps, defaults?: ModifierInput): HostNode {
   const node = createElement('text');
   const textNode = createTextNode('');
-  const styling = createMemo(() => resolveStyling({
+  const readStyling = () => resolveStyling({
     defaults,
     style: props.style,
     sx: props.sx,
     props,
     modifiers: props.modifiers,
-  }));
+  });
   const forwarded: Record<string, unknown> = {};
   defineForwardedGetter(forwarded, 'accessibilityLabel', () => props.accessibilityLabel);
 
   spread(node, forwarded, true);
-  bindStyling(node, styling);
+  bindStyling(node, readStyling);
   insertNode(node, textNode);
   bindHostText(textNode, () => stringifyTextChild(props.children));
   return node;
