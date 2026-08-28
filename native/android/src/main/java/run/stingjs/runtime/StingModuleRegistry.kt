@@ -1,5 +1,7 @@
 package run.stingjs.runtime
 
+import android.content.Context
+
 class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     private data class NativeObjectEntry(
         val module: String,
@@ -26,6 +28,9 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     }
 
     fun versions(): Map<String, String> = modules.values.associate { it.name to it.version }
+
+    fun createView(name: String, type: String, context: Context): StingNativeView =
+        requireModule(name).createView(type, context)
 
     fun callSync(name: String, method: String, arguments: List<Any?>): Any? {
         val module = requireModule(name)

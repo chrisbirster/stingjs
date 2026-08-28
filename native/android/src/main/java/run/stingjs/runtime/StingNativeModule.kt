@@ -1,5 +1,9 @@
 package run.stingjs.runtime
 
+import android.content.Context
+import android.view.View
+import android.view.ViewGroup
+
 sealed class StingNativeModuleResult {
     data class Success(val value: Any?) : StingNativeModuleResult()
     data class Failure(val error: Throwable) : StingNativeModuleResult()
@@ -7,6 +11,7 @@ sealed class StingNativeModuleResult {
 
 typealias StingNativeModuleCompletion = (StingNativeModuleResult) -> Unit
 typealias StingNativeModuleEventEmitter = (Any?) -> Unit
+typealias StingNativeViewEventEmitter = (Any?) -> Unit
 
 interface StingNativeObject {
     fun callSync(method: String, arguments: List<Any?>): Any?
@@ -26,6 +31,33 @@ interface StingNativeObject {
         )
     }
 
+    fun dispose() {}
+}
+
+interface StingNativeView {
+    val view: View
+    val childContainer: ViewGroup? get() = null
+
+    fun setProperty(name: String, value: Any?) {
+        throw StingNativeModuleError(
+            code = "E_VIEW_PROPERTY_NOT_FOUND",
+            message = "Native view does not implement property $name",
+        )
+    }
+
+    fun setEventEnabled(
+        event: String,
+        enabled: Boolean,
+        emit: StingNativeViewEventEmitter,
+    ) {
+        throw StingNativeModuleError(
+            code = "E_VIEW_EVENT_NOT_FOUND",
+            message = "Native view does not implement event $event",
+        )
+    }
+
+    fun didAttach() {}
+    fun didDetach() {}
     fun dispose() {}
 }
 
@@ -65,6 +97,13 @@ interface StingNativeModule {
         throw StingNativeModuleError(
             code = "E_OBJECT_TYPE_NOT_FOUND",
             message = "$name does not implement native object type $type",
+        )
+    }
+
+    fun createView(type: String, context: Context): StingNativeView {
+        throw StingNativeModuleError(
+            code = "E_VIEW_TYPE_NOT_FOUND",
+            message = "$name does not implement native view type $type",
         )
     }
 }

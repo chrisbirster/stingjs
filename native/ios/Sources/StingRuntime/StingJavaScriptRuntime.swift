@@ -25,8 +25,15 @@ public final class StingJavaScriptRuntime {
         self.performanceDiagnostics = collectPerformanceDiagnostics
             ? StingPerformanceDiagnostics()
             : nil
-        self.nodes = StingNodeRegistry(rootView: rootView)
-        self.modules = try StingModuleRegistry(modules: nativeModules)
+
+        let nodes = StingNodeRegistry(rootView: rootView)
+        let modules = try StingModuleRegistry(modules: nativeModules)
+        self.nodes = nodes
+        self.modules = modules
+
+        nodes.moduleViewFactory = { module, viewType in
+            try modules.createView(module: module, type: viewType)
+        }
 
         context.exceptionHandler = { [weak self] _, exception in
             self?.lastException = exception?.toString() ?? "Unknown JavaScript exception"
@@ -138,14 +145,22 @@ public final class StingJavaScriptRuntime {
         guard !disposed else { return }
         disposed = true
 
+        // Give Solid and @stingjs/core ownership first chance to detach the
+        // rendered tree while the ordinary node bridge is still alive. Keyed
+        // nodes may have been detached/reinserted during runtime life, so native
+        // view destruction is deliberately separate from removeNode().
         if let disposeRuntime = context.objectForKeyedSubscript("__stingDisposeRuntime"),
            !disposeRuntime.isUndefined {
             disposeRuntime.call(withArguments: [])
         }
 
-        nodes.eventSink = nil
         bridge?.detachAsyncResultSink()
         bridge?.detachModuleEventSink()
+
+        // The node registry is the final ownership boundary for module-created
+        // UIKit views. It disables their event emitters, detaches any remaining
+        // attached views, and invokes dispose() exactly once per live node.
+        nodes.dispose()
 
         // JavaScript wrappers release their handles through __stingDisposeRuntime.
         // This registry teardown is the final guarantee for raw or abandoned

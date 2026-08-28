@@ -27,6 +27,12 @@ class StingNativeBridge(
     var mutationCounts = StingMutationCounts()
         private set
 
+    init {
+        nodes.moduleViewFactory = { module, viewType, context ->
+            modules.createView(module, viewType, context)
+        }
+    }
+
     fun resetMutationCounts() {
         mutationCounts = StingMutationCounts()
     }
@@ -166,6 +172,10 @@ class StingNativeBridge(
                 // state is already detached, so later emissions are stale no-ops.
             }
         }
+    }
+
+    fun disposeNativeViews() {
+        nodes.dispose()
     }
 
     fun disposeNativeObjects() {

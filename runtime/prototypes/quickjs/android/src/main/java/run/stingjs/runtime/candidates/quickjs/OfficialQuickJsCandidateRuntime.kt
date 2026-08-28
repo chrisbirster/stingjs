@@ -55,11 +55,15 @@ class OfficialQuickJsCandidateRuntime(
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
         try {
+            // nativeDestroy runs the JavaScript runtime disposer first so Solid
+            // can perform ordinary removeNode operations while the node registry
+            // is still live.
             nativeDestroy(current)
         } finally {
-            // __stingDisposeRuntime releases registered JS wrappers first. The
-            // native registry is the final guarantee for raw or abandoned
-            // handles that never reached a JavaScript wrapper disposer.
+            // Final native ownership cleanup happens only after JS/Solid teardown.
+            // Module views are renderer nodes, while native objects use their
+            // separate opaque-handle registry; both fallbacks are idempotent.
+            bridge.disposeNativeViews()
             bridge.disposeNativeObjects()
         }
     }

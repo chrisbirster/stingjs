@@ -34,17 +34,18 @@ The v0.1 software foundation now includes:
 - `View`, `Text`, `Button`, `Image`, controlled `TextInput`, and `ScrollView`,
 - a small shared style/layout contract,
 - native button -> Solid signal -> native text mutation,
-- the Sting Modules SDK foundation with Haptics, Clipboard, and Device reference modules,
+- the Sting Modules SDK foundation with Haptics, Clipboard, Device, and Filesystem,
 - broad Solid 2 conformance and realistic composed-app coverage,
-- official QuickJS production and QuickJS-NG secondary evaluation hosts,
+- official QuickJS as the production JavaScript engine,
+- a frozen QuickJS-NG historical/reference prototype,
 - the historical isolated Hermes evaluation host,
 - a bare React Native 0.87 + Hermes reference baseline,
 - native performance instrumentation and physical-device evidence tooling,
 - iOS and Android CI build/instrumentation gates.
 
-StingJS v0.1 uses **official QuickJS `2026-06-04`** as its production JavaScript engine. Normal Sting applications do not choose an engine. QuickJS-NG remains a temporary secondary conformance/performance lane, React Native + Hermes remains the external competitor/reference baseline, and JavaScriptCore/UIKit remains the independent iOS semantic/native reference lane. The pinned Hermes V1 Sting candidate was disqualified by a generic ECMAScript per-iteration lexical-closure preflight; that result does not imply that SolidJS 2 is generally incompatible with Hermes.
+StingJS uses **official QuickJS `2026-06-04`** as its production JavaScript engine. Normal Sting applications do not choose an engine. QuickJS-NG is frozen as an experimental/reference prototype and does not receive product feature parity. React Native + Hermes remains the external competitor/reference baseline, and JavaScriptCore/UIKit remains the independent iOS semantic/native reference lane. The pinned Hermes V1 Sting candidate was disqualified by a generic ECMAScript per-iteration lexical-closure preflight; that result does not imply that SolidJS 2 is generally incompatible with Hermes.
 
-Physical Android evidence remains required to validate and characterize the accepted QuickJS direction. A severe correctness or performance blocker can reopen the decision, but the benchmark program no longer blocks unrelated v0.1 architecture work merely to keep engine selection open.
+Physical Android evidence remains required to validate and characterize the accepted QuickJS direction. A severe correctness or performance blocker can reopen the decision, but the benchmark program does not block unrelated product work merely to keep engine selection open.
 
 See [`docs/primitives.md`](docs/primitives.md), [`docs/modules.md`](docs/modules.md), [`docs/getting-started-ios.md`](docs/getting-started-ios.md), [`docs/getting-started-android.md`](docs/getting-started-android.md), [`docs/performance.md`](docs/performance.md), and [`docs/decisions/0004-production-javascript-engine.md`](docs/decisions/0004-production-javascript-engine.md).
 
@@ -54,8 +55,8 @@ See [`docs/primitives.md`](docs/primitives.md), [`docs/modules.md`](docs/modules
 - `@stingjs/solid` — the only layer coupled to Solid's universal renderer API.
 - `@stingjs/native` — native UI primitives.
 - `@stingjs/modules-core` — shared JavaScript authoring boundary for native modules.
-- `@stingjs/haptics`, `@stingjs/clipboard`, `@stingjs/device`, and future `@stingjs/*` modules — platform capabilities.
-- future `@stingjs/cli` — local developer tooling after the v0.1 runtime milestone.
+- `@stingjs/haptics`, `@stingjs/clipboard`, `@stingjs/device`, `@stingjs/filesystem`, and future `@stingjs/*` modules — platform capabilities.
+- planned `@stingjs/cli` — local developer tooling once the current tooling train is integrated and distributable.
 
 ## Example
 
