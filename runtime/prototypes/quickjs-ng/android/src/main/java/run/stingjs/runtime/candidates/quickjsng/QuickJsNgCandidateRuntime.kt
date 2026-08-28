@@ -34,6 +34,7 @@ class QuickJsNgCandidateRuntime(
         try {
             nativeDestroy(current)
         } finally {
+            bridge.disposeNativeViews()
             bridge.disposeNativeObjects()
         }
     }
