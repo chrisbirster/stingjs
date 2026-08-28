@@ -114,35 +114,55 @@ final class StingNativeViewIntegrationTests: XCTestCase {
             1
         )
 
-        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.removeNode(1, 2);")
+        // Detaching an ancestor must make every nested module view inactive,
+        // even though the preview still has its immediate native superview.
+        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.removeNode(0, 1);")
         XCTAssertEqual(preview.detachedCount, 1)
-        XCTAssertNil(preview.view.superview)
+        XCTAssertTrue(rootView.subviews.isEmpty)
+        XCTAssertNotNil(preview.view.superview)
 
-        // A native observer may race with detach. The registry-held emitter is
-        // deliberately stale while detached and must not re-enter JavaScript.
         preview.emit("ready", payload: ["value": 2])
         XCTAssertEqual(
             runtime.context.objectForKeyedSubscript("__stingViewEventCount")?.toInt32(),
             1
         )
 
-        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.insertNode(1, 2, -1);")
+        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.insertNode(0, 1, -1);")
         XCTAssertEqual(preview.attachedCount, 2)
         preview.emit("ready", payload: ["value": 3])
         XCTAssertEqual(
             runtime.context.objectForKeyedSubscript("__stingViewEventCount")?.toInt32(),
             2
         )
+
+        // Direct keyed detach/reinsert remains valid and does not dispose the
+        // native resource.
+        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.removeNode(1, 2);")
+        XCTAssertEqual(preview.detachedCount, 2)
+        XCTAssertNil(preview.view.superview)
+        preview.emit("ready", payload: ["value": 4])
+        XCTAssertEqual(
+            runtime.context.objectForKeyedSubscript("__stingViewEventCount")?.toInt32(),
+            2
+        )
+
+        try runtime.evaluate(bundle: "globalThis.__stingNativeBridge.insertNode(1, 2, -1);")
+        XCTAssertEqual(preview.attachedCount, 3)
+        preview.emit("ready", payload: ["value": 5])
+        XCTAssertEqual(
+            runtime.context.objectForKeyedSubscript("__stingViewEventCount")?.toInt32(),
+            3
+        )
         XCTAssertEqual(
             runtime.context
                 .objectForKeyedSubscript("__stingViewLastPayload")?
                 .objectForKeyedSubscript("value")?
                 .toInt32(),
-            3
+            5
         )
 
         runtime.dispose()
-        XCTAssertEqual(preview.detachedCount, 2)
+        XCTAssertEqual(preview.detachedCount, 3)
         XCTAssertEqual(preview.disposedCount, 1)
         XCTAssertNil(preview.view.superview)
 
