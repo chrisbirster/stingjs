@@ -10,6 +10,7 @@ npm run build
 node dist/cli.js doctor
 node dist/cli.js doctor --runtime
 node dist/cli.js devices
+node dist/cli.js config --project-root ../../examples/hello-world
 node dist/cli.js start --project-root ../../examples/hello-world
 node dist/cli.js run ios --project-root ../../examples/hello-world
 node dist/cli.js run android --project-root ../../examples/hello-world
@@ -37,6 +38,39 @@ Lists connected Android devices/emulators and, on macOS, available iOS simulator
 
 Use `--json` for editor/automation integration.
 
+### `sting config`
+
+Loads and validates the project's `sting.config.ts` (or supported JavaScript config variant) and prints the resolved configuration.
+
+```bash
+sting config
+sting config --json
+```
+
+A typical TypeScript config is:
+
+```ts
+import { defineConfig } from '@stingjs/cli/config';
+
+export default defineConfig({
+  name: 'My App',
+  bundle: 'dist/sting-app.js',
+  ios: {
+    project: 'ios/MyApp.xcodeproj',
+    scheme: 'MyApp',
+    bundleIdentifier: 'com.example.myapp',
+    configuration: 'Debug',
+  },
+  android: {
+    directory: 'android',
+    package: 'com.example.myapp',
+    variant: 'debug',
+  },
+});
+```
+
+The CLI transpiles TypeScript config files itself, so `sting.config.ts` works on the Node 22.12 minimum without requiring the application to install `tsx`, `ts-node`, or another runtime loader.
+
 ### `sting run ios`
 
 Builds the JavaScript application, selects a booted iOS simulator when possible, builds the native Xcode project, installs the app, and launches it.
@@ -48,31 +82,26 @@ sting run ios --device <simulator-udid>
 sting run ios --configuration Release
 ```
 
-The command currently infers a single `.xcodeproj` from the project's `ios/` directory and a single shared Xcode scheme when present. `--project-root` can point at a Sting app when the command is not run from that app's root.
+When `sting.config.ts` provides `ios.project`, `ios.scheme`, `ios.bundleIdentifier`, or `ios.configuration`, the command uses those values. Projects without config retain the original single-project/single-scheme inference behavior.
 
 ### `sting run android`
 
-Builds the JavaScript application, selects a connected Android device/emulator, installs the Debug application through Gradle, and launches its launcher activity through adb.
+Builds the JavaScript application, selects a connected Android device/emulator, installs the configured Gradle variant, and launches its launcher activity through adb.
 
 ```bash
 sting run android
 sting run android --device <adb-serial>
 sting run android --device "Pixel 9"
+sting run android --variant release
 ```
 
-The command prefers `android/gradlew` (or `gradlew.bat` on Windows). The current repository hello-world example does not yet check in a Gradle wrapper, so it falls back to a system `gradle` executable. Generated Sting applications should include a Gradle wrapper so ordinary app developers do not need a separately installed Gradle distribution.
+When `sting.config.ts` provides `android.directory`, `android.package`, or `android.variant`, the command uses those values. The command prefers `android/gradlew` (or `gradlew.bat` on Windows). The current repository hello-world example does not yet check in a Gradle wrapper, so it falls back to a system `gradle` executable. Generated Sting applications should include a Gradle wrapper so ordinary app developers do not need a separately installed Gradle distribution.
 
 Both `run` commands accept `--no-bundle` to skip the CLI's explicit `npm run build` step when the native project already owns bundle generation.
 
 ### `sting start`
 
-Serves an already-built Sting application bundle to Sting Go.
-
-Default bundle:
-
-```text
-dist/sting-app.js
-```
+Serves a built Sting application bundle to Sting Go. The default remains `dist/sting-app.js`, while `sting.config.ts` can set another default with `bundle`. An explicit `--bundle` flag wins over config.
 
 The server exposes:
 
