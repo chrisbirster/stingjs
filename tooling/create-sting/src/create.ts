@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -13,14 +14,16 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TEXT_EXTENSIONS = new Set([
-  '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.properties', '.ts', '.tsx', '.xml', '.sh',
+  '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.pbxproj', '.properties', '.swift', '.ts', '.tsx', '.xml', '.sh', '.xcscheme',
 ]);
 
 export interface CreateStingProjectOptions {
   targetDir: string;
   projectName?: string;
   androidPackage?: string;
+  iosBundleIdentifier?: string;
   runtimeArtifactsDir?: string;
+  iosRuntimeArtifactsDir?: string;
   force?: boolean;
 }
 
@@ -28,7 +31,9 @@ export interface CreatedStingProject {
   targetDir: string;
   projectName: string;
   androidPackage: string;
+  iosBundleIdentifier: string;
   runtimeArtifactsDir: string;
+  iosRuntimeArtifactsDir: string;
 }
 
 function packagePath(packageName: string): string {
@@ -56,6 +61,13 @@ function validateAndroidPackage(value: string): string {
   return value;
 }
 
+function validateIosBundleIdentifier(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$/.test(value)) {
+    throw new Error(`Invalid iOS bundle identifier: ${value}. Example: com.example.myapp`);
+  }
+  return value;
+}
+
 function resolveRuntimeArtifacts(explicit?: string): string {
   const candidates = [
     explicit,
@@ -78,6 +90,33 @@ function resolveRuntimeArtifacts(explicit?: string): string {
   );
 }
 
+function isIosRuntimePackage(directory: string): boolean {
+  return (
+    existsSync(join(directory, 'Package.swift')) &&
+    existsSync(join(directory, 'Sources', 'StingQuickJSRuntime')) &&
+    existsSync(join(directory, 'Artifacts', 'StingQuickJSBinary.xcframework'))
+  );
+}
+
+function resolveIosRuntimeArtifacts(explicit?: string): string {
+  const candidates = [
+    explicit,
+    process.env.STING_IOS_HOST_ARTIFACTS,
+    fileURLToPath(new URL('../runtime/ios', import.meta.url)),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    const directory = resolve(candidate);
+    for (const packageDirectory of [directory, join(directory, 'StingQuickJSRuntime')]) {
+      if (isIosRuntimePackage(packageDirectory)) return packageDirectory;
+    }
+  }
+
+  throw new Error(
+    'Sting iOS host artifacts were not found. Pass --ios-runtime-artifacts <dir>, set STING_IOS_HOST_ARTIFACTS, or package StingQuickJSRuntime under runtime/ios.',
+  );
+}
+
 function assertTargetAvailable(targetDir: string, force: boolean): void {
   if (!existsSync(targetDir)) return;
   const entries = readdirSync(targetDir);
@@ -89,6 +128,7 @@ function assertTargetAvailable(targetDir: string, force: boolean): void {
 function textExtension(path: string): string {
   const name = basename(path);
   if (name === '.gitignore') return '.gitignore';
+  if (name === 'project.pbxproj') return '.pbxproj';
   const index = name.lastIndexOf('.');
   return index < 0 ? '' : name.slice(index);
 }
@@ -134,7 +174,9 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
   const androidPackage = validateAndroidPackage(
     options.androidPackage ?? `run.stingjs.apps.${projectName.replace(/[^a-z0-9_]/g, '_')}`,
   );
+  const iosBundleIdentifier = validateIosBundleIdentifier(options.iosBundleIdentifier ?? androidPackage);
   const runtimeArtifactsDir = resolveRuntimeArtifacts(options.runtimeArtifactsDir);
+  const iosRuntimeArtifactsDir = resolveIosRuntimeArtifacts(options.iosRuntimeArtifactsDir);
   const force = options.force ?? false;
 
   assertTargetAvailable(targetDir, force);
@@ -146,6 +188,7 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
     PROJECT_DISPLAY_NAME: projectName.replace(/[-_]+/g, ' '),
     ANDROID_PACKAGE: androidPackage,
     ANDROID_PACKAGE_PATH: packagePath(androidPackage),
+    IOS_BUNDLE_IDENTIFIER: iosBundleIdentifier,
   });
 
   const libs = join(targetDir, 'android', 'app', 'libs');
@@ -153,5 +196,16 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
   cpSync(join(runtimeArtifactsDir, 'sting-runtime.aar'), join(libs, 'sting-runtime.aar'));
   cpSync(join(runtimeArtifactsDir, 'sting-quickjs.aar'), join(libs, 'sting-quickjs.aar'));
 
-  return { targetDir, projectName, androidPackage, runtimeArtifactsDir };
+  const iosRuntimeTarget = join(targetDir, 'ios', 'StingQuickJSRuntime');
+  rmSync(iosRuntimeTarget, { recursive: true, force: true });
+  cpSync(iosRuntimeArtifactsDir, iosRuntimeTarget, { recursive: true });
+
+  return {
+    targetDir,
+    projectName,
+    androidPackage,
+    iosBundleIdentifier,
+    runtimeArtifactsDir,
+    iosRuntimeArtifactsDir,
+  };
 }

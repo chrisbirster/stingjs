@@ -64,15 +64,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          artifacts=/tmp/sting-create-host
+          android_artifacts=/tmp/sting-create-android-host
+          ios_artifacts=/tmp/sting-create-ios-placeholder
           generated=/tmp/sting-generated-app
-          rm -rf "$artifacts" "$generated"
+          rm -rf "$android_artifacts" "$ios_artifacts" "$generated"
 
-          bash scripts/package-android-host.sh "$artifacts"
+          bash scripts/package-android-host.sh "$android_artifacts"
+          mkdir -p \
+            "$ios_artifacts/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework" \
+            "$ios_artifacts/StingQuickJSRuntime/Sources/StingQuickJSRuntime"
+          printf '// Android E2E placeholder; iOS E2E uses the real package.\n' > "$ios_artifacts/StingQuickJSRuntime/Package.swift"
+
           node tooling/create-sting/dist/cli.js "$generated" \
-            --runtime-artifacts "$artifacts" \
+            --runtime-artifacts "$android_artifacts" \
+            --ios-runtime-artifacts "$ios_artifacts" \
             --name generated-sting-e2e \
-            --android-package run.stingjs.generated
+            --android-package run.stingjs.generated \
+            --ios-bundle-identifier run.stingjs.generated
 
           mkdir -p "$generated/dist"
           cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
@@ -120,14 +128,82 @@ jobs:
   ios-e2e:
     name: iOS Hello World E2E
     runs-on: macos-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - name: Install dependencies
         run: npm install
       - name: Build complete iOS application
         run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build create-sting and JavaScript fixture
+        run: |
+          npm run build --workspace @stingjs/example-hello-world
+          cd tooling/create-sting
+          npm install
+          npm run build
+      - name: Prove create-sting iOS output consumes production package without Zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          android_artifacts=/tmp/sting-create-android-placeholder
+          ios_artifacts=/tmp/sting-create-ios-host
+          generated=/tmp/sting-generated-ios-app
+          sim_derived=/tmp/sting-generated-ios-simulator
+          device_derived=/tmp/sting-generated-ios-device
+          rm -rf "$android_artifacts" "$ios_artifacts" "$generated" "$sim_derived" "$device_derived"
+
+          mkdir -p "$android_artifacts"
+          : > "$android_artifacts/sting-runtime.aar"
+          : > "$android_artifacts/sting-quickjs.aar"
+          bash scripts/package-ios-host.sh "$ios_artifacts"
+
+          node tooling/create-sting/dist/cli.js "$generated" \
+            --runtime-artifacts "$android_artifacts" \
+            --ios-runtime-artifacts "$ios_artifacts" \
+            --name generated-sting-ios-e2e \
+            --android-package run.stingjs.generated \
+            --ios-bundle-identifier run.stingjs.generated
+
+          mkdir -p "$generated/dist"
+          cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+
+          test -f "$generated/ios/StingQuickJSRuntime/Package.swift"
+          test -d "$generated/ios/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework"
+          if grep -R -I -n -E '(\.\./){2,}(native|packages|runtime)/' "$generated/ios" --exclude-dir=.build; then
+            echo 'generated iOS project must not reference Sting monorepo source paths' >&2
+            exit 1
+          fi
+
+          consumer_path="/usr/bin:/bin:/usr/sbin:/sbin"
+          if env PATH="$consumer_path" sh -c 'command -v zig >/dev/null 2>&1'; then
+            echo 'Zig unexpectedly remains available in the generated iOS consumer PATH' >&2
+            exit 1
+          fi
+
+          env PATH="$consumer_path" xcodebuild \
+            -project "$generated/ios/StingApp.xcodeproj" \
+            -scheme StingApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$sim_derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          env PATH="$consumer_path" xcodebuild \
+            -project "$generated/ios/StingApp.xcodeproj" \
+            -scheme StingApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$device_derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          test -f "$sim_derived/Build/Products/Debug-iphonesimulator/StingApp.app/sting-app.js"

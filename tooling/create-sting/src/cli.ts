@@ -5,13 +5,15 @@ interface ParsedArgs {
   targetDir?: string;
   projectName?: string;
   androidPackage?: string;
+  iosBundleIdentifier?: string;
   runtimeArtifactsDir?: string;
+  iosRuntimeArtifactsDir?: string;
   force: boolean;
   help: boolean;
 }
 
 function usage(): string {
-  return `Usage: create-sting <directory> [options]\n\nOptions:\n  --name <name>                 npm/project name\n  --android-package <package>   Android application package\n  --runtime-artifacts <dir>     Directory containing sting-runtime.aar and sting-quickjs.aar\n  --force                       Allow writing into a non-empty target directory\n  -h, --help                    Show this help\n`;
+  return `Usage: create-sting <directory> [options]\n\nOptions:\n  --name <name>                       npm/project name\n  --android-package <package>         Android application package\n  --ios-bundle-identifier <id>        iOS application bundle identifier\n  --runtime-artifacts <dir>           Directory containing sting-runtime.aar and sting-quickjs.aar\n  --ios-runtime-artifacts <dir>       Directory containing the packaged StingQuickJSRuntime host\n  --force                             Allow writing into a non-empty target directory\n  -h, --help                          Show this help\n`;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -22,13 +24,21 @@ function parseArgs(argv: string[]): ParsedArgs {
       result.help = true;
     } else if (arg === '--force') {
       result.force = true;
-    } else if (arg === '--name' || arg === '--android-package' || arg === '--runtime-artifacts') {
+    } else if (
+      arg === '--name' ||
+      arg === '--android-package' ||
+      arg === '--ios-bundle-identifier' ||
+      arg === '--runtime-artifacts' ||
+      arg === '--ios-runtime-artifacts'
+    ) {
       const value = argv[index + 1];
       if (!value) throw new Error(`${arg} requires a value.`);
       index += 1;
       if (arg === '--name') result.projectName = value;
       if (arg === '--android-package') result.androidPackage = value;
+      if (arg === '--ios-bundle-identifier') result.iosBundleIdentifier = value;
       if (arg === '--runtime-artifacts') result.runtimeArtifactsDir = value;
+      if (arg === '--ios-runtime-artifacts') result.iosRuntimeArtifactsDir = value;
     } else if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     } else if (!result.targetDir) {
@@ -53,10 +63,12 @@ try {
       targetDir: args.targetDir,
       projectName: args.projectName,
       androidPackage: args.androidPackage,
+      iosBundleIdentifier: args.iosBundleIdentifier,
       runtimeArtifactsDir: args.runtimeArtifactsDir,
+      iosRuntimeArtifactsDir: args.iosRuntimeArtifactsDir,
       force: args.force,
     });
-    process.stdout.write(`Created ${created.projectName} in ${created.targetDir}\n\nNext steps:\n  cd ${args.targetDir}\n  npm install\n  sting doctor\n  sting test\n  sting run android\n`);
+    process.stdout.write(`Created ${created.projectName} in ${created.targetDir}\n\nNext steps:\n  cd ${args.targetDir}\n  npm install\n  sting doctor\n  sting test\n  sting run ios\n  sting run android\n`);
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

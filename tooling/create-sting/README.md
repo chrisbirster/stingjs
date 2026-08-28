@@ -2,12 +2,28 @@
 
 Project creator for standalone Sting applications.
 
-Current foundation generates the Solid/Vite application and the distributable Android host path. It consumes prebuilt `sting-runtime.aar` and `sting-quickjs.aar` artifacts; generated Android builds do not invoke Zig or reference Sting repository source paths.
+The creator generates a Solid 2/Vite application plus native Android and iOS projects that consume Sting's distributable production hosts. Ordinary generated-app builds do not invoke Zig and do not reference Sting repository source paths.
+
+Repository/CI usage can inject freshly built artifacts explicitly:
 
 ```bash
-node dist/cli.js my-app --runtime-artifacts /path/to/android-host
+node dist/cli.js my-app \
+  --runtime-artifacts /path/to/android-host \
+  --ios-runtime-artifacts /path/to/ios-host
 ```
 
-For local development, `STING_ANDROID_HOST_ARTIFACTS` may point at the directory containing the two AARs. A packaged creator can instead ship them under `runtime/android` so `npm create sting@latest my-app` needs no extra flag.
+The iOS path may point either at the packaged `StingQuickJSRuntime` directory itself or at the parent directory produced by `scripts/package-ios-host.sh`.
 
-The production iOS template is intentionally deferred until the official QuickJS SwiftPM package from #73 is mergeable and distributable. The creator will not generate the JavaScriptCore reference host as a fake production application template.
+For local development, `STING_ANDROID_HOST_ARTIFACTS` and `STING_IOS_HOST_ARTIFACTS` provide the same overrides. A published creator stages the release hosts under `runtime/android` and `runtime/ios`, making the intended user path:
+
+```bash
+npm create sting@latest my-app
+cd my-app
+npm install
+sting doctor
+sting test
+sting run ios
+sting run android
+```
+
+Official QuickJS is the production engine on both native platforms. The generated iOS application links the packaged `StingQuickJSRuntime`; it does not use the JavaScriptCore reference host as a production substitute.
