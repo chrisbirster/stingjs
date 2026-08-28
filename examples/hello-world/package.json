@@ -13,6 +13,7 @@
     "@stingjs/haptics": "0.1.0",
     "@stingjs/native": "0.1.0",
     "@stingjs/solid": "0.1.0",
+    "@stingjs/stylex": "0.1.0",
     "solid-js": "2.0.0-rc.1"
   },
   "devDependencies": {
