@@ -235,7 +235,9 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
   const androidPackage = validateAndroidPackage(
     options.androidPackage ?? `run.stingjs.apps.${projectName.replace(/[^a-z0-9_]/g, '_')}`,
   );
-  const iosBundleIdentifier = validateIosBundleIdentifier(options.iosBundleIdentifier ?? androidPackage);
+  const iosBundleIdentifier = validateIosBundleIdentifier(
+    options.iosBundleIdentifier ?? androidPackage.replaceAll('_', '-'),
+  );
   const runtimeArtifactsDir = resolveRuntimeArtifacts(options.runtimeArtifactsDir);
   const iosRuntimeArtifactsDir = resolveIosRuntimeArtifacts(options.iosRuntimeArtifactsDir);
   const force = options.force ?? false;
