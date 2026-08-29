@@ -19,7 +19,7 @@ const TEXT_EXTENSIONS = new Set([
   '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.pbxproj', '.properties', '.swift', '.ts', '.tsx', '.xml', '.sh', '.xcscheme',
 ]);
 const GRADLE_WRAPPER_VERSION = '9.5.0';
-const GRADLE_WRAPPER_URL = `https://services.gradle.org/distributions/gradle-${GRADLE_WRAPPER_VERSION}-wrapper.jar`;
+const GRADLE_WRAPPER_URL = `https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_WRAPPER_VERSION}/gradle/wrapper/gradle-wrapper.jar`;
 const GRADLE_WRAPPER_SHA256 = '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7';
 
 export interface CreateStingProjectOptions {
