@@ -4,6 +4,17 @@ import UIKit
 public typealias StingNativeModuleCompletion = (Result<Any?, Error>) -> Void
 public typealias StingNativeModuleEventEmitter = (Any?) -> Void
 public typealias StingNativeViewEventEmitter = (Any?) -> Void
+public typealias StingPermissionCompletion = (Result<StingPermissionStatus, Error>) -> Void
+
+/// Portable authorization states shared by every Sting platform module.
+/// Platform-specific values such as AVAuthorizationStatus never cross this boundary.
+public enum StingPermissionStatus: String, Sendable {
+    case undetermined
+    case denied
+    case granted
+    case restricted
+    case limited
+}
 
 /// Platform-neutral application/runtime lifecycle states delivered to native modules.
 ///
@@ -103,6 +114,12 @@ public protocol StingNativeModule: AnyObject {
     func createObject(type: String, arguments: [Any]) throws -> any StingNativeObject
     func createView(type: String) throws -> any StingNativeView
 
+    /// Return the current portable authorization state for a module-owned permission.
+    func permissionStatus(for permission: String) throws -> StingPermissionStatus
+
+    /// Request a module-owned permission asynchronously using platform-native UI when needed.
+    func requestPermission(_ permission: String, completion: @escaping StingPermissionCompletion)
+
     /// Receive shared Sting application/runtime lifecycle transitions.
     /// Implementations must not assume an engine-specific JavaScript value or a
     /// UIKit object is available here.
@@ -153,6 +170,20 @@ public extension StingNativeModule {
             code: "E_VIEW_TYPE_NOT_FOUND",
             message: "\(name) does not implement native view type \(type)"
         )
+    }
+
+    func permissionStatus(for permission: String) throws -> StingPermissionStatus {
+        throw StingNativeModuleError(
+            code: "E_PERMISSION_NOT_FOUND",
+            message: "\(name) does not implement permission \(permission)"
+        )
+    }
+
+    func requestPermission(_ permission: String, completion: @escaping StingPermissionCompletion) {
+        completion(.failure(StingNativeModuleError(
+            code: "E_PERMISSION_NOT_FOUND",
+            message: "\(name) does not implement permission \(permission)"
+        )))
     }
 
     func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {}
