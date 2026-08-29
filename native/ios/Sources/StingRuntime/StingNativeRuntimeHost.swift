@@ -128,7 +128,7 @@ public final class StingNativeRuntimeHost {
         requestId: Int
     ) throws {
         try perform {
-            bridge.callModuleAsync(module: module, method: method, argsJSON: argsJSON, requestId: requestId)
+            bridge.callModuleAsync(module, method, argsJSON, requestId)
         }
     }
 
@@ -137,7 +137,7 @@ public final class StingNativeRuntimeHost {
         event: String,
         enabled: Bool
     ) -> String {
-        bridge.setModuleEventEnabled(module: module, event: event, enabled: enabled)
+        bridge.setModuleEventEnabled(module, event, enabled)
     }
 
     /// Explicit platform-host lifecycle forwarding. UIKit application
