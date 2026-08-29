@@ -5,6 +5,20 @@ public typealias StingNativeModuleCompletion = (Result<Any?, Error>) -> Void
 public typealias StingNativeModuleEventEmitter = (Any?) -> Void
 public typealias StingNativeViewEventEmitter = (Any?) -> Void
 
+/// Platform-neutral application/runtime lifecycle states delivered to native modules.
+///
+/// These values deliberately describe Sting semantics rather than UIKit application
+/// states so the same module contract is available on Android. `runtimeDisposing`
+/// belongs to the Sting runtime lifetime and is therefore reliable even when a
+/// platform does not expose a process-termination callback.
+public enum StingApplicationLifecycleEvent: String, Sendable {
+    case foreground
+    case active
+    case inactive
+    case background
+    case runtimeDisposing
+}
+
 public protocol StingNativeObject: AnyObject {
     func callSync(method: String, arguments: [Any]) throws -> Any?
     func callAsync(
@@ -88,6 +102,20 @@ public protocol StingNativeModule: AnyObject {
     ) throws
     func createObject(type: String, arguments: [Any]) throws -> any StingNativeObject
     func createView(type: String) throws -> any StingNativeView
+
+    /// Receive shared Sting application/runtime lifecycle transitions.
+    /// Implementations must not assume an engine-specific JavaScript value or a
+    /// UIKit object is available here.
+    func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent)
+
+    /// Handle platform background work routed explicitly to this module.
+    /// Completion may be asynchronous; the host owns any platform-specific
+    /// background task token and is responsible for translating the result.
+    func handleBackgroundEvent(
+        name: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    )
 }
 
 public extension StingNativeModule {
@@ -125,6 +153,19 @@ public extension StingNativeModule {
             code: "E_VIEW_TYPE_NOT_FOUND",
             message: "\(name) does not implement native view type \(type)"
         )
+    }
+
+    func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {}
+
+    func handleBackgroundEvent(
+        name: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        completion(.failure(StingNativeModuleError(
+            code: "E_BACKGROUND_EVENT_NOT_FOUND",
+            message: "\(self.name) does not implement background event \(name)"
+        )))
     }
 }
 
