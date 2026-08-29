@@ -18,6 +18,8 @@ Projects that add custom third-party native modules will eventually require a pr
 sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 ```
 
+In an interactive terminal, `sting start` also renders that exact deep link as a QR code. Android and iOS Sting Go both consume the same `sting://go` URL contract.
+
 The v1 manifest is the authoritative discovery document. It identifies the production engine and runtime version, names required standard-SDK capabilities, and publishes the bundle, reload, and health endpoints:
 
 ```json
@@ -86,7 +88,7 @@ The development server is local-network tooling. Simulator/device loopback and L
 - official QuickJS Sting runtime creation;
 - real native renderer root;
 - reload/error UI;
-- connected physical-device test.
+- connected physical-device validation harness.
 
 ### iOS
 
@@ -98,7 +100,29 @@ The development server is local-network tooling. Simulator/device loopback and L
 - official `StingQuickJSRuntime` integration;
 - real UIKit renderer root;
 - reload/error UI;
-- Simulator test first; physical iPhone validation when hardware is available.
+- Simulator build/install/launch + deep-link smoke;
+- physical iPhone validation when hardware is available.
+
+## Physical Android validation
+
+Hosted Android-emulator CI validates the normal Sting Go application and instrumentation suite, but it is not physical-device evidence. The repository also provides a hardware-only harness:
+
+```bash
+bash scripts/test-sting-go-android-physical.sh
+```
+
+The harness intentionally refuses Android emulators. It requires exactly one authorized physical Android device plus the normal Sting source-build Android toolchain. It then:
+
+1. builds the hello-world Solid/Vite bundle and the Android Sting Go app;
+2. installs the app and instrumentation APK on the physical device;
+3. creates an `adb reverse` tunnel to the local `sting start` server;
+4. exercises the exported `sting://go` VIEW intent;
+5. opens the v1 manifest through the real developer client;
+6. asserts that official QuickJS evaluates the bundle and the native view tree contains `Count: 0`;
+7. asserts that the SSE reload connection reaches `Live`;
+8. writes commit/device/result metadata under `.artifacts/sting-go/android-physical/<commit>/`.
+
+The `adb reverse` path is a deterministic USB physical-device smoke. A separate LAN/QR run is still useful before release to prove the actual developer-network topology on the target phone.
 
 ## Compatibility
 
