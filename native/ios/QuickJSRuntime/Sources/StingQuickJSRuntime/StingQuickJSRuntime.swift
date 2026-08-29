@@ -351,6 +351,13 @@ public final class StingQuickJSRuntime {
         }
     }
 
+    /// Forward a native back gesture/button into the deepest active NavigationStack.
+    public func requestBack() throws -> Bool {
+        try requireOwnerThread("handle a native back request")
+        guard handle != nil, !closed else { return false }
+        return host.requestBack()
+    }
+
     public func close() throws {
         if Thread.isMainThread {
             try closeOnOwnerThread()

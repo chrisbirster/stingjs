@@ -134,6 +134,8 @@ final class StingNodeRegistry {
             view = StingSafeAreaStackView(frame: .zero)
         case "keyboardavoidingview":
             view = StingKeyboardAvoidingStackView(frame: .zero)
+        case "navigationstack":
+            view = StingNavigationStackView(frame: .zero)
         case "text":
             let label = UILabel()
             label.numberOfLines = 0
@@ -189,6 +191,7 @@ final class StingNodeRegistry {
             node.parentId = nil
             detachView(node.view, from: childContainer(for: previousParent))
             refreshTextContent(previousParentId)
+            refreshNavigation(previousParent)
         }
 
         let insertionIndex: Int
@@ -209,6 +212,7 @@ final class StingNodeRegistry {
         }
         if parent.isAttached { propagateAttach(nodeId) }
         refreshTextContent(parentId)
+        refreshNavigation(parent)
     }
 
     func removeNode(parentId: Int, nodeId: Int) throws {
@@ -222,6 +226,7 @@ final class StingNodeRegistry {
         node.parentId = nil
         detachView(node.view, from: childContainer(for: parent))
         refreshTextContent(parentId)
+        refreshNavigation(parent)
     }
 
     func setProperty(id: Int, name: String, valueJSON: String) throws {
@@ -329,15 +334,48 @@ final class StingNodeRegistry {
             button.setPressEnabled(enabled)
         case ("changeText", let input as StingTextInput):
             input.setChangeTextEnabled(enabled)
+        case ("back", let navigation as StingNavigationStackView):
+            navigation.setBackHandler(enabled: enabled) { [weak self, weak node] in
+                guard let self,
+                      !self.disposed,
+                      let node,
+                      self.nodes[id] === node,
+                      node.isAttached else { return }
+                self.eventSink?(id, "back", "null")
+            }
         default:
             throw StingRuntimeError("Event \(event) is not supported by node \(id)")
         }
+    }
+
+    /** Route a platform back request to the deepest active declarative navigation stack. */
+    func requestBack() -> Bool {
+        guard !disposed else { return false }
+        let candidates = nodes.values
+            .filter { node in
+                node.isAttached &&
+                    node.view is StingNavigationStackView &&
+                    isOnActiveNavigationPath(node.id)
+            }
+            .sorted { navigationDepth($0.id) > navigationDepth($1.id) }
+
+        for node in candidates {
+            if let navigation = node.view as? StingNavigationStackView,
+               navigation.requestBack() {
+                return true
+            }
+        }
+        return false
     }
 
     func dispose() {
         guard !disposed else { return }
         disposed = true
         eventSink = nil
+
+        for node in nodes.values {
+            (node.view as? StingNavigationStackView)?.setBackHandler(enabled: false, handler: {})
+        }
 
         for id in nodes.keys.sorted() where id != 0 {
             guard let node = nodes[id], let nativeView = node.nativeModuleView else { continue }
@@ -359,6 +397,30 @@ final class StingNodeRegistry {
         guard !disposed else { throw StingRuntimeError("Sting node registry is disposed") }
         guard let node = nodes[id] else { throw StingRuntimeError("Unknown native node id \(id)") }
         return node
+    }
+
+    private func isOnActiveNavigationPath(_ nodeId: Int) -> Bool {
+        var currentId = nodeId
+        while true {
+            guard let current = nodes[currentId] else { return false }
+            guard let parentId = current.parentId else { return true }
+            guard let parent = nodes[parentId] else { return false }
+            if parent.view is StingNavigationStackView {
+                let activeChild = parent.children.reversed().first { nodes[$0]?.view != nil }
+                if activeChild != currentId { return false }
+            }
+            currentId = parentId
+        }
+    }
+
+    private func navigationDepth(_ nodeId: Int) -> Int {
+        var depth = 0
+        var current = nodes[nodeId]
+        while let parentId = current?.parentId {
+            depth += 1
+            current = nodes[parentId]
+        }
+        return depth
     }
 
     private func propagateAttach(_ nodeId: Int) {
@@ -417,6 +479,10 @@ final class StingNodeRegistry {
         } else if let button = parent.view as? UIButton {
             button.setTitle(text, for: .normal)
         }
+    }
+
+    private func refreshNavigation(_ parent: StingNode) {
+        (parent.view as? StingNavigationStackView)?.refreshVisibleScreen()
     }
 
     private func applyImageSource(_ value: Any, to node: StingNode) {

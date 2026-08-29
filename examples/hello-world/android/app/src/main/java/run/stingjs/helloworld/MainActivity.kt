@@ -52,6 +52,12 @@ class MainActivity : Activity() {
         runtime.evaluate(bundleSource)
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (::runtime.isInitialized && runtime.requestBack()) return
+        super.onBackPressed()
+    }
+
     override fun onDestroy() {
         if (::nodes.isInitialized) nodes.eventSink = null
         if (::runtime.isInitialized) runtime.close()

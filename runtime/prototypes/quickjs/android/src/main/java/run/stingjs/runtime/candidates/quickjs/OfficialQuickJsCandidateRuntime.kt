@@ -46,6 +46,12 @@ class OfficialQuickJsCandidateRuntime(
         }
     }
 
+    fun requestBack(): Boolean {
+        requireOwnerThread("handle a native back request")
+        if (handle == 0L) return false
+        return bridge.requestBack()
+    }
+
     override fun close() {
         requireOwnerThread("destroy the runtime")
         val current = handle

@@ -78,6 +78,8 @@ class StingNativeBridge(
         perform { nodes.setEventEnabled(id, event, enabled) }
     }
 
+    fun requestBack(): Boolean = nodes.requestBack()
+
     fun callModuleSync(module: String, method: String, argsJSON: String): String {
         return try {
             JSONObject()

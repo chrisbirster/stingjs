@@ -36,6 +36,9 @@ export interface ViewProps extends StyleProps {
 
 export interface SafeAreaProps extends ViewProps {}
 export interface KeyboardAvoidingViewProps extends ViewProps {}
+export interface NavigationStackProps extends ViewProps {
+  onBack?: () => void;
+}
 
 export interface TextProps extends StyleProps {
   children?: unknown;
@@ -226,6 +229,19 @@ export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): HostNode
     props as KeyboardAvoidingViewProps & Record<string, unknown>,
     ['children', 'accessibilityLabel'],
     flexDirection('column'),
+  );
+}
+
+/**
+ * Declarative native navigation stack. Children are ordered oldest-to-newest;
+ * native keeps only the last child visible. A native back request calls onBack,
+ * but Solid remains the source of truth for removing the top screen.
+ */
+export function NavigationStack(props: NavigationStackProps): HostNode {
+  return createNativePrimitive(
+    'navigationstack',
+    props as NavigationStackProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel', 'onBack'],
   );
 }
 

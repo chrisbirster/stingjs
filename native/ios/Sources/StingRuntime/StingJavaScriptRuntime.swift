@@ -119,6 +119,17 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    /// Forward a native back gesture/button into the deepest active NavigationStack.
+    public func requestBack() -> Bool {
+        if Thread.isMainThread {
+            return !disposed && nodes.requestBack()
+        }
+        return DispatchQueue.main.sync { [weak self] in
+            guard let self, !self.disposed else { return false }
+            return self.nodes.requestBack()
+        }
+    }
+
     public func dispose() {
         if Thread.isMainThread {
             disposeOnRuntimeThread()
