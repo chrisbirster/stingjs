@@ -178,6 +178,10 @@ async function development(command: DevelopmentCommand, args: string[]): Promise
       host: option(args, '--host'),
       port,
       watchBundle: mode.watch,
+      onClientReport: (report) => {
+        console.error(`\nSting Go ${report.platform} ${report.kind}: ${report.message}`);
+        if (report.detail) console.error(report.detail);
+      },
     });
   } catch (error) {
     watcher?.close();
@@ -201,6 +205,7 @@ async function development(command: DevelopmentCommand, args: string[]): Promise
     console.log(JSON.stringify({
       manifestUrl: started.manifestUrl,
       reloadUrl: started.reloadUrl,
+      reportUrl: started.reportUrl,
       stingGoUrl: started.stingGoUrl,
       bundlePath: started.bundlePath,
       watching: mode.watch,
@@ -215,6 +220,7 @@ async function development(command: DevelopmentCommand, args: string[]): Promise
     console.log(mode.title);
     console.log(`Manifest: ${started.manifestUrl}`);
     console.log(`Reload:   ${started.reloadUrl}`);
+    console.log(`Report:   ${started.reportUrl}`);
     console.log(`Sting Go: ${started.stingGoUrl}`);
     console.log(`Bundle:   ${started.bundlePath}`);
     console.log(`Watching: ${mode.watch ? 'yes' : 'no'}`);
