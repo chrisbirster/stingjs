@@ -52,6 +52,10 @@ public final class StingModuleRegistry {
         let module = try requireModule(name)
 
         switch method {
+        case Self.permissionStatusMethod:
+            let permission = try requirePermissionArgument(arguments)
+            return try module.permissionStatus(for: permission).rawValue
+
         case Self.objectCreateMethod:
             let type = try requireStringArgument(arguments, index: 0, label: "native object type")
             return try createObject(module: module, type: type, arguments: Array(arguments.dropFirst()))
@@ -83,6 +87,23 @@ public final class StingModuleRegistry {
                 code: "E_MODULE_NOT_FOUND",
                 message: "Native module \(name) is not registered"
             )))
+            return
+        }
+
+        if method == Self.permissionRequestMethod {
+            do {
+                let permission = try requirePermissionArgument(arguments)
+                module.requestPermission(permission) { result in
+                    switch result {
+                    case .success(let status):
+                        completion(.success(status.rawValue))
+                    case .failure(let error):
+                        completion(.failure(error))
+                    }
+                }
+            } catch {
+                completion(.failure(error))
+            }
             return
         }
 
@@ -330,6 +351,23 @@ public final class StingModuleRegistry {
         return handle
     }
 
+    private func requirePermissionArgument(_ arguments: [Any]) throws -> String {
+        guard let permission = arguments.first as? String else {
+            throw StingNativeModuleError(
+                code: "E_INVALID_PERMISSION",
+                message: "Native permission name must be a non-empty string"
+            )
+        }
+        let normalized = permission.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw StingNativeModuleError(
+                code: "E_INVALID_PERMISSION",
+                message: "Native permission name must be a non-empty string"
+            )
+        }
+        return normalized
+    }
+
     private func requireStringArgument(
         _ arguments: [Any],
         index: Int,
@@ -346,6 +384,8 @@ public final class StingModuleRegistry {
         return value
     }
 
+    private static let permissionStatusMethod = "__sting_permission_status"
+    private static let permissionRequestMethod = "__sting_permission_request"
     private static let objectCreateMethod = "__sting_object_create"
     private static let objectCallSyncMethod = "__sting_object_call_sync"
     private static let objectCallAsyncMethod = "__sting_object_call_async"
