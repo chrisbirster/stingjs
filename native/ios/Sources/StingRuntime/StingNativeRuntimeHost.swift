@@ -140,6 +140,27 @@ public final class StingNativeRuntimeHost {
         bridge.setModuleEventEnabled(module, event, enabled)
     }
 
+    /// Explicit platform-host lifecycle forwarding. UIKit application
+    /// notifications are also observed by the registry, while this method is
+    /// useful for custom host composition and deterministic tests.
+    public func dispatchLifecycle(_ event: StingApplicationLifecycleEvent) {
+        modules.dispatchLifecycle(event)
+    }
+
+    public func deliverBackgroundEvent(
+        module: String,
+        event: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        modules.deliverBackgroundEvent(
+            module: module,
+            event: event,
+            payload: payload,
+            completion: completion
+        )
+    }
+
     public func detachAsyncResultSink() {
         bridge.detachAsyncResultSink()
     }
@@ -158,7 +179,7 @@ public final class StingNativeRuntimeHost {
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
         nodes.dispose()
-        modules.disposeAllObjects()
+        modules.dispose()
     }
 
     private func perform(_ operation: () -> Void) throws {
