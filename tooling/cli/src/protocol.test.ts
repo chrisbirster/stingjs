@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkStingGoCompatibility, createStingGoManifest } from './protocol.js';
+import {
+  checkStingGoCompatibility,
+  createStingGoManifest,
+  parseStingGoClientReport,
+} from './protocol.js';
 
 test('createStingGoManifest is deterministic and publishes the complete v1 development contract', () => {
   const manifest = createStingGoManifest({
@@ -26,7 +30,40 @@ test('createStingGoManifest is deterministic and publishes the complete v1 devel
       path: '/health',
       contentType: 'application/json',
     },
+    report: {
+      path: '/report',
+      method: 'POST',
+      contentType: 'application/json',
+    },
   });
+});
+
+test('parseStingGoClientReport accepts a bounded known report', () => {
+  assert.deepEqual(
+    parseStingGoClientReport({
+      kind: 'runtime',
+      platform: 'ios',
+      message: '  ReferenceError: missingValue is not defined  ',
+      detail: 'at sting-app.js:12:4',
+    }),
+    {
+      kind: 'runtime',
+      platform: 'ios',
+      message: 'ReferenceError: missingValue is not defined',
+      detail: 'at sting-app.js:12:4',
+    },
+  );
+});
+
+test('parseStingGoClientReport rejects unknown kinds and empty messages', () => {
+  assert.throws(
+    () => parseStingGoClientReport({ kind: 'other', platform: 'android', message: 'boom' }),
+    /Unsupported Sting Go report kind/,
+  );
+  assert.throws(
+    () => parseStingGoClientReport({ kind: 'runtime', platform: 'android', message: '  ' }),
+    /non-empty string/,
+  );
 });
 
 test('Sting Go compatibility accepts an exact runtime with a capability superset', () => {
