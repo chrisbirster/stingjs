@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import run.stingjs.generated.createStingModules
 import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingModuleRegistry
 import run.stingjs.runtime.StingNativeBridge
@@ -28,7 +29,10 @@ class MainActivity : Activity() {
         setContentView(root)
 
         nodes = StingNodeRegistry(root)
-        bridge = StingNativeBridge(nodes = nodes, modules = StingModuleRegistry())
+        bridge = StingNativeBridge(
+            nodes = nodes,
+            modules = StingModuleRegistry(createStingModules(this)),
+        )
         val bundleSource = assets.open("sting-app.js").bufferedReader().use { it.readText() }
         check(bundleSource.isNotBlank()) { "sting-app.js is empty" }
 
