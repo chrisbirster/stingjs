@@ -21,4 +21,36 @@ final class StingSafeAreaTests: XCTestCase {
         XCTAssertEqual(view.directionalLayoutMargins.bottom, 44)
         XCTAssertEqual(view.directionalLayoutMargins.trailing, 33)
     }
+
+    func testRegistryCreatesAndStylesSafeAreaHost() throws {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let nodes = StingNodeRegistry(rootView: root)
+
+        try nodes.createElement(id: 1, type: "safearea")
+        try nodes.insertNode(parentId: 0, nodeId: 1, anchorId: -1)
+
+        guard let safeArea = root.subviews.first as? StingSafeAreaStackView else {
+            return XCTFail("safearea should mount as StingSafeAreaStackView")
+        }
+
+        try nodes.setProperty(
+            id: 1,
+            name: "style",
+            valueJSON: """
+            {
+              "__stingResolved": true,
+              "paddingTop": 8,
+              "paddingRight": 8,
+              "paddingBottom": 8,
+              "paddingLeft": 8
+            }
+            """
+        )
+        safeArea.applySafeAreaInsetsForTesting(UIEdgeInsets(top: 20, left: 2, bottom: 30, right: 3))
+
+        XCTAssertEqual(safeArea.directionalLayoutMargins.leading, 10)
+        XCTAssertEqual(safeArea.directionalLayoutMargins.top, 28)
+        XCTAssertEqual(safeArea.directionalLayoutMargins.trailing, 11)
+        XCTAssertEqual(safeArea.directionalLayoutMargins.bottom, 38)
+    }
 }
