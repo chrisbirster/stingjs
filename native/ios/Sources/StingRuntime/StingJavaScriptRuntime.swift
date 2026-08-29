@@ -183,15 +183,19 @@ public final class StingJavaScriptRuntime {
         bridge?.detachAsyncResultSink()
         bridge?.detachModuleEventSink()
 
+        // Modules see their terminal lifecycle callback before renderer-owned
+        // module views and opaque native objects are retired.
+        modules.dispatchLifecycle(.runtimeDisposing)
+
         // The node registry is the final ownership boundary for module-created
         // UIKit views. It disables their event emitters, detaches any remaining
         // attached views, and invokes dispose() exactly once per live node.
         nodes.dispose()
 
-        // Module teardown emits runtimeDisposing exactly once before releasing
-        // abandoned native-object handles. This matches StingNativeRuntimeHost,
-        // keeping JSC as a semantic/native reference rather than a separate API.
-        modules.dispose()
+        // JavaScript wrappers release their handles through __stingDisposeRuntime.
+        // This registry teardown is the final guarantee for raw or abandoned
+        // handles that were created without a live JS wrapper.
+        modules.disposeAllObjects()
     }
 
     private func installHostGlobals(in context: JSContext) {
