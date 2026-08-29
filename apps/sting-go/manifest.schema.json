@@ -29,7 +29,7 @@
     "development": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reload", "health", "report"],
+      "required": ["reload", "health"],
       "properties": {
         "reload": {
           "type": "object",
