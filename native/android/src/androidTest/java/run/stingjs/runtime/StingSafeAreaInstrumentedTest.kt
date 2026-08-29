@@ -60,9 +60,12 @@ class StingSafeAreaInstrumentedTest {
         )
         safeArea.applySafeAreaInsetsForTesting(left = 2, top = 20, right = 3, bottom = 30)
 
-        assertEquals(10, safeArea.paddingLeft)
-        assertEquals(28, safeArea.paddingTop)
-        assertEquals(11, safeArea.paddingRight)
-        assertEquals(38, safeArea.paddingBottom)
+        // Style values are density-independent pixels. Assert the registry conversion plus
+        // safe-area insets rather than hard-coding emulator-specific physical-pixel values.
+        val styledPadding = (8f * context.resources.displayMetrics.density).toInt()
+        assertEquals(styledPadding + 2, safeArea.paddingLeft)
+        assertEquals(styledPadding + 20, safeArea.paddingTop)
+        assertEquals(styledPadding + 3, safeArea.paddingRight)
+        assertEquals(styledPadding + 30, safeArea.paddingBottom)
     }
 }
