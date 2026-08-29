@@ -37,6 +37,11 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         val module = requireModule(name)
 
         return when (method) {
+            PERMISSION_STATUS_METHOD -> {
+                val permission = requirePermissionArgument(arguments)
+                module.permissionStatus(permission).wireValue
+            }
+
             OBJECT_CREATE_METHOD -> {
                 val type = requireStringArgument(arguments, 0, "native object type")
                 createObject(module, type, arguments.drop(1))
@@ -74,6 +79,26 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
                     ),
                 ),
             )
+            return
+        }
+
+        if (method == PERMISSION_REQUEST_METHOD) {
+            val permission = try {
+                requirePermissionArgument(arguments)
+            } catch (error: Throwable) {
+                completion(StingNativeModuleResult.Failure(error))
+                return
+            }
+            module.requestPermission(permission) { result ->
+                result.fold(
+                    onSuccess = { status ->
+                        completion(StingNativeModuleResult.Success(status.wireValue))
+                    },
+                    onFailure = { error ->
+                        completion(StingNativeModuleResult.Failure(error))
+                    },
+                )
+            }
             return
         }
 
@@ -270,6 +295,17 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         return handle
     }
 
+    private fun requirePermissionArgument(arguments: List<Any?>): String {
+        val permission = arguments.firstOrNull() as? String
+        if (permission.isNullOrBlank()) {
+            throw StingNativeModuleError(
+                code = "E_INVALID_PERMISSION",
+                message = "Native permission name must be a non-empty string",
+            )
+        }
+        return permission.trim()
+    }
+
     private fun requireStringArgument(
         arguments: List<Any?>,
         index: Int,
@@ -286,6 +322,8 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     }
 
     private companion object {
+        const val PERMISSION_STATUS_METHOD = "__sting_permission_status"
+        const val PERMISSION_REQUEST_METHOD = "__sting_permission_request"
         const val OBJECT_CREATE_METHOD = "__sting_object_create"
         const val OBJECT_CALL_SYNC_METHOD = "__sting_object_call_sync"
         const val OBJECT_CALL_ASYNC_METHOD = "__sting_object_call_async"
