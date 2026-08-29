@@ -34,6 +34,8 @@ export interface ViewProps extends StyleProps {
   accessibilityLabel?: string;
 }
 
+export interface SafeAreaProps extends ViewProps {}
+
 export interface TextProps extends StyleProps {
   children?: unknown;
   accessibilityLabel?: string;
@@ -198,6 +200,19 @@ export function View(props: ViewProps): HostNode {
 /** Semantic neutral container. Box resolves to the same native View host. */
 export function Box(props: ViewProps): HostNode {
   return View(props);
+}
+
+/**
+ * Native safe-area container. Authored padding remains additive with the current
+ * iOS safe area / Android system-bar and display-cutout insets.
+ */
+export function SafeArea(props: SafeAreaProps): HostNode {
+  return createNativePrimitive(
+    'safearea',
+    props as SafeAreaProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+    flexDirection('column'),
+  );
 }
 
 /** Vertical semantic layout primitive. */
