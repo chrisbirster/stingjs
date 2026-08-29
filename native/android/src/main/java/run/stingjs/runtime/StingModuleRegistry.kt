@@ -12,6 +12,7 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     private val objectLock = Any()
     private val objects = linkedMapOf<Int, NativeObjectEntry>()
     private var nextObjectHandle = 1
+    private var runtimeDisposingDelivered = false
 
     init {
         modules.forEach(::register)
@@ -98,6 +99,72 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     ) {
         val module = requireModule(name)
         module.setEventEnabled(event, enabled, emit)
+    }
+
+    /**
+     * Delivers a semantic lifecycle transition to every module in registration
+     * order. Runtime disposal is terminal and emitted at most once.
+     */
+    fun dispatchLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) {
+            if (runtimeDisposingDelivered) return
+            runtimeDisposingDelivered = true
+        } else if (runtimeDisposingDelivered) {
+            return
+        }
+
+        modules.values.forEach { it.onApplicationLifecycle(event) }
+    }
+
+    /** Route portable background work to one module without exposing Android host objects. */
+    fun deliverBackgroundEvent(
+        name: String,
+        event: String,
+        payload: Any?,
+        completion: StingNativeModuleCompletion,
+    ) {
+        if (event.isEmpty()) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_INVALID_BACKGROUND_EVENT",
+                        message = "Background event name must not be empty",
+                    ),
+                ),
+            )
+            return
+        }
+        val module = modules[name]
+        if (module == null) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_MODULE_NOT_FOUND",
+                        message = "Native module $name is not registered",
+                    ),
+                ),
+            )
+            return
+        }
+        if (runtimeDisposingDelivered) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_RUNTIME_DISPOSED",
+                        message = "Sting runtime is already disposing",
+                    ),
+                ),
+            )
+            return
+        }
+
+        module.handleBackgroundEvent(event, payload, completion)
+    }
+
+    /** Final module ownership cleanup for one Sting runtime. */
+    fun dispose() {
+        dispatchLifecycle(StingApplicationLifecycleEvent.RUNTIME_DISPOSING)
+        disposeAllObjects()
     }
 
     fun disposeAllObjects() {
