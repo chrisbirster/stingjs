@@ -150,6 +150,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             "view" -> LinearLayout(rootView.context).apply { orientation = LinearLayout.VERTICAL }
             "safearea" -> StingSafeAreaLayout(rootView.context)
             "keyboardavoidingview" -> StingKeyboardAvoidingLayout(rootView.context)
+            "navigationstack" -> StingNavigationStackLayout(rootView.context)
             "text" -> TextView(rootView.context)
             "button" -> Button(rootView.context)
             "image" -> ImageView(rootView.context).apply {
@@ -188,6 +189,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 detachView(node.view)
                 refreshTextContent(previousParentId)
                 refreshGap(previousParent)
+                refreshNavigation(previousParent)
             }
         }
 
@@ -209,6 +211,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         if (parent.isAttached) propagateAttach(nodeId)
         refreshTextContent(parentId)
         refreshGap(parent)
+        refreshNavigation(parent)
     }
 
     fun removeNode(parentId: Int, nodeId: Int) {
@@ -222,6 +225,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         detachView(node.view)
         refreshTextContent(parentId)
         refreshGap(parent)
+        refreshNavigation(parent)
     }
 
     fun setProperty(id: Int, name: String, valueJSON: String) {
@@ -325,11 +329,36 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                     eventSink?.invoke(id, "changeText", JSONObject.quote(value))
                 }
             }
+            event == "back" && node.view is StingNavigationStackLayout -> {
+                node.view.setBackHandler(enabled) {
+                    val current = nodes[id]
+                    if (!disposed && current === node && node.isAttached) {
+                        eventSink?.invoke(id, "back", "null")
+                    }
+                }
+            }
             else -> throw StingRuntimeException("Event $event is not supported by node $id")
         }
     }
 
     fun viewForNode(id: Int): View? = requireNode(id).view
+
+    /** Route a platform back request to the deepest active declarative navigation stack. */
+    fun requestBack(): Boolean {
+        checkActive()
+        val candidates = nodes.values
+            .filter { node ->
+                node.isAttached &&
+                    node.view is StingNavigationStackLayout &&
+                    isOnActiveNavigationPath(node.id)
+            }
+            .sortedByDescending { navigationDepth(it.id) }
+
+        for (node in candidates) {
+            if ((node.view as StingNavigationStackLayout).requestBack()) return true
+        }
+        return false
+    }
 
     /** Narrow diagnostic surface used by native instrumentation to verify modifier cleanup. */
     fun nativeBlurRadiusForNode(id: Int): Float? = requireNode(id).nativeBlurRadiusDp
@@ -338,6 +367,10 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         if (disposed) return
         disposed = true
         eventSink = null
+
+        nodes.values.forEach { node ->
+            (node.view as? StingNavigationStackLayout)?.setBackHandler(false) {}
+        }
 
         nodes.keys.sorted().filter { it != 0 }.forEach { id ->
             val node = nodes[id] ?: return@forEach
@@ -394,6 +427,30 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         return nodes[id] ?: throw StingRuntimeException("Unknown native node id $id")
     }
 
+    private fun isOnActiveNavigationPath(nodeId: Int): Boolean {
+        var currentId = nodeId
+        while (true) {
+            val current = nodes[currentId] ?: return false
+            val parentId = current.parentId ?: return true
+            val parent = nodes[parentId] ?: return false
+            if (parent.view is StingNavigationStackLayout) {
+                val activeChild = parent.children.asReversed().firstOrNull { nodes[it]?.view != null }
+                if (activeChild != currentId) return false
+            }
+            currentId = parentId
+        }
+    }
+
+    private fun navigationDepth(nodeId: Int): Int {
+        var depth = 0
+        var current = nodes[nodeId]
+        while (current?.parentId != null) {
+            depth += 1
+            current = nodes[current.parentId]
+        }
+        return depth
+    }
+
     private fun propagateAttach(nodeId: Int) {
         val node = nodes[nodeId] ?: return
         if (node.isAttached) return
@@ -441,6 +498,10 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             is Button -> view.text = text
             is TextView -> view.text = text
         }
+    }
+
+    private fun refreshNavigation(parent: StingNode) {
+        (parent.view as? StingNavigationStackLayout)?.refreshVisibleScreen()
     }
 
     private fun applyImageSource(value: Any?, node: StingNode) {

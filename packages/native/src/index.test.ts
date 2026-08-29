@@ -11,6 +11,7 @@ import {
   Button,
   Heading,
   KeyboardAvoidingView,
+  NavigationStack,
   SafeArea,
   Stack,
   View,
@@ -95,6 +96,23 @@ describe('@stingjs/native styling integration', () => {
     expect(style.paddingBottom).toBe(12);
     expect(style.paddingLeft).toBe(12);
     expect(style.gap).toBe(8);
+
+    dispose();
+  });
+
+  it('lowers NavigationStack to a dedicated native host and registers native back', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+    const onBack = vi.fn();
+
+    const dispose = render(
+      () => NavigationStack({ onBack }),
+      host.root,
+    );
+
+    const navigationCall = vi.mocked(bridge.createElement).mock.calls.find(([, type]) => type === 'navigationstack');
+    expect(navigationCall).toBeDefined();
+    expect(vi.mocked(bridge.setEventEnabled).mock.calls.some(([, event, enabled]) => event === 'back' && enabled)).toBe(true);
 
     dispose();
   });

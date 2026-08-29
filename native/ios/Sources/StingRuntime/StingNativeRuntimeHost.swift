@@ -117,6 +117,12 @@ public final class StingNativeRuntimeHost {
         try perform { bridge.setEventEnabled(id, event, enabled) }
     }
 
+    /// Forward a platform back request to the deepest active declarative stack.
+    public func requestBack() -> Bool {
+        guard !disposed else { return false }
+        return nodes.requestBack()
+    }
+
     public func callModuleSync(module: String, method: String, argsJSON: String) -> String {
         bridge.callModuleSync(module, method, argsJSON)
     }
