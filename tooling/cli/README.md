@@ -14,6 +14,7 @@ node dist/cli.js doctor --project-root ../../examples/hello-world
 node dist/cli.js doctor --runtime
 node dist/cli.js devices
 node dist/cli.js config --project-root ../../examples/hello-world
+node dist/cli.js dev --project-root ../../examples/hello-world
 node dist/cli.js start --project-root ../../examples/hello-world
 node dist/cli.js run ios --project-root ../../examples/hello-world
 node dist/cli.js run android --project-root ../../examples/hello-world
@@ -116,9 +117,32 @@ When `sting.config.ts` provides `android.directory`, `android.package`, or `andr
 
 Both `run` commands accept `--no-bundle` to skip the CLI's explicit `npm run build` step when the native project already owns bundle generation.
 
+### `sting dev`
+
+`sting dev` is the primary Sting development loop. It composes the existing production development pieces instead of introducing a separate runtime path:
+
+1. runs the project's normal `npm run build` once;
+2. starts the managed `npm run build -- --watch` watcher;
+3. serves the built bundle and v1 Sting Go manifest;
+4. advertises the SSE reload and health endpoints;
+5. prints the Sting Go deep link and a QR code in interactive terminals;
+6. emits reload events whenever the built bundle changes.
+
+```bash
+sting dev
+sting dev --project-root ./apps/my-app
+sting dev --port 9000
+sting dev --no-qr
+sting dev --json
+```
+
+The command accepts the same `--project-root`, `--bundle`, `--host`, `--port`, `--qr`, `--no-qr`, and `--json` server options as `sting start`. Watch/live-reload mode is always enabled for `sting dev`; there is intentionally no separate `--watch` step to remember.
+
+`--json` keeps the existing machine-readable development-server result shape and does not mix terminal QR output into stdout.
+
 ### `sting start`
 
-Serves a built Sting application bundle to Sting Go. The default remains `dist/sting-app.js`, while `sting.config.ts` can set another default with `bundle`. An explicit `--bundle` flag wins over config.
+`sting start` remains the lower-level server command for scripts, tests, and workflows that already own bundle generation. The default bundle remains `dist/sting-app.js`, while `sting.config.ts` can set another default with `bundle`. An explicit `--bundle` flag wins over config.
 
 The server exposes:
 
@@ -137,7 +161,7 @@ sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 
 In an interactive terminal, `sting start` also renders that exact deep link as a compact QR code that Android or iOS Sting Go can scan/open. Use `--qr` to force QR output when stdout is not a TTY, or `--no-qr` to suppress it. `--json` always remains machine-readable and never mixes terminal QR output into JSON.
 
-Use `sting start --watch` to run the managed build watcher and emit `ready`/`reload` events over the manifest-advertised SSE endpoint. Sting Go reconnects to that endpoint and reloads without reinstalling the native client.
+Use `sting start --watch` when a lower-level caller explicitly wants the managed build watcher. For normal interactive application development, prefer `sting dev`.
 
 ## Publishing scope
 
