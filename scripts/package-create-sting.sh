@@ -11,7 +11,7 @@ RUNTIME_DIR="$PACKAGE_DIR/runtime"
 ANDROID_RUNTIME_DIR="$RUNTIME_DIR/android"
 IOS_RUNTIME_DIR="$RUNTIME_DIR/ios"
 GRADLE_RUNTIME_DIR="$RUNTIME_DIR/gradle"
-GRADLE_WRAPPER_URL="https://services.gradle.org/distributions/gradle-9.5.0-wrapper.jar"
+GRADLE_WRAPPER_URL="https://raw.githubusercontent.com/gradle/gradle/v9.5.0/gradle/wrapper/gradle-wrapper.jar"
 GRADLE_WRAPPER_SHA256="497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7"
 
 for input in \
@@ -34,7 +34,7 @@ test -f "$IOS_RUNTIME_DIR/StingQuickJSRuntime/Package.swift"
 test -d "$IOS_RUNTIME_DIR/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework"
 
 wrapper_jar="$GRADLE_RUNTIME_DIR/gradle-wrapper.jar"
-curl --fail --location --silent --show-error "$GRADLE_WRAPPER_URL" --output "$wrapper_jar"
+curl --fail --location --silent --show-error --retry 3 "$GRADLE_WRAPPER_URL" --output "$wrapper_jar"
 actual_wrapper_sha="$(node -e 'const fs=require("node:fs");const crypto=require("node:crypto");process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$wrapper_jar")"
 if [[ "$actual_wrapper_sha" != "$GRADLE_WRAPPER_SHA256" ]]; then
   echo "error: Gradle wrapper checksum mismatch: expected $GRADLE_WRAPPER_SHA256, got $actual_wrapper_sha" >&2
