@@ -28,10 +28,20 @@ export * from './style';
 
 export type ImageResizeMode = 'contain' | 'cover' | 'stretch';
 export type ImageSource = string | { uri: string };
+export type AccessibilityRole = 'none' | 'text' | 'header' | 'button' | 'image' | 'link';
+export type AppState = 'active' | 'inactive' | 'background';
 
-export interface ViewProps extends StyleProps {
-  children?: unknown;
+export interface AccessibilityProps {
   accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityValue?: string;
+  accessibilityRole?: AccessibilityRole;
+  accessibilityHidden?: boolean;
+  focusable?: boolean;
+}
+
+export interface ViewProps extends StyleProps, AccessibilityProps {
+  children?: unknown;
 }
 
 export interface SafeAreaProps extends ViewProps {}
@@ -40,9 +50,53 @@ export interface NavigationStackProps extends ViewProps {
   onBack?: () => void;
 }
 
-export interface TextProps extends StyleProps {
+export interface GesturePointEvent {
+  x: number;
+  y: number;
+  touches: number;
+}
+
+export interface PanGestureEvent extends GesturePointEvent {
+  translationX: number;
+  translationY: number;
+  velocityX: number;
+  velocityY: number;
+  cancelled: boolean;
+}
+
+export interface GestureViewProps extends ViewProps {
+  onTap?: (event: GesturePointEvent) => void;
+  onLongPress?: (event: GesturePointEvent) => void;
+  onPanStart?: (event: PanGestureEvent) => void;
+  onPan?: (event: PanGestureEvent) => void;
+  onPanEnd?: (event: PanGestureEvent) => void;
+}
+
+export interface PresentationProps extends AccessibilityProps {
   children?: unknown;
-  accessibilityLabel?: string;
+  presented?: boolean;
+  onDismiss?: () => void;
+}
+
+export interface VirtualListProps extends ViewProps {
+  itemExtent: number;
+  overscan?: number;
+}
+
+export interface FocusViewProps extends ViewProps {
+  autoFocus?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
+}
+
+export interface AppRootProps extends ViewProps {
+  onAppear?: () => void;
+  onDisappear?: () => void;
+  onAppStateChange?: (event: { state: AppState }) => void;
+}
+
+export interface TextProps extends StyleProps, AccessibilityProps {
+  children?: unknown;
 }
 
 export interface HeadingProps extends TextProps {
@@ -51,33 +105,38 @@ export interface HeadingProps extends TextProps {
 
 export type ButtonVariant = 'native' | 'primary';
 
-export interface ButtonProps extends StyleProps {
+export interface ButtonProps extends StyleProps, AccessibilityProps {
   children?: unknown;
   disabled?: boolean;
-  accessibilityLabel?: string;
   onPress?: () => void;
   variant?: ButtonVariant;
 }
 
-export interface ImageProps extends StyleProps {
+export interface ImageProps extends StyleProps, AccessibilityProps {
   source?: ImageSource;
   resizeMode?: ImageResizeMode;
-  accessibilityLabel?: string;
 }
 
-export interface TextInputProps extends StyleProps {
+export interface TextInputProps extends StyleProps, AccessibilityProps {
   value?: string;
   placeholder?: string;
   editable?: boolean;
-  accessibilityLabel?: string;
   onChangeText?: (value: string) => void;
 }
 
-export interface ScrollViewProps extends StyleProps {
+export interface ScrollViewProps extends StyleProps, AccessibilityProps {
   children?: unknown;
   horizontal?: boolean;
-  accessibilityLabel?: string;
 }
+
+const accessibilityKeys = [
+  'accessibilityLabel',
+  'accessibilityHint',
+  'accessibilityValue',
+  'accessibilityRole',
+  'accessibilityHidden',
+  'focusable',
+] as const;
 
 // Recipes are a design-system layer over the modifier IR. Sting ships one
 // deliberately small example so the framework does not become a theme library.
@@ -121,13 +180,6 @@ function hasResolvedStyle(styling: ReturnType<typeof resolveStyling>): boolean {
   return Object.entries(styling.style).some(([key, value]) => key !== '__stingResolved' && value !== null);
 }
 
-/**
- * Bind the two styling bridge channels directly to Solid's reactive graph.
- *
- * Completely unstyled nodes stay mutation-free. Once a channel has emitted,
- * resolved nulls/empty arrays continue to flow so native state can be reset
- * when a reactive style or native modifier disappears.
- */
 function bindStyling(
   node: HostNode,
   readStyling: () => ReturnType<typeof resolveStyling>,
@@ -137,15 +189,25 @@ function bindStyling(
 
   createRenderEffect(readStyling, resolved => {
     if (hasResolvedStyle(resolved)) hasEmittedStyle = true;
-    if (hasEmittedStyle) {
-      getHost().setProperty(node, 'style', resolved.style);
-    }
+    if (hasEmittedStyle) getHost().setProperty(node, 'style', resolved.style);
 
     if (resolved.nativeModifiers.length > 0) hasEmittedNativeModifiers = true;
-    if (hasEmittedNativeModifiers) {
-      getHost().setProperty(node, 'nativeModifiers', resolved.nativeModifiers);
-    }
+    if (hasEmittedNativeModifiers) getHost().setProperty(node, 'nativeModifiers', resolved.nativeModifiers);
   });
+}
+
+function createHostPrimitive(
+  type: string,
+  props: Record<string, unknown>,
+  forwardedKeys: readonly string[],
+): HostNode {
+  const node = createElement(type);
+  const forwarded: Record<string, unknown> = {};
+  for (const key of forwardedKeys) {
+    defineForwardedGetter(forwarded, key, () => props[key]);
+  }
+  spread(node, forwarded);
+  return node;
 }
 
 function createNativePrimitive(
@@ -155,7 +217,7 @@ function createNativePrimitive(
   defaults?: ModifierInput,
   variant?: () => ModifierInput,
 ): HostNode {
-  const node = createElement(type);
+  const node = createHostPrimitive(type, props, forwardedKeys);
   const readStyling = () => resolveStyling({
     defaults,
     variant: variant?.(),
@@ -164,21 +226,12 @@ function createNativePrimitive(
     props,
     modifiers: props.modifiers,
   });
-
-  const forwarded: Record<string, unknown> = {};
-  for (const key of forwardedKeys) {
-    defineForwardedGetter(forwarded, key, () => props[key]);
-  }
-  spread(node, forwarded);
   bindStyling(node, readStyling);
   return node;
 }
 
 function stringifyTextChild(value: unknown): string {
-  if (typeof value === 'function') {
-    return stringifyTextChild((value as () => unknown)());
-  }
-
+  if (typeof value === 'function') return stringifyTextChild((value as () => unknown)());
   if (value == null || typeof value === 'boolean') return '';
   if (Array.isArray(value)) return value.map(stringifyTextChild).join('');
 
@@ -192,85 +245,133 @@ function stringifyTextChild(value: unknown): string {
   }
 }
 
-/** Native container backed by UIStackView on iOS and LinearLayout on Android. */
 export function View(props: ViewProps): HostNode {
-  return createNativePrimitive(
-    'view',
-    props as ViewProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
-  );
+  return createNativePrimitive('view', props as ViewProps & Record<string, unknown>, ['children', ...accessibilityKeys]);
 }
 
-/** Semantic neutral container. Box resolves to the same native View host. */
 export function Box(props: ViewProps): HostNode {
   return View(props);
 }
 
-/**
- * Native safe-area container. Authored padding remains additive with the current
- * iOS safe area / Android system-bar and display-cutout insets.
- */
 export function SafeArea(props: SafeAreaProps): HostNode {
   return createNativePrimitive(
     'safearea',
     props as SafeAreaProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
+    ['children', ...accessibilityKeys],
     flexDirection('column'),
   );
 }
 
-/**
- * Native keyboard-avoiding container. Authored bottom padding remains additive
- * with the current iOS keyboard / Android IME overlap.
- */
 export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): HostNode {
   return createNativePrimitive(
     'keyboardavoidingview',
     props as KeyboardAvoidingViewProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
+    ['children', ...accessibilityKeys],
+    flexDirection('column'),
+  );
+}
+
+export function NavigationStack(props: NavigationStackProps): HostNode {
+  return createNativePrimitive(
+    'navigationstack',
+    props as NavigationStackProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'onBack'],
+  );
+}
+
+export function GestureView(props: GestureViewProps): HostNode {
+  return createNativePrimitive(
+    'gestureview',
+    props as GestureViewProps & Record<string, unknown>,
+    [
+      'children',
+      ...accessibilityKeys,
+      'onTap',
+      'onLongPress',
+      'onPanStart',
+      'onPan',
+      'onPanEnd',
+    ],
+    flexDirection('column'),
+  );
+}
+
+/** UIKit/Android native modal presentation controlled by the `presented` prop. */
+export function Modal(props: PresentationProps): HostNode {
+  return createHostPrimitive(
+    'modal',
+    props as PresentationProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'presented', 'onDismiss'],
+  );
+}
+
+/** UIKit page sheet / Android bottom sheet-style Dialog presentation. */
+export function Sheet(props: PresentationProps): HostNode {
+  return createHostPrimitive(
+    'sheet',
+    props as PresentationProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'presented', 'onDismiss'],
+  );
+}
+
+/**
+ * Fixed-extent native-windowed list. Solid owns item identity; native only keeps
+ * the visible window plus overscan attached for layout and drawing.
+ */
+export function VirtualList(props: VirtualListProps): HostNode {
+  return createNativePrimitive(
+    'virtuallist',
+    props as VirtualListProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'itemExtent', 'overscan'],
+  );
+}
+
+/** Explicit cross-platform focus target. */
+export function FocusView(props: FocusViewProps): HostNode {
+  return createNativePrimitive(
+    'focusview',
+    props as FocusViewProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'autoFocus', 'onFocus', 'onBlur'],
     flexDirection('column'),
   );
 }
 
 /**
- * Declarative native navigation stack. Children are ordered oldest-to-newest;
- * native keeps only the last child visible. A native back request calls onBack,
- * but Solid remains the source of truth for removing the top screen.
+ * Full-bleed application root. Safe-area and keyboard avoidance remain explicit
+ * child primitives so system insets are never silently applied twice.
  */
-export function NavigationStack(props: NavigationStackProps): HostNode {
+export function AppRoot(props: AppRootProps): HostNode {
   return createNativePrimitive(
-    'navigationstack',
-    props as NavigationStackProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel', 'onBack'],
-  );
-}
-
-/** Vertical semantic layout primitive. */
-export function Stack(props: ViewProps): HostNode {
-  return createNativePrimitive(
-    'view',
-    props as ViewProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
+    'approot',
+    props as AppRootProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys, 'onAppear', 'onDisappear', 'onAppStateChange'],
     flexDirection('column'),
   );
 }
 
-/** Horizontal semantic layout primitive. */
+export function Stack(props: ViewProps): HostNode {
+  return createNativePrimitive(
+    'view',
+    props as ViewProps & Record<string, unknown>,
+    ['children', ...accessibilityKeys],
+    flexDirection('column'),
+  );
+}
+
 export function HStack(props: ViewProps): HostNode {
   return createNativePrimitive(
     'view',
     props as ViewProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
+    ['children', ...accessibilityKeys],
     flexDirection('row'),
   );
 }
 
-/** Centers its native children on both axes. */
 export function Center(props: ViewProps): HostNode {
   return createNativePrimitive(
     'view',
     props as ViewProps & Record<string, unknown>,
-    ['children', 'accessibilityLabel'],
+    ['children', ...accessibilityKeys],
     [flexDirection('column'), alignItems('center'), justifyContent('center')],
   );
 }
@@ -286,7 +387,9 @@ function createNativeText(props: TextProps, defaults?: ModifierInput): HostNode 
     modifiers: props.modifiers,
   });
   const forwarded: Record<string, unknown> = {};
-  defineForwardedGetter(forwarded, 'accessibilityLabel', () => props.accessibilityLabel);
+  for (const key of accessibilityKeys) {
+    defineForwardedGetter(forwarded, key, () => props[key]);
+  }
 
   spread(node, forwarded, true);
   bindStyling(node, readStyling);
@@ -295,20 +398,14 @@ function createNativeText(props: TextProps, defaults?: ModifierInput): HostNode 
   return node;
 }
 
-/**
- * Native text backed by UILabel on iOS and TextView on Android.
- * A Text owns exactly one persistent host text node, preserving fine-grained updates.
- */
 export function Text(props: TextProps): HostNode {
   return createNativeText(props);
 }
 
-/** Semantic heading. On native it remains a Text host with heading typography defaults. */
 export function Heading(props: HeadingProps): HostNode {
   return createNativeText(props, headingDefaults[props.level ?? 1]);
 }
 
-/** Native pressable button. `primary` demonstrates the recipe/variant layer. */
 export function Button(props: ButtonProps): HostNode {
   const variant = () => {
     const selected = props.variant ?? 'native';
@@ -318,35 +415,32 @@ export function Button(props: ButtonProps): HostNode {
   return createNativePrimitive(
     'button',
     props as ButtonProps & Record<string, unknown>,
-    ['children', 'disabled', 'accessibilityLabel', 'onPress'],
+    ['children', 'disabled', ...accessibilityKeys, 'onPress'],
     undefined,
     variant,
   );
 }
 
-/** Native image backed by UIImageView on iOS and ImageView on Android. */
 export function Image(props: ImageProps): HostNode {
   return createNativePrimitive(
     'image',
     props as ImageProps & Record<string, unknown>,
-    ['source', 'resizeMode', 'accessibilityLabel'],
+    ['source', 'resizeMode', ...accessibilityKeys],
   );
 }
 
-/** Controlled native text input. */
 export function TextInput(props: TextInputProps): HostNode {
   return createNativePrimitive(
     'textinput',
     props as TextInputProps & Record<string, unknown>,
-    ['value', 'placeholder', 'editable', 'accessibilityLabel', 'onChangeText'],
+    ['value', 'placeholder', 'editable', ...accessibilityKeys, 'onChangeText'],
   );
 }
 
-/** Native scrolling container. */
 export function ScrollView(props: ScrollViewProps): HostNode {
   return createNativePrimitive(
     'scrollview',
     props as ScrollViewProps & Record<string, unknown>,
-    ['children', 'horizontal', 'accessibilityLabel'],
+    ['children', 'horizontal', ...accessibilityKeys],
   );
 }

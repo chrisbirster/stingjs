@@ -31,6 +31,9 @@ final class StingNode {
     let originalStackSpacing: CGFloat?
     let originalStackMargins: NSDirectionalEdgeInsets?
     let originalStackUsesMargins: Bool?
+    let originalAccessibilityTraits: UIAccessibilityTraits
+    let originalIsAccessibilityElement: Bool
+    let originalAccessibilityElementsHidden: Bool
 
     init(
         id: Int,
@@ -48,6 +51,9 @@ final class StingNode {
         self.originalAlpha = view?.alpha ?? 1
         self.originalCornerRadius = view?.layer.cornerRadius ?? 0
         self.originalMasksToBounds = view?.layer.masksToBounds ?? false
+        self.originalAccessibilityTraits = view?.accessibilityTraits ?? []
+        self.originalIsAccessibilityElement = view?.isAccessibilityElement ?? false
+        self.originalAccessibilityElementsHidden = view?.accessibilityElementsHidden ?? false
         if let label = view as? UILabel {
             self.originalFont = label.font
             self.originalTextColor = label.textColor
@@ -136,6 +142,16 @@ final class StingNodeRegistry {
             view = StingKeyboardAvoidingStackView(frame: .zero)
         case "navigationstack":
             view = StingNavigationStackView(frame: .zero)
+        case "gestureview":
+            view = StingGestureStackView(frame: .zero)
+        case "modal", "sheet":
+            view = StingPresentationHostView(kind: normalized)
+        case "virtuallist":
+            view = StingVirtualListView(frame: .zero)
+        case "focusview":
+            view = StingFocusStackView(frame: .zero)
+        case "approot":
+            view = StingAppRootStackView(frame: .zero)
         case "text":
             let label = UILabel()
             label.numberOfLines = 0
@@ -246,8 +262,8 @@ final class StingNodeRegistry {
                     throw StingRuntimeError("nativeModifiers must be a JSON array")
                 }
                 applyNativeModifiers(modifiers, to: node)
-            case "accessibilityLabel":
-                node.view?.accessibilityLabel = value is NSNull ? nil : value as? String
+            case let property where Self.accessibilityProperties.contains(property):
+                applyAccessibilityProperty(value, name: property, to: node)
             default:
                 try nativeView.setProperty(name: name, value: value)
             }
@@ -269,8 +285,8 @@ final class StingNodeRegistry {
             if let button = node.view as? UIButton, let disabled = value as? Bool {
                 button.isEnabled = !disabled
             }
-        case "accessibilityLabel":
-            node.view?.accessibilityLabel = value is NSNull ? nil : value as? String
+        case let property where Self.accessibilityProperties.contains(property):
+            applyAccessibilityProperty(value, name: property, to: node)
         case "source":
             applyImageSource(value, to: node)
         case "resizeMode":
@@ -296,6 +312,23 @@ final class StingNodeRegistry {
         case "horizontal":
             if let scroll = node.view as? StingScrollView, let horizontal = value as? Bool {
                 scroll.setHorizontal(horizontal)
+            }
+        case "presented":
+            (node.view as? StingPresentationHostView)?.setPresented(value as? Bool ?? false)
+        case "itemExtent":
+            if let number = value as? NSNumber, let list = node.view as? StingVirtualListView {
+                try list.setItemExtent(CGFloat(truncating: number))
+            }
+        case "overscan":
+            if let number = value as? NSNumber {
+                (node.view as? StingVirtualListView)?.setOverscan(number.intValue)
+            }
+        case "autoFocus":
+            let autoFocus = value as? Bool ?? false
+            if let focus = node.view as? StingFocusStackView {
+                focus.setAutoFocus(autoFocus)
+            } else if autoFocus {
+                _ = node.view?.becomeFirstResponder()
             }
         default:
             break
@@ -336,12 +369,23 @@ final class StingNodeRegistry {
             input.setChangeTextEnabled(enabled)
         case ("back", let navigation as StingNavigationStackView):
             navigation.setBackHandler(enabled: enabled) { [weak self, weak node] in
-                guard let self,
-                      !self.disposed,
-                      let node,
-                      self.nodes[id] === node,
-                      node.isAttached else { return }
-                self.eventSink?(id, "back", "null")
+                self?.emitNodeEventIfCurrent(node, event: "back", payload: nil)
+            }
+        case (let gestureEvent, let gesture as StingGestureStackView) where Self.gestureEvents.contains(gestureEvent):
+            try gesture.setGestureEventEnabled(event: gestureEvent, enabled: enabled) { [weak self, weak node] payload in
+                self?.emitNodeEventIfCurrent(node, event: gestureEvent, payload: payload)
+            }
+        case ("dismiss", let presentation as StingPresentationHostView):
+            presentation.setDismissHandler(enabled: enabled) { [weak self, weak node] in
+                self?.emitNodeEventIfCurrent(node, event: "dismiss", payload: nil)
+            }
+        case (let focusEvent, let focus as StingFocusStackView) where Self.focusEvents.contains(focusEvent):
+            try focus.setFocusEventEnabled(event: focusEvent, enabled: enabled) { [weak self, weak node] in
+                self?.emitNodeEventIfCurrent(node, event: focusEvent, payload: nil)
+            }
+        case (let rootEvent, let root as StingAppRootStackView) where Self.appRootEvents.contains(rootEvent):
+            try root.setLifecycleEventEnabled(event: rootEvent, enabled: enabled) { [weak self, weak node] payload in
+                self?.emitNodeEventIfCurrent(node, event: rootEvent, payload: payload)
             }
         default:
             throw StingRuntimeError("Event \(event) is not supported by node \(id)")
@@ -374,7 +418,22 @@ final class StingNodeRegistry {
         eventSink = nil
 
         for node in nodes.values {
-            (node.view as? StingNavigationStackView)?.setBackHandler(enabled: false, handler: {})
+            switch node.view {
+            case let navigation as StingNavigationStackView:
+                navigation.setBackHandler(enabled: false, handler: {})
+            case let gesture as StingGestureStackView:
+                gesture.clearGestureHandlers()
+            case let presentation as StingPresentationHostView:
+                presentation.disposePresentation()
+            case let list as StingVirtualListView:
+                list.clearItems()
+            case let focus as StingFocusStackView:
+                focus.clearFocusHandlers()
+            case let root as StingAppRootStackView:
+                root.disposeLifecycle()
+            default:
+                break
+            }
         }
 
         for id in nodes.keys.sorted() where id != 0 {
@@ -397,6 +456,14 @@ final class StingNodeRegistry {
         guard !disposed else { throw StingRuntimeError("Sting node registry is disposed") }
         guard let node = nodes[id] else { throw StingRuntimeError("Unknown native node id \(id)") }
         return node
+    }
+
+    private func emitNodeEventIfCurrent(_ node: StingNode?, event: String, payload: Any?) {
+        guard !disposed,
+              let node,
+              nodes[node.id] === node,
+              node.isAttached else { return }
+        eventSink?(node.id, event, Self.encodeJSONFragment(payload))
     }
 
     private func isOnActiveNavigationPath(_ nodeId: Int) -> Bool {
@@ -439,14 +506,20 @@ final class StingNodeRegistry {
 
     private func attachView(_ node: StingNode, to parent: StingNode, at index: Int) throws {
         guard let childView = node.view else { return }
+        if parent.nativeModuleView == nil && ["text", "button", "image", "textinput"].contains(parent.type) {
+            throw StingRuntimeError("Native leaf node \(parent.type) cannot contain view children")
+        }
+
+        if let list = parent.view as? StingVirtualListView {
+            list.insertItem(childView, at: index)
+            return
+        }
+
         guard let parentView = childContainer(for: parent) else {
             if parent.nativeModuleView != nil {
                 throw StingRuntimeError("Native module view \(parent.type) does not accept view children")
             }
             throw StingRuntimeError("Cannot insert a native view below a text-only node")
-        }
-        if parent.nativeModuleView == nil && ["text", "button", "image", "textinput"].contains(parent.type) {
-            throw StingRuntimeError("Native leaf node \(parent.type) cannot contain view children")
         }
         if let scroll = parentView as? StingScrollView {
             scroll.contentStack.insertArrangedSubview(childView, at: min(index, scroll.contentStack.arrangedSubviews.count))
@@ -458,11 +531,17 @@ final class StingNodeRegistry {
     }
 
     private func childContainer(for node: StingNode) -> UIView? {
-        node.nativeModuleView?.childContainer ?? node.view
+        if let nativeContainer = node.nativeModuleView?.childContainer { return nativeContainer }
+        if let presentation = node.view as? StingPresentationHostView { return presentation.contentStack }
+        return node.view
     }
 
     private func detachView(_ childView: UIView?, from parentView: UIView?) {
         guard let childView else { return }
+        if let list = parentView as? StingVirtualListView {
+            list.removeItem(childView)
+            return
+        }
         if let scroll = parentView as? StingScrollView {
             scroll.contentStack.removeArrangedSubview(childView)
         } else if let stack = parentView as? UIStackView {
@@ -483,6 +562,54 @@ final class StingNodeRegistry {
 
     private func refreshNavigation(_ parent: StingNode) {
         (parent.view as? StingNavigationStackView)?.refreshVisibleScreen()
+    }
+
+    private func applyAccessibilityProperty(_ value: Any, name: String, to node: StingNode) {
+        guard let view = node.view else { return }
+        switch name {
+        case "accessibilityLabel":
+            view.accessibilityLabel = value is NSNull ? nil : value as? String
+        case "accessibilityHint":
+            view.accessibilityHint = value is NSNull ? nil : value as? String
+        case "accessibilityValue":
+            view.accessibilityValue = value is NSNull ? nil : value as? String
+        case "accessibilityRole":
+            guard !(value is NSNull), let role = value as? String else {
+                view.accessibilityTraits = node.originalAccessibilityTraits
+                view.isAccessibilityElement = node.originalIsAccessibilityElement
+                return
+            }
+            switch role {
+            case "none":
+                view.isAccessibilityElement = false
+                view.accessibilityTraits = node.originalAccessibilityTraits
+            case "header":
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = [.header, .staticText]
+            case "button":
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .button
+            case "image":
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .image
+            case "link":
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .link
+            default:
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .staticText
+            }
+        case "accessibilityHidden":
+            view.accessibilityElementsHidden = value as? Bool ?? node.originalAccessibilityElementsHidden
+        case "focusable":
+            let focusable = value as? Bool ?? false
+            if focusable { view.isAccessibilityElement = true }
+            else if view.accessibilityTraits == node.originalAccessibilityTraits {
+                view.isAccessibilityElement = node.originalIsAccessibilityElement
+            }
+        default:
+            break
+        }
     }
 
     private func applyImageSource(_ value: Any, to node: StingNode) {
@@ -793,6 +920,17 @@ final class StingNodeRegistry {
     }
 
     private static let moduleViewPrefix = "__sting_module_view__:"
+    private static let accessibilityProperties: Set<String> = [
+        "accessibilityLabel",
+        "accessibilityHint",
+        "accessibilityValue",
+        "accessibilityRole",
+        "accessibilityHidden",
+        "focusable",
+    ]
+    private static let gestureEvents: Set<String> = ["tap", "longPress", "panStart", "pan", "panEnd"]
+    private static let focusEvents: Set<String> = ["focus", "blur"]
+    private static let appRootEvents: Set<String> = ["appear", "disappear", "appStateChange"]
 }
 
 private extension UIColor {

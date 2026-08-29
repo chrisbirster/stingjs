@@ -151,6 +151,11 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             "safearea" -> StingSafeAreaLayout(rootView.context)
             "keyboardavoidingview" -> StingKeyboardAvoidingLayout(rootView.context)
             "navigationstack" -> StingNavigationStackLayout(rootView.context)
+            "gestureview" -> StingGestureLayout(rootView.context)
+            "modal", "sheet" -> StingPresentationHostView(rootView.context, normalized)
+            "virtuallist" -> StingVirtualListView(rootView.context)
+            "focusview" -> StingFocusLayout(rootView.context)
+            "approot" -> StingAppRootLayout(rootView.context)
             "text" -> TextView(rootView.context)
             "button" -> Button(rootView.context)
             "image" -> ImageView(rootView.context).apply {
@@ -186,7 +191,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 previousParent.children.removeAll { it == nodeId }
                 if (node.isAttached) propagateDetach(nodeId)
                 node.parentId = null
-                detachView(node.view)
+                detachView(node.view, previousParent)
                 refreshTextContent(previousParentId)
                 refreshGap(previousParent)
                 refreshNavigation(previousParent)
@@ -222,7 +227,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         parent.children.removeAll { it == nodeId }
         if (node.isAttached) propagateDetach(nodeId)
         node.parentId = null
-        detachView(node.view)
+        detachView(node.view, parent)
         refreshTextContent(parentId)
         refreshGap(parent)
         refreshNavigation(parent)
@@ -242,9 +247,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                     val modifiers = value as? JSONArray ?: throw StingRuntimeException("nativeModifiers must be a JSON array")
                     applyNativeModifiers(modifiers, node)
                 }
-                "accessibilityLabel" -> {
-                    node.view?.contentDescription = if (value == JSONObject.NULL) null else value as? String
-                }
+                in ACCESSIBILITY_PROPERTIES -> applyAccessibilityProperty(node.view, name, value)
                 else -> nativeView.setProperty(name, if (value == JSONObject.NULL) null else value)
             }
             return
@@ -263,9 +266,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
                 val disabled = value as? Boolean ?: return
                 (node.view as? Button)?.isEnabled = !disabled
             }
-            "accessibilityLabel" -> {
-                node.view?.contentDescription = if (value == JSONObject.NULL) null else value as? String
-            }
+            in ACCESSIBILITY_PROPERTIES -> applyAccessibilityProperty(node.view, name, value)
             "source" -> applyImageSource(value, node)
             "resizeMode" -> {
                 val mode = value as? String ?: return
@@ -289,6 +290,23 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             "horizontal" -> {
                 val horizontal = value as? Boolean ?: return
                 (node.view as? StingScrollContainer)?.setHorizontal(horizontal)
+            }
+            "presented" -> {
+                val presented = value as? Boolean ?: false
+                (node.view as? StingPresentationHostView)?.setPresented(presented)
+            }
+            "itemExtent" -> {
+                val extent = (value as? Number)?.toFloat() ?: return
+                (node.view as? StingVirtualListView)?.setItemExtentDp(extent)
+            }
+            "overscan" -> {
+                val overscan = (value as? Number)?.toInt() ?: return
+                (node.view as? StingVirtualListView)?.setOverscan(overscan)
+            }
+            "autoFocus" -> {
+                val autoFocus = value as? Boolean ?: false
+                if (node.view is StingFocusLayout) node.view.setAutoFocus(autoFocus)
+                else if (autoFocus) node.view?.requestFocus()
             }
             else -> Unit
         }
@@ -331,10 +349,27 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             }
             event == "back" && node.view is StingNavigationStackLayout -> {
                 node.view.setBackHandler(enabled) {
-                    val current = nodes[id]
-                    if (!disposed && current === node && node.isAttached) {
-                        eventSink?.invoke(id, "back", "null")
-                    }
+                    emitNodeEventIfCurrent(node, event, null)
+                }
+            }
+            event in GESTURE_EVENTS && node.view is StingGestureLayout -> {
+                node.view.setGestureEventEnabled(event, enabled) { payload ->
+                    emitNodeEventIfCurrent(node, event, payload)
+                }
+            }
+            event == "dismiss" && node.view is StingPresentationHostView -> {
+                node.view.setDismissHandler(enabled) {
+                    emitNodeEventIfCurrent(node, event, null)
+                }
+            }
+            event in FOCUS_EVENTS && node.view is StingFocusLayout -> {
+                node.view.setFocusEventEnabled(event, enabled) {
+                    emitNodeEventIfCurrent(node, event, null)
+                }
+            }
+            event in APP_ROOT_EVENTS && node.view is StingAppRootLayout -> {
+                node.view.setLifecycleEventEnabled(event, enabled) { payload ->
+                    emitNodeEventIfCurrent(node, event, payload)
                 }
             }
             else -> throw StingRuntimeException("Event $event is not supported by node $id")
@@ -369,7 +404,15 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         eventSink = null
 
         nodes.values.forEach { node ->
-            (node.view as? StingNavigationStackLayout)?.setBackHandler(false) {}
+            when (val view = node.view) {
+                is StingNavigationStackLayout -> view.setBackHandler(false) {}
+                is StingGestureLayout -> view.clearGestureHandlers()
+                is StingPresentationHostView -> view.disposePresentation()
+                is StingVirtualListView -> view.clearItems()
+                is StingFocusLayout -> view.clearFocusHandlers()
+                is StingAppRootLayout -> view.disposeLifecycle()
+            }
+            node.view?.let(StingAccessibility::clear)
         }
 
         nodes.keys.sorted().filter { it != 0 }.forEach { id ->
@@ -384,7 +427,7 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             events.forEach { event ->
                 try { nativeView.setEventEnabled(event, false) { _ -> } } catch (_: Throwable) { }
             }
-            detachView(node.view)
+            detachView(node.view, null)
             try { nativeView.dispose() } catch (_: Throwable) { }
         }
     }
@@ -425,6 +468,13 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private fun requireNode(id: Int): StingNode {
         checkActive()
         return nodes[id] ?: throw StingRuntimeException("Unknown native node id $id")
+    }
+
+    private fun emitNodeEventIfCurrent(node: StingNode, event: String, payload: Any?) {
+        val current = nodes[node.id]
+        if (!disposed && current === node && node.isAttached) {
+            eventSink?.invoke(node.id, event, encodeJSONFragment(payload))
+        }
     }
 
     private fun isOnActiveNavigationPath(nodeId: Int): Boolean {
@@ -473,10 +523,16 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
             throw StingRuntimeException("Native leaf node ${parent.type} cannot contain view children")
         }
 
+        if (parent.view is StingVirtualListView) {
+            parent.view.insertItem(childView, insertionIndex)
+            return
+        }
+
         val parentView = when {
             parent.nativeModuleView != null -> parent.nativeModuleView.childContainer
                 ?: throw StingRuntimeException("Native module view ${parent.type} does not accept view children")
             parent.view is StingScrollContainer -> parent.view.content
+            parent.view is StingPresentationHostView -> parent.view.content
             parent.view is ViewGroup -> parent.view
             else -> throw StingRuntimeException("Cannot insert a native view below a text-only node")
         }
@@ -485,8 +541,13 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         parentView.addView(childView, viewIndex)
     }
 
-    private fun detachView(view: View?) {
-        val parent = view?.parent as? ViewGroup ?: return
+    private fun detachView(view: View?, parentNode: StingNode?) {
+        if (view == null) return
+        if (parentNode?.view is StingVirtualListView) {
+            parentNode.view.removeItem(view)
+            return
+        }
+        val parent = view.parent as? ViewGroup ?: return
         parent.removeView(view)
     }
 
@@ -502,6 +563,22 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
 
     private fun refreshNavigation(parent: StingNode) {
         (parent.view as? StingNavigationStackLayout)?.refreshVisibleScreen()
+    }
+
+    private fun applyAccessibilityProperty(view: View?, name: String, value: Any?) {
+        view ?: return
+        when (name) {
+            "accessibilityLabel" -> view.contentDescription = if (value == JSONObject.NULL) null else value as? String
+            "accessibilityHint" -> StingAccessibility.setHint(view, if (value == JSONObject.NULL) null else value as? String)
+            "accessibilityValue" -> StingAccessibility.setValue(view, if (value == JSONObject.NULL) null else value as? String)
+            "accessibilityRole" -> StingAccessibility.setRole(view, if (value == JSONObject.NULL) null else value as? String)
+            "accessibilityHidden" -> StingAccessibility.setHidden(view, value as? Boolean ?: false)
+            "focusable" -> {
+                val focusable = value as? Boolean ?: false
+                view.isFocusable = focusable
+                view.isFocusableInTouchMode = focusable
+            }
+        }
     }
 
     private fun applyImageSource(value: Any?, node: StingNode) {
@@ -803,5 +880,16 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
     private companion object {
         const val MODULE_VIEW_PREFIX = "__sting_module_view__:"
         val MODULE_VIEW_SEGMENT = Regex("^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+        val ACCESSIBILITY_PROPERTIES = setOf(
+            "accessibilityLabel",
+            "accessibilityHint",
+            "accessibilityValue",
+            "accessibilityRole",
+            "accessibilityHidden",
+            "focusable",
+        )
+        val GESTURE_EVENTS = setOf("tap", "longPress", "panStart", "pan", "panEnd")
+        val FOCUS_EVENTS = setOf("focus", "blur")
+        val APP_ROOT_EVENTS = setOf("appear", "disappear", "appStateChange")
     }
 }
