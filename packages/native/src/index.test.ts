@@ -10,6 +10,7 @@ import { render } from '@stingjs/solid';
 import {
   Button,
   Heading,
+  KeyboardAvoidingView,
   SafeArea,
   Stack,
   View,
@@ -72,6 +73,27 @@ describe('@stingjs/native styling integration', () => {
     expect(style.paddingRight).toBe(16);
     expect(style.paddingBottom).toBe(16);
     expect(style.paddingLeft).toBe(16);
+    expect(style.gap).toBe(8);
+
+    dispose();
+  });
+
+  it('lowers KeyboardAvoidingView to a dedicated native host while preserving the Style IR', () => {
+    const bridge = makeBridge();
+    const host = installNativeBridge(bridge);
+
+    const dispose = render(
+      () => KeyboardAvoidingView({ p: '3', gap: '2' }),
+      host.root,
+    );
+
+    expect(vi.mocked(bridge.createElement).mock.calls.some(([, type]) => type === 'keyboardavoidingview')).toBe(true);
+    const style = propertyPayloads(bridge, 'style').at(-1) as Record<string, unknown>;
+    expect(style.flexDirection).toBe('column');
+    expect(style.paddingTop).toBe(12);
+    expect(style.paddingRight).toBe(12);
+    expect(style.paddingBottom).toBe(12);
+    expect(style.paddingLeft).toBe(12);
     expect(style.gap).toBe(8);
 
     dispose();

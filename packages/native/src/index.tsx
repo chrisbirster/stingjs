@@ -35,6 +35,7 @@ export interface ViewProps extends StyleProps {
 }
 
 export interface SafeAreaProps extends ViewProps {}
+export interface KeyboardAvoidingViewProps extends ViewProps {}
 
 export interface TextProps extends StyleProps {
   children?: unknown;
@@ -210,6 +211,19 @@ export function SafeArea(props: SafeAreaProps): HostNode {
   return createNativePrimitive(
     'safearea',
     props as SafeAreaProps & Record<string, unknown>,
+    ['children', 'accessibilityLabel'],
+    flexDirection('column'),
+  );
+}
+
+/**
+ * Native keyboard-avoiding container. Authored bottom padding remains additive
+ * with the current iOS keyboard / Android IME overlap.
+ */
+export function KeyboardAvoidingView(props: KeyboardAvoidingViewProps): HostNode {
+  return createNativePrimitive(
+    'keyboardavoidingview',
+    props as KeyboardAvoidingViewProps & Record<string, unknown>,
     ['children', 'accessibilityLabel'],
     flexDirection('column'),
   );
