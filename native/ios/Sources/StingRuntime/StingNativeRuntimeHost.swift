@@ -128,7 +128,7 @@ public final class StingNativeRuntimeHost {
         requestId: Int
     ) throws {
         try perform {
-            bridge.callModuleAsync(module, method, argsJSON, requestId)
+            bridge.callModuleAsync(module: module, method: method, argsJSON: argsJSON, requestId: requestId)
         }
     }
 
@@ -137,7 +137,7 @@ public final class StingNativeRuntimeHost {
         event: String,
         enabled: Bool
     ) -> String {
-        bridge.setModuleEventEnabled(module, event, enabled)
+        bridge.setModuleEventEnabled(module: module, event: event, enabled: enabled)
     }
 
     /// Explicit platform-host lifecycle forwarding. UIKit application
@@ -178,8 +178,12 @@ public final class StingNativeRuntimeHost {
         nodeEventSink = nil
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
+
+        // Modules see their terminal lifecycle callback before renderer-owned
+        // module views and opaque native objects are retired.
+        modules.dispatchLifecycle(.runtimeDisposing)
         nodes.dispose()
-        modules.dispose()
+        modules.disposeAllObjects()
     }
 
     private func perform(_ operation: () -> Void) throws {
