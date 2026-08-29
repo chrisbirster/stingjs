@@ -132,6 +132,8 @@ final class StingNodeRegistry {
             view = stack
         case "safearea":
             view = StingSafeAreaStackView(frame: .zero)
+        case "keyboardavoidingview":
+            view = StingKeyboardAvoidingStackView(frame: .zero)
         case "text":
             let label = UILabel()
             label.numberOfLines = 0
@@ -586,6 +588,10 @@ final class StingNodeRegistry {
 
         if let safeArea = stack as? StingSafeAreaStackView {
             safeArea.setContentMargins(margins)
+            return
+        }
+        if let keyboardAvoiding = stack as? StingKeyboardAvoidingStackView {
+            keyboardAvoiding.setContentMargins(margins)
             return
         }
 
