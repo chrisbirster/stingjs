@@ -1,6 +1,6 @@
 import Foundation
 
-public enum StingGoReportKind: String, Encodable, Sendable {
+public enum StingGoReportKind: String, Encodable, Equatable, Sendable {
     case connection
     case compatibility
     case bundle
