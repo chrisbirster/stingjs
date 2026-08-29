@@ -5,10 +5,12 @@
   "version": "0.1.0",
   "ios": {
     "module": "ClipboardModule",
+    "factory": "default",
     "permissions": []
   },
   "android": {
     "module": "run.stingjs.modules.clipboard.ClipboardModule",
+    "factory": "context",
     "permissions": []
   },
   "capabilities": ["sync-functions"]
