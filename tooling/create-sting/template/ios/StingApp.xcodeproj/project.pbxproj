@@ -10,6 +10,7 @@
 		A10000000000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* AppDelegate.swift */; };
 		A10000000000000000000002 /* sting-app.js in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* sting-app.js */; };
 		A10000000000000000000003 /* StingQuickJSRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000021 /* StingQuickJSRuntime */; };
+		A10000000000000000000004 /* StingGeneratedModules in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000023 /* StingGeneratedModules */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000003 /* StingQuickJSRuntime in Frameworks */,
+				A10000000000000000000004 /* StingGeneratedModules in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,6 +83,7 @@
 			name = StingApp;
 			packageProductDependencies = (
 				A10000000000000000000021 /* StingQuickJSRuntime */,
+				A10000000000000000000023 /* StingGeneratedModules */,
 			);
 			productName = StingApp;
 			productReference = A10000000000000000000010 /* StingApp.app */;
@@ -112,6 +115,7 @@
 			mainGroup = A10000000000000000000040;
 			packageReferences = (
 				A10000000000000000000020 /* XCLocalSwiftPackageReference "StingQuickJSRuntime" */,
+				A10000000000000000000022 /* XCLocalSwiftPackageReference "StingGeneratedModules" */,
 			);
 			productRefGroup = A10000000000000000000043 /* Products */;
 			projectDirPath = "";
@@ -229,6 +233,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = StingQuickJSRuntime;
 		};
+		A10000000000000000000022 /* XCLocalSwiftPackageReference "StingGeneratedModules" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../.sting/generated/ios;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -236,6 +244,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000020 /* XCLocalSwiftPackageReference "StingQuickJSRuntime" */;
 			productName = StingQuickJSRuntime;
+		};
+		A10000000000000000000023 /* StingGeneratedModules */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000022 /* XCLocalSwiftPackageReference "StingGeneratedModules" */;
+			productName = StingGeneratedModules;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
