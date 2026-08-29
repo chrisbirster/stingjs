@@ -19,6 +19,8 @@ class OfficialQuickJsCandidateRuntime(
         ?: throw StingRuntimeException("Official QuickJS must be created on a thread with an Android Looper")
     private val ownerHandler = Handler(ownerLooper)
 
+    var runtimeErrorSink: ((Throwable) -> Unit)? = null
+
     private var handle: Long = nativeCreate(bridge).also {
         if (it == 0L) {
             throw StingRuntimeException("Unable to create the official QuickJS Android runtime")
@@ -42,7 +44,7 @@ class OfficialQuickJsCandidateRuntime(
         requireOwnerThread("dispatch a native event")
         val error = nativeDispatchEvent(handle, nodeId, event, payloadJSON)
         if (error != null) {
-            throw StingRuntimeException("Official QuickJS event dispatch failed: $error")
+            reportOrThrow(StingRuntimeException("Official QuickJS event dispatch failed: $error"))
         }
     }
 
@@ -54,6 +56,7 @@ class OfficialQuickJsCandidateRuntime(
         handle = 0L
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
+        runtimeErrorSink = null
         try {
             // nativeDestroy runs the JavaScript runtime disposer first so Solid
             // can perform ordinary removeNode operations while the node registry
@@ -85,7 +88,7 @@ class OfficialQuickJsCandidateRuntime(
 
         val error = nativeCompleteModuleCall(current, requestId, responseJSON)
         if (error != null) {
-            throw StingRuntimeException("Official QuickJS async module completion failed: $error")
+            reportOrThrow(StingRuntimeException("Official QuickJS async module completion failed: $error"))
         }
     }
 
@@ -104,7 +107,16 @@ class OfficialQuickJsCandidateRuntime(
 
         val error = nativeDispatchModuleEvent(current, module, event, payloadJSON)
         if (error != null) {
-            throw StingRuntimeException("Official QuickJS module event dispatch failed: $error")
+            reportOrThrow(StingRuntimeException("Official QuickJS module event dispatch failed: $error"))
+        }
+    }
+
+    private fun reportOrThrow(error: StingRuntimeException) {
+        val sink = runtimeErrorSink
+        if (sink != null) {
+            sink(error)
+        } else {
+            throw error
         }
     }
 
