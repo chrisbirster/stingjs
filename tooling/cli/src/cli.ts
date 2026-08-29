@@ -2,6 +2,7 @@
 import { resolve } from 'node:path';
 import { startBuildWatcher } from './build-watch.js';
 import { loadStingConfig } from './config.js';
+import { resolveDevelopmentMode, type DevelopmentCommand } from './development.js';
 import { collectProjectDoctorContext } from './doctor.js';
 import { collectDevices, collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
 import { renderTerminalQr, shouldRenderTerminalQr } from './qr.js';
@@ -26,7 +27,7 @@ function parseTarget(args: string[]): { target?: DevicePlatform; rest: string[] 
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--watch] [--qr|--no-qr] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  start    Serve a Sting bundle to Sting Go; --watch rebuilds and emits reload events; QR is shown in interactive terminals\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting dev [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--qr|--no-qr] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--watch] [--qr|--no-qr] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  dev      Build, watch, serve, and live-reload a Sting app through Sting Go; QR is shown in interactive terminals\n  start    Serve a built Sting bundle to Sting Go; --watch preserves the lower-level managed watcher mode\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function printChecks(checks: DoctorCheck[]): void {
@@ -157,7 +158,8 @@ async function run(args: string[]): Promise<void> {
   console.log(`Application: ${result.applicationId}`);
 }
 
-async function start(args: string[]): Promise<void> {
+async function development(command: DevelopmentCommand, args: string[]): Promise<void> {
+  const mode = resolveDevelopmentMode(command, args);
   const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
   const loaded = await loadStingConfig(projectRoot);
   const portValue = option(args, '--port');
@@ -166,8 +168,7 @@ async function start(args: string[]): Promise<void> {
     throw new Error(`Invalid --port value: ${portValue}`);
   }
 
-  const watch = hasFlag(args, '--watch');
-  const watcher = watch ? startBuildWatcher(projectRoot) : undefined;
+  const watcher = mode.watch ? startBuildWatcher(projectRoot) : undefined;
   let started: Awaited<ReturnType<typeof startStingServer>>;
   try {
     started = await startStingServer({
@@ -175,7 +176,7 @@ async function start(args: string[]): Promise<void> {
       bundlePath: option(args, '--bundle') ?? loaded?.config.bundle,
       host: option(args, '--host'),
       port,
-      watchBundle: watch,
+      watchBundle: mode.watch,
     });
   } catch (error) {
     watcher?.close();
@@ -188,21 +189,21 @@ async function start(args: string[]): Promise<void> {
       reloadUrl: started.reloadUrl,
       stingGoUrl: started.stingGoUrl,
       bundlePath: started.bundlePath,
-      watching: watch,
+      watching: mode.watch,
       manifest: started.manifest,
     }));
   } else {
-    console.log('Sting development server');
+    console.log(mode.title);
     console.log(`Manifest: ${started.manifestUrl}`);
     console.log(`Reload:   ${started.reloadUrl}`);
     console.log(`Sting Go: ${started.stingGoUrl}`);
     console.log(`Bundle:   ${started.bundlePath}`);
-    console.log(`Watching: ${watch ? 'yes' : 'no'}`);
+    console.log(`Watching: ${mode.watch ? 'yes' : 'no'}`);
     if (shouldRenderTerminalQr(args, process.stdout.isTTY)) {
       console.log('\nScan with Sting Go:\n');
       console.log(await renderTerminalQr(started.stingGoUrl));
     }
-    console.log('\nOpen the Sting Go URL on a device connected to the same network.');
+    console.log(`\n${mode.guidance}`);
   }
 
   let shuttingDown = false;
@@ -235,8 +236,11 @@ async function main(): Promise<void> {
     case 'ci':
       await verify('ci', args);
       return;
+    case 'dev':
+      await development('dev', args);
+      return;
     case 'start':
-      await start(args);
+      await development('start', args);
       return;
     case 'run':
       await run(args);
