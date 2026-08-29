@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
   copyFileSync,
@@ -6,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -13,14 +16,20 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const TEXT_EXTENSIONS = new Set([
-  '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.properties', '.ts', '.tsx', '.xml', '.sh',
+  '', '.bat', '.gitignore', '.json', '.kts', '.kt', '.md', '.pbxproj', '.properties', '.swift', '.ts', '.tsx', '.xml', '.sh', '.xcscheme',
 ]);
+const GRADLE_WRAPPER_VERSION = '9.5.0';
+const GRADLE_WRAPPER_URL = `https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_WRAPPER_VERSION}/gradle/wrapper/gradle-wrapper.jar`;
+const GRADLE_WRAPPER_SHA256 = '497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7';
 
 export interface CreateStingProjectOptions {
   targetDir: string;
   projectName?: string;
   androidPackage?: string;
+  iosBundleIdentifier?: string;
   runtimeArtifactsDir?: string;
+  iosRuntimeArtifactsDir?: string;
+  gradleWrapperJarPath?: string;
   force?: boolean;
 }
 
@@ -28,7 +37,9 @@ export interface CreatedStingProject {
   targetDir: string;
   projectName: string;
   androidPackage: string;
+  iosBundleIdentifier: string;
   runtimeArtifactsDir: string;
+  iosRuntimeArtifactsDir: string;
 }
 
 function packagePath(packageName: string): string {
@@ -56,6 +67,13 @@ function validateAndroidPackage(value: string): string {
   return value;
 }
 
+function validateIosBundleIdentifier(value: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$/.test(value)) {
+    throw new Error(`Invalid iOS bundle identifier: ${value}. Example: com.example.myapp`);
+  }
+  return value;
+}
+
 function resolveRuntimeArtifacts(explicit?: string): string {
   const candidates = [
     explicit,
@@ -78,6 +96,88 @@ function resolveRuntimeArtifacts(explicit?: string): string {
   );
 }
 
+function isIosRuntimePackage(directory: string): boolean {
+  return (
+    existsSync(join(directory, 'Package.swift')) &&
+    existsSync(join(directory, 'Sources', 'StingQuickJSRuntime')) &&
+    existsSync(join(directory, 'Artifacts', 'StingQuickJSBinary.xcframework'))
+  );
+}
+
+function resolveIosRuntimeArtifacts(explicit?: string): string {
+  const candidates = [
+    explicit,
+    process.env.STING_IOS_HOST_ARTIFACTS,
+    fileURLToPath(new URL('../runtime/ios', import.meta.url)),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    const directory = resolve(candidate);
+    for (const packageDirectory of [directory, join(directory, 'StingQuickJSRuntime')]) {
+      if (isIosRuntimePackage(packageDirectory)) return packageDirectory;
+    }
+  }
+
+  throw new Error(
+    'Sting iOS host artifacts were not found. Pass --ios-runtime-artifacts <dir>, set STING_IOS_HOST_ARTIFACTS, or package StingQuickJSRuntime under runtime/ios.',
+  );
+}
+
+function sha256(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function verifyOfficialGradleWrapper(path: string): void {
+  const actual = sha256(path);
+  if (actual !== GRADLE_WRAPPER_SHA256) {
+    throw new Error(
+      `Gradle ${GRADLE_WRAPPER_VERSION} wrapper checksum mismatch: expected ${GRADLE_WRAPPER_SHA256}, got ${actual}`,
+    );
+  }
+}
+
+function downloadOfficialGradleWrapper(target: string): void {
+  mkdirSync(dirname(target), { recursive: true });
+  const script = `
+const { writeFileSync } = require('node:fs');
+const [url, target] = process.argv.slice(1);
+fetch(url).then(async (response) => {
+  if (!response.ok) throw new Error('HTTP ' + response.status + ' ' + response.statusText);
+  writeFileSync(target, Buffer.from(await response.arrayBuffer()));
+}).catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
+`;
+  try {
+    execFileSync(process.execPath, ['-e', script, GRADLE_WRAPPER_URL, target], { stdio: 'inherit' });
+  } catch {
+    throw new Error(`Unable to download the official Gradle ${GRADLE_WRAPPER_VERSION} wrapper from ${GRADLE_WRAPPER_URL}.`);
+  }
+  verifyOfficialGradleWrapper(target);
+}
+
+function installGradleWrapperJar(target: string, explicit?: string): void {
+  const trustedOverride = explicit ?? process.env.STING_GRADLE_WRAPPER_JAR;
+  if (trustedOverride) {
+    const source = resolve(trustedOverride);
+    if (!existsSync(source)) throw new Error(`Gradle wrapper JAR was not found: ${source}`);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(source, target);
+    return;
+  }
+
+  const packaged = fileURLToPath(new URL('../runtime/gradle/gradle-wrapper.jar', import.meta.url));
+  if (existsSync(packaged)) {
+    verifyOfficialGradleWrapper(packaged);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(packaged, target);
+    return;
+  }
+
+  downloadOfficialGradleWrapper(target);
+}
+
 function assertTargetAvailable(targetDir: string, force: boolean): void {
   if (!existsSync(targetDir)) return;
   const entries = readdirSync(targetDir);
@@ -89,6 +189,7 @@ function assertTargetAvailable(targetDir: string, force: boolean): void {
 function textExtension(path: string): string {
   const name = basename(path);
   if (name === '.gitignore') return '.gitignore';
+  if (name === 'project.pbxproj') return '.pbxproj';
   const index = name.lastIndexOf('.');
   return index < 0 ? '' : name.slice(index);
 }
@@ -134,7 +235,11 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
   const androidPackage = validateAndroidPackage(
     options.androidPackage ?? `run.stingjs.apps.${projectName.replace(/[^a-z0-9_]/g, '_')}`,
   );
+  const iosBundleIdentifier = validateIosBundleIdentifier(
+    options.iosBundleIdentifier ?? androidPackage.replaceAll('_', '-'),
+  );
   const runtimeArtifactsDir = resolveRuntimeArtifacts(options.runtimeArtifactsDir);
+  const iosRuntimeArtifactsDir = resolveIosRuntimeArtifacts(options.iosRuntimeArtifactsDir);
   const force = options.force ?? false;
 
   assertTargetAvailable(targetDir, force);
@@ -146,12 +251,28 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
     PROJECT_DISPLAY_NAME: projectName.replace(/[-_]+/g, ' '),
     ANDROID_PACKAGE: androidPackage,
     ANDROID_PACKAGE_PATH: packagePath(androidPackage),
+    IOS_BUNDLE_IDENTIFIER: iosBundleIdentifier,
   });
 
   const libs = join(targetDir, 'android', 'app', 'libs');
   mkdirSync(libs, { recursive: true });
   cpSync(join(runtimeArtifactsDir, 'sting-runtime.aar'), join(libs, 'sting-runtime.aar'));
   cpSync(join(runtimeArtifactsDir, 'sting-quickjs.aar'), join(libs, 'sting-quickjs.aar'));
+  installGradleWrapperJar(
+    join(targetDir, 'android', 'gradle', 'wrapper', 'gradle-wrapper.jar'),
+    options.gradleWrapperJarPath,
+  );
 
-  return { targetDir, projectName, androidPackage, runtimeArtifactsDir };
+  const iosRuntimeTarget = join(targetDir, 'ios', 'StingQuickJSRuntime');
+  rmSync(iosRuntimeTarget, { recursive: true, force: true });
+  cpSync(iosRuntimeArtifactsDir, iosRuntimeTarget, { recursive: true });
+
+  return {
+    targetDir,
+    projectName,
+    androidPackage,
+    iosBundleIdentifier,
+    runtimeArtifactsDir,
+    iosRuntimeArtifactsDir,
+  };
 }
