@@ -131,7 +131,10 @@ describe('@stingjs/native styling integration', () => {
   it('lowers VirtualList to a native-windowed host with explicit fixed extent', () => {
     const bridge = makeBridge();
     const host = installNativeBridge(bridge);
-    const dispose = render(() => VirtualList({ itemExtent: 64, overscan: 3, height: 320 }), host.root);
+    const dispose = render(
+      () => VirtualList({ itemExtent: 64, overscan: 3, sx: { height: 320 } }),
+      host.root,
+    );
 
     expect(vi.mocked(bridge.createElement).mock.calls.some(([, type]) => type === 'virtuallist')).toBe(true);
     expect(propertyPayloads(bridge, 'itemExtent').at(-1)).toBe(64);
