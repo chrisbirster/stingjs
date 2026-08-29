@@ -119,6 +119,32 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    public func dispatchLifecycle(_ event: StingApplicationLifecycleEvent) {
+        guard !disposed else { return }
+        modules.dispatchLifecycle(event)
+    }
+
+    public func deliverBackgroundEvent(
+        module: String,
+        event: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        guard !disposed else {
+            completion(.failure(StingNativeModuleError(
+                code: "E_RUNTIME_DISPOSED",
+                message: "Sting runtime is already disposed"
+            )))
+            return
+        }
+        modules.deliverBackgroundEvent(
+            module: module,
+            event: event,
+            payload: payload,
+            completion: completion
+        )
+    }
+
     public func dispose() {
         if Thread.isMainThread {
             disposeOnRuntimeThread()
@@ -162,10 +188,10 @@ public final class StingJavaScriptRuntime {
         // attached views, and invokes dispose() exactly once per live node.
         nodes.dispose()
 
-        // JavaScript wrappers release their handles through __stingDisposeRuntime.
-        // This registry teardown is the final guarantee for raw or abandoned
-        // handles that were created without a live JS wrapper.
-        modules.disposeAllObjects()
+        // Module teardown emits runtimeDisposing exactly once before releasing
+        // abandoned native-object handles. This matches StingNativeRuntimeHost,
+        // keeping JSC as a semantic/native reference rather than a separate API.
+        modules.dispose()
     }
 
     private func installHostGlobals(in context: JSContext) {
