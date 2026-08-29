@@ -148,6 +148,8 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         val normalized = type.lowercase()
         val view = when (normalized) {
             "view" -> LinearLayout(rootView.context).apply { orientation = LinearLayout.VERTICAL }
+            "safearea" -> StingSafeAreaLayout(rootView.context)
+            "keyboardavoidingview" -> StingKeyboardAvoidingLayout(rootView.context)
             "text" -> TextView(rootView.context)
             "button" -> Button(rootView.context)
             "image" -> ImageView(rootView.context).apply {
@@ -513,7 +515,11 @@ class StingNodeRegistry(private val rootView: ViewGroup) {
         if (shouldApplyPadding(style, node, resolved)) {
             val target = if (view is StingScrollContainer) view.content else view
             val edges = paddingEdges(style, context, node)
-            target.setPadding(edges[0], edges[1], edges[2], edges[3])
+            when (target) {
+                is StingSafeAreaLayout -> target.setContentPadding(edges[0], edges[1], edges[2], edges[3])
+                is StingKeyboardAvoidingLayout -> target.setContentPadding(edges[0], edges[1], edges[2], edges[3])
+                else -> target.setPadding(edges[0], edges[1], edges[2], edges[3])
+            }
         }
 
         if (shouldApply(style, "color", node, resolved)) {

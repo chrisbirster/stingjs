@@ -130,6 +130,10 @@ final class StingNodeRegistry {
             stack.spacing = 0
             stack.translatesAutoresizingMaskIntoConstraints = false
             view = stack
+        case "safearea":
+            view = StingSafeAreaStackView(frame: .zero)
+        case "keyboardavoidingview":
+            view = StingKeyboardAvoidingStackView(frame: .zero)
         case "text":
             let label = UILabel()
             label.numberOfLines = 0
@@ -572,18 +576,32 @@ final class StingNodeRegistry {
         resolved: Bool
     ) {
         guard shouldApplyPadding(style, to: node, resolved: resolved) else { return }
-        guard let edges = paddingEdges(style) else {
+        let edges = paddingEdges(style)
+        let margins = edges.map {
+            NSDirectionalEdgeInsets(
+                top: $0.top,
+                leading: $0.left,
+                bottom: $0.bottom,
+                trailing: $0.right
+            )
+        } ?? node.originalStackMargins ?? .zero
+
+        if let safeArea = stack as? StingSafeAreaStackView {
+            safeArea.setContentMargins(margins)
+            return
+        }
+        if let keyboardAvoiding = stack as? StingKeyboardAvoidingStackView {
+            keyboardAvoiding.setContentMargins(margins)
+            return
+        }
+
+        guard edges != nil else {
             stack.isLayoutMarginsRelativeArrangement = node.originalStackUsesMargins ?? false
-            stack.directionalLayoutMargins = node.originalStackMargins ?? .zero
+            stack.directionalLayoutMargins = margins
             return
         }
         stack.isLayoutMarginsRelativeArrangement = true
-        stack.directionalLayoutMargins = NSDirectionalEdgeInsets(
-            top: edges.top,
-            leading: edges.left,
-            bottom: edges.bottom,
-            trailing: edges.right
-        )
+        stack.directionalLayoutMargins = margins
     }
 
     private func shouldApplyPadding(_ style: [String: Any], to node: StingNode, resolved: Bool) -> Bool {
