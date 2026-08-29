@@ -67,9 +67,10 @@ internal object StingAccessibility {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     info.hintText = values.hint
                 }
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && !values.value.isNullOrBlank()) {
+                val stateValue = values.value
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && !stateValue.isNullOrBlank()) {
                     val label = host.contentDescription?.toString().orEmpty()
-                    info.contentDescription = listOf(label, values.value)
+                    info.contentDescription = listOf(label, stateValue)
                         .filter { it.isNotBlank() }
                         .joinToString(", ")
                 }
