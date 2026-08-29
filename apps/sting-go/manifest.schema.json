@@ -29,7 +29,7 @@
     "development": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reload", "health"],
+      "required": ["reload", "health", "report"],
       "properties": {
         "reload": {
           "type": "object",
@@ -47,6 +47,16 @@
           "required": ["path", "contentType"],
           "properties": {
             "path": { "const": "/health" },
+            "contentType": { "const": "application/json" }
+          }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "method", "contentType"],
+          "properties": {
+            "path": { "const": "/report" },
+            "method": { "const": "POST" },
             "contentType": { "const": "application/json" }
           }
         }
