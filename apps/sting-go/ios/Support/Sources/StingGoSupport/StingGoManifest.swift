@@ -8,6 +8,7 @@ public enum StingGoProtocolError: LocalizedError, Equatable {
     case unsupportedBundle(path: String, contentType: String)
     case unsupportedReload(path: String, transport: String, contentType: String)
     case unsupportedHealth(path: String, contentType: String)
+    case unsupportedReport(path: String, method: String, contentType: String)
     case unsupportedCapabilities([String])
     case invalidEndpoint(String)
 
@@ -27,6 +28,8 @@ public enum StingGoProtocolError: LocalizedError, Equatable {
             return "Unsupported Sting Go reload endpoint \(path) (\(transport), \(contentType))"
         case .unsupportedHealth(let path, let contentType):
             return "Unsupported Sting Go health endpoint \(path) (\(contentType))"
+        case .unsupportedReport(let path, let method, let contentType):
+            return "Unsupported Sting Go report endpoint \(path) (\(method), \(contentType))"
         case .unsupportedCapabilities(let capabilities):
             return "This Sting Go build does not include required capabilities: \(capabilities.joined(separator: ", "))"
         case .invalidEndpoint(let path):
@@ -51,9 +54,16 @@ public struct StingGoManifest: Decodable, Equatable, Sendable {
         public let contentType: String
     }
 
+    public struct ReportEndpoint: Decodable, Equatable, Sendable {
+        public let path: String
+        public let method: String
+        public let contentType: String
+    }
+
     public struct Development: Decodable, Equatable, Sendable {
         public let reload: ReloadEndpoint
         public let health: Endpoint
+        public let report: ReportEndpoint?
     }
 
     public static let supportedSchemaVersion = 1
@@ -115,6 +125,17 @@ public struct StingGoManifest: Decodable, Equatable, Sendable {
                 path: health.path,
                 contentType: health.contentType
             )
+        }
+        if let report = development.report {
+            guard report.path == "/report",
+                  report.method == "POST",
+                  report.contentType == "application/json" else {
+                throw StingGoProtocolError.unsupportedReport(
+                    path: report.path,
+                    method: report.method,
+                    contentType: report.contentType
+                )
+            }
         }
 
         let unsupported = capabilities.subtracting(clientCapabilities).sorted()
