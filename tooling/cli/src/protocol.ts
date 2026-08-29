@@ -1,5 +1,21 @@
 export const STING_GO_MANIFEST_SCHEMA_VERSION = 1 as const;
 
+export type StingGoClientReportKind =
+  | 'connection'
+  | 'compatibility'
+  | 'bundle'
+  | 'runtime'
+  | 'reload';
+
+export type StingGoClientPlatform = 'android' | 'ios';
+
+export interface StingGoClientReport {
+  kind: StingGoClientReportKind;
+  platform: StingGoClientPlatform;
+  message: string;
+  detail?: string;
+}
+
 export interface StingGoManifest {
   schemaVersion: typeof STING_GO_MANIFEST_SCHEMA_VERSION;
   runtimeVersion: string;
@@ -19,6 +35,11 @@ export interface StingGoManifest {
     };
     health: {
       path: '/health';
+      contentType: 'application/json';
+    };
+    report: {
+      path: '/report';
+      method: 'POST';
       contentType: 'application/json';
     };
   };
@@ -41,6 +62,17 @@ export interface StingGoCompatibilityResult {
   reasons: string[];
 }
 
+const REPORT_KINDS = new Set<StingGoClientReportKind>([
+  'connection',
+  'compatibility',
+  'bundle',
+  'runtime',
+  'reload',
+]);
+const REPORT_PLATFORMS = new Set<StingGoClientPlatform>(['android', 'ios']);
+const MAX_REPORT_MESSAGE_LENGTH = 16_384;
+const MAX_REPORT_DETAIL_LENGTH = 32_768;
+
 export function createStingGoManifest(options: CreateManifestOptions): StingGoManifest {
   return {
     schemaVersion: STING_GO_MANIFEST_SCHEMA_VERSION,
@@ -61,8 +93,51 @@ export function createStingGoManifest(options: CreateManifestOptions): StingGoMa
         path: '/health',
         contentType: 'application/json',
       },
+      report: {
+        path: '/report',
+        method: 'POST',
+        contentType: 'application/json',
+      },
     },
     capabilities: [...new Set(options.capabilities ?? [])].sort(),
+  };
+}
+
+export function parseStingGoClientReport(value: unknown): StingGoClientReport {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Sting Go report must be a JSON object');
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const kind = candidate.kind;
+  const platform = candidate.platform;
+  const message = candidate.message;
+  const detail = candidate.detail;
+
+  if (typeof kind !== 'string' || !REPORT_KINDS.has(kind as StingGoClientReportKind)) {
+    throw new Error(`Unsupported Sting Go report kind: ${String(kind)}`);
+  }
+  if (typeof platform !== 'string' || !REPORT_PLATFORMS.has(platform as StingGoClientPlatform)) {
+    throw new Error(`Unsupported Sting Go report platform: ${String(platform)}`);
+  }
+  if (typeof message !== 'string' || message.trim().length === 0) {
+    throw new Error('Sting Go report message must be a non-empty string');
+  }
+  if (message.length > MAX_REPORT_MESSAGE_LENGTH) {
+    throw new Error(`Sting Go report message exceeds ${MAX_REPORT_MESSAGE_LENGTH} characters`);
+  }
+  if (detail !== undefined && typeof detail !== 'string') {
+    throw new Error('Sting Go report detail must be a string when provided');
+  }
+  if (typeof detail === 'string' && detail.length > MAX_REPORT_DETAIL_LENGTH) {
+    throw new Error(`Sting Go report detail exceeds ${MAX_REPORT_DETAIL_LENGTH} characters`);
+  }
+
+  return {
+    kind: kind as StingGoClientReportKind,
+    platform: platform as StingGoClientPlatform,
+    message: message.trim(),
+    ...(typeof detail === 'string' && detail.length > 0 ? { detail } : {}),
   };
 }
 
