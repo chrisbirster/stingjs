@@ -8,6 +8,7 @@ import run.stingjs.modules.clipboard.ClipboardModule
 import run.stingjs.modules.device.DeviceModule
 import run.stingjs.modules.filesystem.FilesystemModule
 import run.stingjs.modules.haptics.HapticsModule
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingModuleRegistry
 import run.stingjs.runtime.StingMutationCounts
 import run.stingjs.runtime.StingNativeBridge
@@ -50,6 +51,34 @@ class MainActivity : Activity() {
         runtime = OfficialQuickJsCandidateRuntime(bridge)
         nodes.eventSink = runtime::dispatchEvent
         runtime.evaluate(bundleSource)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (::bridge.isInitialized) {
+            bridge.dispatchLifecycle(StingApplicationLifecycleEvent.FOREGROUND)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::bridge.isInitialized) {
+            bridge.dispatchLifecycle(StingApplicationLifecycleEvent.ACTIVE)
+        }
+    }
+
+    override fun onPause() {
+        if (::bridge.isInitialized) {
+            bridge.dispatchLifecycle(StingApplicationLifecycleEvent.INACTIVE)
+        }
+        super.onPause()
+    }
+
+    override fun onStop() {
+        if (::bridge.isInitialized) {
+            bridge.dispatchLifecycle(StingApplicationLifecycleEvent.BACKGROUND)
+        }
+        super.onStop()
     }
 
     override fun onDestroy() {
