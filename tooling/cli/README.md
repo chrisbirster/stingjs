@@ -132,13 +132,17 @@ Both `run` commands accept `--no-bundle` to skip the CLI's explicit `npm run bui
 sting dev
 sting dev --project-root ./apps/my-app
 sting dev --port 9000
+sting dev --open
+sting dev --open --device "Pixel 9"
 sting dev --no-qr
 sting dev --json
 ```
 
 The command accepts the same `--project-root`, `--bundle`, `--host`, `--port`, `--qr`, `--no-qr`, and `--json` server options as `sting start`. Watch/live-reload mode is always enabled for `sting dev`; there is intentionally no separate `--watch` step to remember.
 
-`--json` keeps the existing machine-readable development-server result shape and does not mix terminal QR output into stdout.
+Use `--open` to send the generated `sting://go?...` deep link directly to a ready Sting Go target. On macOS, the default target is a booted iOS Simulator when one exists; otherwise the CLI uses the first authorized Android device/emulator. `--device <id|name>` selects a specific ready target. The command does not silently boot a stopped simulator or install Sting Go for you: those remain explicit device/client setup steps, and failures cleanly stop the development server and watcher.
+
+When `--open --json` is used, the normal machine-readable result gains an `openedDevice` object with the selected platform, id, and name. Terminal QR output is still suppressed in JSON mode.
 
 ### `sting start`
 
