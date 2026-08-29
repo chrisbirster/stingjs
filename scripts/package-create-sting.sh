@@ -56,6 +56,7 @@ if [[ -z "$tarball" ]]; then
   exit 1
 fi
 
+tar_listing="$(tar -tzf "$tarball")"
 for entry in \
   package/dist/cli.js \
   package/template/package.json.tpl \
@@ -63,7 +64,7 @@ for entry in \
   package/runtime/android/sting-quickjs.aar \
   package/runtime/ios/StingQuickJSRuntime/Package.swift \
   package/runtime/gradle/gradle-wrapper.jar; do
-  if ! tar -tzf "$tarball" | grep -Fxq "$entry"; then
+  if ! grep -Fx "$entry" <<<"$tar_listing" >/dev/null; then
     echo "error: create-sting tarball is missing $entry" >&2
     exit 1
   fi
