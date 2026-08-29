@@ -31,11 +31,7 @@ internal object StingGoReportClient {
                 output.write(payload.toString().toByteArray(Charsets.UTF_8))
             }
             val status = connection.responseCode
-            if (status !in 200..299) {
-                connection.errorStream?.close()
-            } else {
-                connection.inputStream?.close()
-            }
+            if (status !in 200..299) connection.errorStream?.close()
         } finally {
             connection.disconnect()
         }
