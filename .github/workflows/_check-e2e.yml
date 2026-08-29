@@ -71,6 +71,8 @@ jobs:
             "$ios_placeholder/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework" \
             "$ios_placeholder/StingQuickJSRuntime/Sources/StingQuickJSRuntime"
           printf '// Android E2E placeholder; iOS E2E uses the real package.\n' > "$ios_placeholder/StingQuickJSRuntime/Package.swift"
+          printf '// Android E2E placeholder; never compiled.\n' > "$ios_placeholder/StingQuickJSRuntime/Sources/StingQuickJSRuntime/Placeholder.swift"
+          printf 'Android E2E placeholder; the real XCFramework is validated by iOS E2E.\n' > "$ios_placeholder/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework/placeholder.txt"
           (
             cd "$ios_placeholder"
             zip -qr "$release_inputs/sting-ios-host.zip" StingQuickJSRuntime
