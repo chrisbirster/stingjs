@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "SecureStore",
+  "package": "@stingjs/secure-store",
+  "version": "0.1.0",
+  "ios": {
+    "module": "SecureStoreModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.securestore.SecureStoreModule",
+    "permissions": []
+  },
+  "capabilities": ["async-functions"]
+}

@@ -144,10 +144,21 @@ test('current first-party manifests generate the expected permission plan', asyn
   const manifests = await discoverRepositoryModuleManifests();
   const plan = aggregateModuleConfiguration(manifests);
 
-  assert.deepEqual(plan.android.permissions, ['android.permission.VIBRATE']);
+  assert.deepEqual(plan.android.permissions, [
+    'android.permission.ACCESS_NETWORK_STATE',
+    'android.permission.VIBRATE',
+  ]);
   assert.deepEqual(plan.ios.requiredInfoPlistKeys, []);
   assert.deepEqual(
     plan.modules.map(module => module.package),
-    ['@stingjs/clipboard', '@stingjs/device', '@stingjs/filesystem', '@stingjs/haptics'],
+    [
+      '@stingjs/clipboard',
+      '@stingjs/device',
+      '@stingjs/filesystem',
+      '@stingjs/haptics',
+      '@stingjs/network',
+      '@stingjs/secure-store',
+      '@stingjs/sharing',
+    ],
   );
 });
