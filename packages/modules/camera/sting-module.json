@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "Camera",
+  "package": "@stingjs/camera",
+  "version": "0.1.0",
+  "ios": { "module": "CameraModule", "permissions": ["NSCameraUsageDescription"] },
+  "android": { "module": "run.stingjs.modules.camera.CameraModule", "permissions": ["android.permission.CAMERA"] },
+  "capabilities": ["async-functions", "permissions", "native-views"]
+}
