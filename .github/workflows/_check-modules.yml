@@ -47,6 +47,24 @@ jobs:
       - name: Build ImagePicker
         working-directory: examples/hello-world/android
         run: gradle :sting-image-picker:assembleDebug --no-daemon
+      - name: Build Location
+        working-directory: examples/hello-world/android
+        run: gradle :sting-location:assembleDebug --no-daemon
+      - name: Build Contacts
+        working-directory: examples/hello-world/android
+        run: gradle :sting-contacts:assembleDebug --no-daemon
+      - name: Build Camera
+        working-directory: examples/hello-world/android
+        run: gradle :sting-camera:assembleDebug --no-daemon
+      - name: Build Notifications
+        working-directory: examples/hello-world/android
+        run: gradle :sting-notifications:assembleDebug --no-daemon
+      - name: Build Audio
+        working-directory: examples/hello-world/android
+        run: gradle :sting-audio:assembleDebug --no-daemon
+      - name: Build BackgroundTask
+        working-directory: examples/hello-world/android
+        run: gradle :sting-background-task:assembleDebug --no-daemon
 
   ios-modules:
     name: iOS Modules
@@ -80,3 +98,21 @@ jobs:
       - name: Build ImagePicker
         working-directory: packages/modules/image-picker
         run: xcodebuild -scheme StingImagePicker -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Location
+        working-directory: packages/modules/location
+        run: xcodebuild -scheme StingLocation -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Contacts
+        working-directory: packages/modules/contacts
+        run: xcodebuild -scheme StingContacts -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Camera
+        working-directory: packages/modules/camera
+        run: xcodebuild -scheme StingCamera -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Notifications
+        working-directory: packages/modules/notifications
+        run: xcodebuild -scheme StingNotifications -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Audio
+        working-directory: packages/modules/audio
+        run: xcodebuild -scheme StingAudio -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build BackgroundTask
+        working-directory: packages/modules/background-task
+        run: xcodebuild -scheme StingBackgroundTask -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

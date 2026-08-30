@@ -9,6 +9,7 @@
   },
   "android": {
     "module": "run.stingjs.modules.sensors.SensorsModule",
+    "factory": "context",
     "permissions": []
   },
   "capabilities": ["sync-functions", "events"]

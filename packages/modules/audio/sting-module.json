@@ -3,7 +3,14 @@
   "name": "Audio",
   "package": "@stingjs/audio",
   "version": "0.1.0",
-  "ios": { "module": "AudioModule", "permissions": [] },
-  "android": { "module": "run.stingjs.modules.audio.AudioModule", "permissions": ["android.permission.INTERNET"] },
+  "ios": {
+    "module": "AudioModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.audio.AudioModule",
+    "factory": "context",
+    "permissions": ["android.permission.INTERNET"]
+  },
   "capabilities": ["async-functions", "events", "native-objects", "lifecycle"]
 }

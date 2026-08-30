@@ -9,6 +9,7 @@
   },
   "android": {
     "module": "run.stingjs.modules.sharing.SharingModule",
+    "factory": "context",
     "permissions": []
   },
   "capabilities": ["async-functions"]
