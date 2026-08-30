@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "Contacts",
+  "package": "@stingjs/contacts",
+  "version": "0.1.0",
+  "ios": { "module": "ContactsModule", "permissions": ["NSContactsUsageDescription"] },
+  "android": { "module": "run.stingjs.modules.contacts.ContactsModule", "permissions": ["android.permission.READ_CONTACTS"] },
+  "capabilities": ["async-functions", "permissions"]
+}
