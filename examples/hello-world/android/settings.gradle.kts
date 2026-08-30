@@ -25,6 +25,7 @@ include(
     ":sting-secure-store",
     ":sting-network",
     ":sting-sharing",
+    ":sting-sensors",
     ":sting-runtime-quickjs-candidate",
 )
 
@@ -36,4 +37,5 @@ project(":sting-filesystem").projectDir = file("../../../packages/modules/filesy
 project(":sting-secure-store").projectDir = file("../../../packages/modules/secure-store/android")
 project(":sting-network").projectDir = file("../../../packages/modules/network/android")
 project(":sting-sharing").projectDir = file("../../../packages/modules/sharing/android")
+project(":sting-sensors").projectDir = file("../../../packages/modules/sensors/android")
 project(":sting-runtime-quickjs-candidate").projectDir = file("../../../runtime/prototypes/quickjs/android")

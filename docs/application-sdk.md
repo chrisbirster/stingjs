@@ -53,6 +53,28 @@ await Sharing.share({
 
 iOS uses `UIActivityViewController` and resolves after the native share controller finishes. Android launches the system chooser and resolves once the request has been handed to the chooser. Cancellation is not an application error.
 
+## Sensors
+
+`@stingjs/sensors` exposes accelerometer and gyroscope observations without platform sensor objects:
+
+```ts
+import { Sensors } from '@stingjs/sensors';
+
+Sensors.setUpdateInterval('accelerometer', 16.67);
+const acceleration = Sensors.addAccelerometerListener(reading => {
+  console.log(reading.x, reading.y, reading.z);
+});
+
+const rotation = Sensors.addGyroscopeListener(reading => {
+  console.log(reading.x, reading.y, reading.z);
+});
+
+acceleration.remove();
+rotation.remove();
+```
+
+Accelerometer axes are normalized to multiples of Earth gravity (`g`) on both platforms. Gyroscope axes are radians per second. `timestamp` is a monotonic platform sensor timestamp expressed in seconds and is suitable for ordering/deltas, not wall-clock display. `hasSensor()` can be used before subscribing. iOS uses CoreMotion; Android uses `SensorManager`. These initial sensor types do not require runtime authorization.
+
 ## Architecture boundary
 
 Modules that need runtime authorization (Location, Camera, Notifications, Contacts, and related APIs) must use the shared Train A permission contract rather than implementing package-specific permission bridges. Audio/background work must use the shared lifecycle/background hooks. Camera must use the shared native-module-view contract. This keeps first-party and third-party modules on the same runtime architecture.
