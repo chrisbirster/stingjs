@@ -19,8 +19,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    sourceSets.getByName("main").java.srcDir(
-        rootProject.file("../.sting/generated/android/src/main/java")
+    sourceSets.getByName("main").kotlin.directories.add(
+        rootProject.file("../.sting/generated/android/src/main/java").path
     )
 }
 
