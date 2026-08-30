@@ -1,5 +1,6 @@
 import { access, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
+import { synchronizeModuleHostConfiguration } from './module-host-config.js';
 
 export type AndroidModuleFactory = 'default' | 'context';
 export type IOSModuleFactory = 'default';
@@ -281,6 +282,7 @@ export async function synchronizeModuleAutolinking(projectRoot = process.cwd()):
   await writeFile(join(generatedRoot, 'sting-modules.config.json'), `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
   await writeFile(join(generatedRoot, 'android', 'permissions.json'), renderAndroidPermissions(plan), 'utf8');
   await writeFile(join(generatedRoot, 'ios', 'permissions.json'), renderIOSPermissions(plan), 'utf8');
+  await synchronizeModuleHostConfiguration(root, records, plan, generatedRoot);
 
   return plan;
 }
