@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "Location",
+  "package": "@stingjs/location",
+  "version": "0.1.0",
+  "ios": {
+    "module": "LocationModule",
+    "permissions": ["NSLocationWhenInUseUsageDescription"]
+  },
+  "android": {
+    "module": "run.stingjs.modules.location.LocationModule",
+    "permissions": ["android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"]
+  },
+  "capabilities": ["async-functions", "events", "permissions", "lifecycle"]
+}
