@@ -27,7 +27,7 @@ jobs:
         run: |
           npm run build --workspace @stingjs/example-hello-world
           npm run build --workspace @stingjs/benchmark-native
-          npm run build --workspace @stingjs/cli
+          npm run build --prefix tooling/cli
       - name: Install Android SDK and pinned NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Install pinned Zig 0.16.0
@@ -170,7 +170,7 @@ jobs:
       - name: Build JavaScript fixture
         run: |
           npm run build --workspace @stingjs/example-hello-world
-          npm run build --workspace @stingjs/cli
+          npm run build --prefix tooling/cli
       - name: Prove packed create-sting iOS output builds without Zig
         shell: bash
         run: |
