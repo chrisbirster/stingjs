@@ -32,6 +32,15 @@ jobs:
       - name: Build Filesystem
         working-directory: examples/hello-world/android
         run: gradle :sting-filesystem:assembleDebug --no-daemon
+      - name: Build SecureStore
+        working-directory: examples/hello-world/android
+        run: gradle :sting-secure-store:assembleDebug --no-daemon
+      - name: Build Network
+        working-directory: examples/hello-world/android
+        run: gradle :sting-network:assembleDebug --no-daemon
+      - name: Build Sharing
+        working-directory: examples/hello-world/android
+        run: gradle :sting-sharing:assembleDebug --no-daemon
 
   ios-modules:
     name: iOS Modules
@@ -50,3 +59,12 @@ jobs:
       - name: Build Filesystem
         working-directory: packages/modules/filesystem
         run: xcodebuild -scheme StingFilesystem -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build SecureStore
+        working-directory: packages/modules/secure-store
+        run: xcodebuild -scheme StingSecureStore -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Network
+        working-directory: packages/modules/network
+        run: xcodebuild -scheme StingNetwork -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build Sharing
+        working-directory: packages/modules/sharing
+        run: xcodebuild -scheme StingSharing -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
