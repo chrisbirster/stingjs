@@ -4,15 +4,20 @@ const nativeNotifications = createNativeModule('Notifications');
 const NOTIFICATIONS_PERMISSION = 'notifications';
 
 export type NotificationsPermissionStatus = NativePermissionStatus;
-export interface NotificationContent { title: string; body?: string; }
-export interface ScheduleNotificationOptions extends NotificationContent { id?: string; at?: number; }
+export interface NotificationContent { title: string; body: string; }
+export interface ScheduleNotificationOptions { id?: string; title: string; body?: string; at?: number; }
 export interface ScheduledNotification extends NotificationContent { id: string; at: number | null; }
 export interface NotificationEvent extends NotificationContent { id: string; }
 
 function normalizeScheduled(value: unknown): ScheduledNotification {
   if (!value || typeof value !== 'object') throw new TypeError('Notifications returned invalid scheduled data.');
   const record = value as Record<string, unknown>;
-  return { id: typeof record.id === 'string' ? record.id : '', title: typeof record.title === 'string' ? record.title : '', body: typeof record.body === 'string' ? record.body : undefined, at: typeof record.at === 'number' ? record.at : null };
+  return {
+    id: typeof record.id === 'string' ? record.id : '',
+    title: typeof record.title === 'string' ? record.title : '',
+    body: typeof record.body === 'string' ? record.body : '',
+    at: typeof record.at === 'number' ? record.at : null,
+  };
 }
 function normalizeEvent(value: unknown): NotificationEvent {
   const scheduled = normalizeScheduled(value);
