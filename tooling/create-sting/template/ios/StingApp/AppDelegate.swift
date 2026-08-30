@@ -1,3 +1,4 @@
+import StingGeneratedModules
 import StingQuickJSRuntime
 import UIKit
 
@@ -34,7 +35,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
                 throw StingAppLaunchError.missingJavaScriptBundle
             }
             let source = try String(contentsOf: bundleURL, encoding: .utf8)
-            let runtime = try StingQuickJSRuntime(rootView: rootViewController.view)
+            let runtime = try StingQuickJSRuntime(
+                rootView: rootViewController.view,
+                modules: createStingModules()
+            )
             runtime.runtimeErrorSink = { error in
                 NSLog("Sting runtime error: %@", error.localizedDescription)
             }

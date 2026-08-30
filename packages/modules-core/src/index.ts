@@ -10,6 +10,15 @@ const OBJECT_CREATE_METHOD = '__sting_object_create';
 const OBJECT_CALL_SYNC_METHOD = '__sting_object_call_sync';
 const OBJECT_CALL_ASYNC_METHOD = '__sting_object_call_async';
 const OBJECT_DISPOSE_METHOD = '__sting_object_dispose';
+const PERMISSION_STATUS_METHOD = '__sting_permission_status';
+const PERMISSION_REQUEST_METHOD = '__sting_permission_request';
+
+export type NativePermissionStatus =
+  | 'undetermined'
+  | 'denied'
+  | 'granted'
+  | 'restricted'
+  | 'limited';
 
 export interface NativeModuleDescriptor<Name extends string = string> {
   readonly name: Name;
@@ -49,6 +58,8 @@ export interface NativeModuleClient<Name extends string = string> {
     method: string,
     args?: readonly NativeValue[],
   ): Promise<Result>;
+  permissionStatus(permission: string): NativePermissionStatus;
+  requestPermission(permission: string): Promise<NativePermissionStatus>;
   addListener<Payload extends NativeValue = NativeValue>(
     event: string,
     listener: NativeModuleEventListener<Payload>,
@@ -74,6 +85,37 @@ function objectError(
     });
   }
   throw error;
+}
+
+function requirePermissionName(permission: string): string {
+  const normalized = permission.trim();
+  if (!normalized) {
+    throw new TypeError('Native permission name must not be empty');
+  }
+  return normalized;
+}
+
+function requirePermissionStatus(
+  value: NativeValue | undefined,
+  module: string,
+  permission: string,
+): NativePermissionStatus {
+  switch (value) {
+    case 'undetermined':
+    case 'denied':
+    case 'granted':
+    case 'restricted':
+    case 'limited':
+      return value;
+    default:
+      throw new StingNativeError({
+        code: 'E_INVALID_PERMISSION_STATUS',
+        message: `Native module ${module} returned an invalid status for permission ${permission}.`,
+        module,
+        method: 'permissionStatus',
+        details: value ?? null,
+      });
+  }
 }
 
 class NativeModuleObjectClient<Name extends string> implements NativeModuleObject<Name> {
@@ -203,6 +245,18 @@ export function createNativeModule<const Name extends string>(
       args: readonly NativeValue[] = [],
     ): Promise<Result> {
       return getHost().callModuleAsync(name, method, [...args]) as Promise<Result>;
+    },
+
+    permissionStatus(permission: string): NativePermissionStatus {
+      const normalized = requirePermissionName(permission);
+      const value = getHost().callModuleSync(name, PERMISSION_STATUS_METHOD, [normalized]);
+      return requirePermissionStatus(value, name, normalized);
+    },
+
+    async requestPermission(permission: string): Promise<NativePermissionStatus> {
+      const normalized = requirePermissionName(permission);
+      const value = await getHost().callModuleAsync(name, PERMISSION_REQUEST_METHOD, [normalized]);
+      return requirePermissionStatus(value, name, normalized);
     },
 
     addListener<Payload extends NativeValue = NativeValue>(

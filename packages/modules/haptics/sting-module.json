@@ -5,10 +5,12 @@
   "version": "0.1.0",
   "ios": {
     "module": "HapticsModule",
+    "factory": "default",
     "permissions": []
   },
   "android": {
     "module": "run.stingjs.modules.haptics.HapticsModule",
+    "factory": "context",
     "permissions": ["android.permission.VIBRATE"]
   },
   "capabilities": ["sync-functions"]

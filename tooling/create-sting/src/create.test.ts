@@ -54,6 +54,7 @@ test('creates a standalone Android and iOS Sting project from prebuilt hosts', (
     scripts: Record<string, string>;
   };
   assert.equal(packageJson.name, 'my-app');
+  assert.equal(packageJson.scripts.postinstall, 'sting modules sync');
   assert.equal(packageJson.scripts.test, 'vitest run --passWithNoTests');
   assert.equal(readFileSync(join(target, 'android/app/libs/sting-runtime.aar'), 'utf8'), 'runtime-aar');
   assert.equal(readFileSync(join(target, 'android/app/libs/sting-quickjs.aar'), 'utf8'), 'quickjs-aar');
@@ -78,17 +79,30 @@ test('creates a standalone Android and iOS Sting project from prebuilt hosts', (
   );
   assert.match(activity, /^package com\.example\.myapp/m);
   assert.match(activity, /OfficialQuickJsCandidateRuntime/);
+  assert.match(activity, /createStingModules\(this\)/);
+  const androidGenerated = readFileSync(
+    join(target, '.sting/generated/android/src/main/java/run/stingjs/generated/StingGeneratedModules.kt'),
+    'utf8',
+  );
+  assert.match(androidGenerated, /fun createStingModules/);
 
   const appDelegate = readFileSync(join(target, 'ios/StingApp/AppDelegate.swift'), 'utf8');
+  assert.match(appDelegate, /import StingGeneratedModules/);
   assert.match(appDelegate, /import StingQuickJSRuntime/);
-  assert.match(appDelegate, /StingQuickJSRuntime\(rootView:/);
+  assert.match(appDelegate, /StingQuickJSRuntime\([\s\S]*modules: createStingModules\(\)/);
   assert.doesNotMatch(appDelegate, /JavaScriptCore/);
 
   const xcodeProject = readFileSync(join(target, 'ios/StingApp.xcodeproj/project.pbxproj'), 'utf8');
   assert.match(xcodeProject, /relativePath = StingQuickJSRuntime;/);
+  assert.match(xcodeProject, /relativePath = \.\.\/\.sting\/generated\/ios;/);
   assert.match(xcodeProject, /productName = StingQuickJSRuntime;/);
+  assert.match(xcodeProject, /productName = StingGeneratedModules;/);
   assert.match(xcodeProject, /PRODUCT_BUNDLE_IDENTIFIER = com\.example\.myapp\.ios;/);
   assert.match(xcodeProject, /\.\.\/dist\/sting-app\.js/);
+  assert.match(
+    readFileSync(join(target, '.sting/generated/ios/Package.swift'), 'utf8'),
+    /StingGeneratedModules/,
+  );
 
   assert.equal(
     readFileSync(join(target, 'ios/StingQuickJSRuntime/Package.swift'), 'utf8'),

@@ -70,6 +70,7 @@ let package = Package(
         .iOS(.v16)
     ],
     products: [
+        .library(name: "StingRuntime", targets: ["StingRuntime"]),
         .library(name: "StingQuickJSRuntime", targets: ["StingQuickJSRuntime"])
     ],
     targets: [

@@ -4,6 +4,31 @@ import UIKit
 public typealias StingNativeModuleCompletion = (Result<Any?, Error>) -> Void
 public typealias StingNativeModuleEventEmitter = (Any?) -> Void
 public typealias StingNativeViewEventEmitter = (Any?) -> Void
+public typealias StingPermissionCompletion = (Result<StingPermissionStatus, Error>) -> Void
+
+/// Portable authorization states shared by every Sting platform module.
+/// Platform-specific values such as AVAuthorizationStatus never cross this boundary.
+public enum StingPermissionStatus: String, Sendable {
+    case undetermined
+    case denied
+    case granted
+    case restricted
+    case limited
+}
+
+/// Platform-neutral application/runtime lifecycle states delivered to native modules.
+///
+/// These values deliberately describe Sting semantics rather than UIKit application
+/// states so the same module contract is available on Android. `runtimeDisposing`
+/// belongs to the Sting runtime lifetime and is therefore reliable even when a
+/// platform does not expose a process-termination callback.
+public enum StingApplicationLifecycleEvent: String, Sendable {
+    case foreground
+    case active
+    case inactive
+    case background
+    case runtimeDisposing
+}
 
 public protocol StingNativeObject: AnyObject {
     func callSync(method: String, arguments: [Any]) throws -> Any?
@@ -88,6 +113,26 @@ public protocol StingNativeModule: AnyObject {
     ) throws
     func createObject(type: String, arguments: [Any]) throws -> any StingNativeObject
     func createView(type: String) throws -> any StingNativeView
+
+    /// Return the current portable authorization state for a module-owned permission.
+    func permissionStatus(for permission: String) throws -> StingPermissionStatus
+
+    /// Request a module-owned permission asynchronously using platform-native UI when needed.
+    func requestPermission(_ permission: String, completion: @escaping StingPermissionCompletion)
+
+    /// Receive shared Sting application/runtime lifecycle transitions.
+    /// Implementations must not assume an engine-specific JavaScript value or a
+    /// UIKit object is available here.
+    func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent)
+
+    /// Handle platform background work routed explicitly to this module.
+    /// Completion may be asynchronous; the host owns any platform-specific
+    /// background task token and is responsible for translating the result.
+    func handleBackgroundEvent(
+        name: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    )
 }
 
 public extension StingNativeModule {
@@ -125,6 +170,33 @@ public extension StingNativeModule {
             code: "E_VIEW_TYPE_NOT_FOUND",
             message: "\(name) does not implement native view type \(type)"
         )
+    }
+
+    func permissionStatus(for permission: String) throws -> StingPermissionStatus {
+        throw StingNativeModuleError(
+            code: "E_PERMISSION_NOT_FOUND",
+            message: "\(name) does not implement permission \(permission)"
+        )
+    }
+
+    func requestPermission(_ permission: String, completion: @escaping StingPermissionCompletion) {
+        completion(.failure(StingNativeModuleError(
+            code: "E_PERMISSION_NOT_FOUND",
+            message: "\(name) does not implement permission \(permission)"
+        )))
+    }
+
+    func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {}
+
+    func handleBackgroundEvent(
+        name: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        completion(.failure(StingNativeModuleError(
+            code: "E_BACKGROUND_EVENT_NOT_FOUND",
+            message: "\(self.name) does not implement background event \(name)"
+        )))
     }
 }
 
