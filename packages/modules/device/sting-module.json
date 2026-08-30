@@ -5,10 +5,12 @@
   "version": "0.1.0",
   "ios": {
     "module": "DeviceModule",
+    "factory": "default",
     "permissions": []
   },
   "android": {
     "module": "run.stingjs.modules.device.DeviceModule",
+    "factory": "default",
     "permissions": []
   },
   "capabilities": ["sync-functions"]

@@ -5,10 +5,12 @@
   "version": "0.1.0",
   "ios": {
     "module": "FilesystemModule",
+    "factory": "default",
     "permissions": []
   },
   "android": {
     "module": "run.stingjs.modules.filesystem.FilesystemModule",
+    "factory": "context",
     "permissions": []
   },
   "capabilities": ["async-functions"]
