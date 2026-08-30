@@ -75,6 +75,21 @@ rotation.remove();
 
 Accelerometer axes are normalized to multiples of Earth gravity (`g`) on both platforms. Gyroscope axes are radians per second. `timestamp` is a monotonic platform sensor timestamp expressed in seconds and is suitable for ordering/deltas, not wall-clock display. `hasSensor()` can be used before subscribing. iOS uses CoreMotion; Android uses `SensorManager`. These initial sensor types do not require runtime authorization.
 
+## ImagePicker
+
+`@stingjs/image-picker` uses the platform's user-mediated image picker and does not request broad photo-library/storage access:
+
+```ts
+import { ImagePicker } from '@stingjs/image-picker';
+
+const result = await ImagePicker.pickImage();
+if (!result.canceled) {
+  console.log(result.asset.uri, result.asset.width, result.asset.height);
+}
+```
+
+iOS uses `PHPickerViewController`. Android uses Photo Picker on API 33+ and `ACTION_OPEN_DOCUMENT` on older supported Android versions. The selected item is copied into Sting's app cache and returned as a portable `file://` asset with best-effort file name, MIME type, width, and height. Cancellation is a normal `{ canceled: true, asset: null }` result. Applications that need the file long-term should copy it to durable application storage because cache entries may be reclaimed by the OS.
+
 ## Architecture boundary
 
 Modules that need runtime authorization (Location, Camera, Notifications, Contacts, and related APIs) must use the shared Train A permission contract rather than implementing package-specific permission bridges. Audio/background work must use the shared lifecycle/background hooks. Camera must use the shared native-module-view contract. This keeps first-party and third-party modules on the same runtime architecture.

@@ -26,6 +26,7 @@ include(
     ":sting-network",
     ":sting-sharing",
     ":sting-sensors",
+    ":sting-image-picker",
     ":sting-runtime-quickjs-candidate",
 )
 
@@ -38,4 +39,5 @@ project(":sting-secure-store").projectDir = file("../../../packages/modules/secu
 project(":sting-network").projectDir = file("../../../packages/modules/network/android")
 project(":sting-sharing").projectDir = file("../../../packages/modules/sharing/android")
 project(":sting-sensors").projectDir = file("../../../packages/modules/sensors/android")
+project(":sting-image-picker").projectDir = file("../../../packages/modules/image-picker/android")
 project(":sting-runtime-quickjs-candidate").projectDir = file("../../../runtime/prototypes/quickjs/android")

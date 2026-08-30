@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "ImagePicker",
+  "package": "@stingjs/image-picker",
+  "version": "0.1.0",
+  "ios": {
+    "module": "ImagePickerModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.imagepicker.ImagePickerModule",
+    "permissions": []
+  },
+  "capabilities": ["async-functions"]
+}

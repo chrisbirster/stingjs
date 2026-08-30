@@ -156,6 +156,7 @@ test('current first-party manifests generate the expected permission plan', asyn
       '@stingjs/device',
       '@stingjs/filesystem',
       '@stingjs/haptics',
+      '@stingjs/image-picker',
       '@stingjs/network',
       '@stingjs/secure-store',
       '@stingjs/sensors',

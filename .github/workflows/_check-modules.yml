@@ -44,6 +44,9 @@ jobs:
       - name: Build Sensors
         working-directory: examples/hello-world/android
         run: gradle :sting-sensors:assembleDebug --no-daemon
+      - name: Build ImagePicker
+        working-directory: examples/hello-world/android
+        run: gradle :sting-image-picker:assembleDebug --no-daemon
 
   ios-modules:
     name: iOS Modules
@@ -74,3 +77,6 @@ jobs:
       - name: Build Sensors
         working-directory: packages/modules/sensors
         run: xcodebuild -scheme StingSensors -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build ImagePicker
+        working-directory: packages/modules/image-picker
+        run: xcodebuild -scheme StingImagePicker -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
