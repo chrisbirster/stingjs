@@ -106,17 +106,21 @@ public final class LocationModule: NSObject, StingNativeModule, CLLocationManage
         completions.forEach { $0(.failure(wrapped)) }
     }
 
+    private static func optionalCoordinate(_ valid: Bool, _ value: Double) -> Any {
+        valid ? value : NSNull()
+    }
+
     private static func payload(_ location: CLLocation) -> [String: Any] {
         return [
             "coords": [
                 "latitude": location.coordinate.latitude,
                 "longitude": location.coordinate.longitude,
-                "altitude": location.verticalAccuracy >= 0 ? location.altitude : NSNull(),
+                "altitude": optionalCoordinate(location.verticalAccuracy >= 0, location.altitude),
                 "accuracy": location.horizontalAccuracy,
-                "altitudeAccuracy": location.verticalAccuracy >= 0 ? location.verticalAccuracy : NSNull(),
-                "heading": location.course >= 0 ? location.course : NSNull(),
-                "speed": location.speed >= 0 ? location.speed : NSNull(),
-            ],
+                "altitudeAccuracy": optionalCoordinate(location.verticalAccuracy >= 0, location.verticalAccuracy),
+                "heading": optionalCoordinate(location.course >= 0, location.course),
+                "speed": optionalCoordinate(location.speed >= 0, location.speed),
+            ] as [String: Any],
             "timestamp": location.timestamp.timeIntervalSince1970 * 1000,
         ]
     }
