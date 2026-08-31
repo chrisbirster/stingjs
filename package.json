@@ -13,7 +13,8 @@
     "packages/modules/*",
     "examples/*",
     "benchmarks/sting-benchmark",
-    "benchmarks/solid2-conformance"
+    "benchmarks/solid2-conformance",
+    "tooling/cli"
   ],
   "scripts": {
     "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
