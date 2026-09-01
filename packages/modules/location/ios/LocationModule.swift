@@ -79,9 +79,27 @@ public final class LocationModule: NSObject, StingNativeModule, CLLocationManage
 
     public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
         switch event {
-        case .background, .runtimeDisposing: manager.stopUpdatingLocation()
-        case .active: if lock.withLock({ observing }) { manager.startUpdatingLocation() }
-        default: break
+        case .background:
+            manager.stopUpdatingLocation()
+        case .active:
+            if lock.withLock({ observing }) { manager.startUpdatingLocation() }
+        case .runtimeDisposing:
+            manager.stopUpdatingLocation()
+            manager.delegate = nil
+            let pending = lock.withLock { () -> ([StingPermissionCompletion], [StingNativeModuleCompletion]) in
+                let permissions = permissionCompletions
+                let positions = positionCompletions
+                permissionCompletions.removeAll(keepingCapacity: false)
+                positionCompletions.removeAll(keepingCapacity: false)
+                eventEmitter = nil
+                observing = false
+                return (permissions, positions)
+            }
+            let error = StingNativeModuleError(code: "E_RUNTIME_DISPOSED", message: "Sting runtime is already disposing")
+            pending.0.forEach { $0(.failure(error)) }
+            pending.1.forEach { $0(.failure(error)) }
+        default:
+            break
         }
     }
 

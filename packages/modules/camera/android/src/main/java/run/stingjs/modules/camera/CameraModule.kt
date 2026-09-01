@@ -11,6 +11,7 @@ import android.hardware.Camera
 import android.os.Bundle
 import android.view.TextureView
 import android.view.View
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingNativeModule
 import run.stingjs.runtime.StingNativeModuleCompletion
 import run.stingjs.runtime.StingNativeModuleError
@@ -20,12 +21,12 @@ import run.stingjs.runtime.StingPermissionCompletion
 import run.stingjs.runtime.StingPermissionStatus
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
 
 @Suppress("DEPRECATION")
 class CameraModule(private val context: Context) : StingNativeModule {
     override val name = "Camera"
     override val version = "0.1.0"
+    private val permissionOwner = UUID.randomUUID().toString()
     private var activePreview: CameraPreviewNativeView? = null
 
     override fun callSync(method: String, arguments: List<Any?>): Any? = throw StingNativeModuleError("E_METHOD_NOT_FOUND", "Camera does not implement synchronous method $method")
@@ -44,7 +45,13 @@ class CameraModule(private val context: Context) : StingNativeModule {
     override fun requestPermission(permission: String, completion: StingPermissionCompletion) {
         if (permission != "camera") { completion(Result.failure(StingNativeModuleError("E_PERMISSION_NOT_FOUND", "Camera does not implement permission $permission"))); return }
         if (permissionStatus(permission) == StingPermissionStatus.GRANTED) { completion(Result.success(StingPermissionStatus.GRANTED)); return }
-        CameraPermissionActivity.request(context) { completion(Result.success(permissionStatus(permission))) }
+        CameraPermissionActivity.request(context, permissionOwner) { completion(Result.success(permissionStatus(permission))) }
+    }
+    override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event != StingApplicationLifecycleEvent.RUNTIME_DISPOSING) return
+        CameraPermissionActivity.cancel(permissionOwner)
+        activePreview?.dispose()
+        activePreview = null
     }
     internal fun activate(preview: CameraPreviewNativeView) { activePreview = preview }
     internal fun deactivate(preview: CameraPreviewNativeView) { if (activePreview === preview) activePreview = null }
@@ -67,7 +74,13 @@ internal class CameraPreviewNativeView(context: Context, private val module: Cam
     }
     override fun didAttach() { attached = true; module.activate(this); if (texture.isAvailable) openCamera(texture.surfaceTexture) }
     override fun didDetach() { attached = false; module.deactivate(this); releaseCamera() }
-    override fun dispose() { didDetach(); captureCompletion = null }
+    override fun dispose() {
+        didDetach()
+        val completion = captureCompletion
+        captureCompletion = null
+        completion?.invoke(StingNativeModuleResult.Failure(StingNativeModuleError("E_CAMERA_DISPOSED", "Camera preview was disposed.")))
+        texture.surfaceTextureListener = null
+    }
 
     fun capture(completion: StingNativeModuleCompletion) {
         val active = camera ?: run { completion(StingNativeModuleResult.Failure(StingNativeModuleError("E_CAMERA_NOT_READY", "Camera preview is not ready."))); return }
@@ -111,10 +124,28 @@ internal class CameraPreviewNativeView(context: Context, private val module: Cam
 
 class CameraPermissionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); if (savedInstanceState == null) requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CODE) }
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQUEST_CODE) { callback.getAndSet(null)?.invoke(); finish() } }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQUEST_CODE) { completeAll(); finish() } }
     companion object {
         private const val REQUEST_CODE = 9044
-        private val callback = AtomicReference<(() -> Unit)?>(null)
-        fun request(context: Context, completion: () -> Unit) { if (!callback.compareAndSet(null, completion)) { completion(); return }; context.startActivity(Intent(context, CameraPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
+        private val lock = Any()
+        private val callbacks = linkedMapOf<String, () -> Unit>()
+        private var active = false
+        fun request(context: Context, owner: String, completion: () -> Unit) {
+            val shouldLaunch = synchronized(lock) {
+                callbacks[owner] = completion
+                if (active) false else { active = true; true }
+            }
+            if (shouldLaunch) context.startActivity(Intent(context, CameraPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        }
+        fun cancel(owner: String) { synchronized(lock) { callbacks.remove(owner) } }
+        private fun completeAll() {
+            val pending = synchronized(lock) {
+                active = false
+                val values = callbacks.values.toList()
+                callbacks.clear()
+                values
+            }
+            pending.forEach { it() }
+        }
     }
 }

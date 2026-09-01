@@ -32,6 +32,10 @@ public final class BackgroundTaskModule: StingNativeModule {
         emitter = enabled ? emit : nil
     }
 
+    public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
+        if event == .runtimeDisposing { emitter = nil }
+    }
+
     public func handleBackgroundEvent(name taskName: String, payload: Any?, completion: @escaping StingNativeModuleCompletion) {
         guard registered().contains(taskName) else { completion(.failure(StingNativeModuleError(code: "E_BACKGROUND_TASK_NOT_REGISTERED", message: "Background task \(taskName) is not registered."))); return }
         emitter?(["name": taskName, "payload": payload ?? NSNull()])

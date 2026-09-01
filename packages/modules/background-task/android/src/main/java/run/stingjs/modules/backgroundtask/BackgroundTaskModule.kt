@@ -1,6 +1,7 @@
 package run.stingjs.modules.backgroundtask
 
 import android.content.Context
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingNativeModule
 import run.stingjs.runtime.StingNativeModuleCompletion
 import run.stingjs.runtime.StingNativeModuleError
@@ -31,6 +32,9 @@ class BackgroundTaskModule(context: Context) : StingNativeModule {
     override fun setEventEnabled(event: String, enabled: Boolean, emit: StingNativeModuleEventEmitter) {
         if (event != "run") throw StingNativeModuleError("E_EVENT_NOT_FOUND", "BackgroundTask does not implement event $event")
         emitter = if (enabled) emit else null
+    }
+    override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) emitter = null
     }
     override fun handleBackgroundEvent(name: String, payload: Any?, completion: StingNativeModuleCompletion) {
         if (!registered().contains(name)) { completion(StingNativeModuleResult.Failure(StingNativeModuleError("E_BACKGROUND_TASK_NOT_REGISTERED", "Background task $name is not registered."))); return }

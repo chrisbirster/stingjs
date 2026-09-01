@@ -45,6 +45,12 @@ public final class NotificationsModule: NSObject, StingNativeModule, UNUserNotif
         if enabled { emitters[event] = emit; center.delegate = self } else { emitters.removeValue(forKey: event); if emitters.isEmpty, center.delegate === self { center.delegate = nil } }
     }
 
+    public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
+        guard event == .runtimeDisposing else { return }
+        emitters.removeAll(keepingCapacity: false)
+        if center.delegate === self { center.delegate = nil }
+    }
+
     public func permissionStatus(for permission: String) throws -> StingPermissionStatus {
         guard permission == "notifications" else { throw StingNativeModuleError(code: "E_PERMISSION_NOT_FOUND", message: "Notifications does not implement permission \(permission)") }
         let semaphore = DispatchSemaphore(value: 0)

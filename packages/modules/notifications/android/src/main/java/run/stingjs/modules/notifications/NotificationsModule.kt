@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingNativeModule
 import run.stingjs.runtime.StingNativeModuleCompletion
 import run.stingjs.runtime.StingNativeModuleError
@@ -21,11 +22,11 @@ import run.stingjs.runtime.StingPermissionCompletion
 import run.stingjs.runtime.StingPermissionStatus
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicReference
 
 class NotificationsModule(private val context: Context) : StingNativeModule {
     override val name = "Notifications"
     override val version = "0.1.0"
+    private val owner = UUID.randomUUID().toString()
     private val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences("sting.notifications", Context.MODE_PRIVATE)
 
@@ -61,7 +62,13 @@ class NotificationsModule(private val context: Context) : StingNativeModule {
 
     override fun setEventEnabled(event: String, enabled: Boolean, emit: StingNativeModuleEventEmitter) {
         if (event != "received" && event != "opened") throw StingNativeModuleError("E_EVENT_NOT_FOUND", "Notifications does not implement event $event")
-        if (enabled) NotificationEvents.emitters[event] = emit else NotificationEvents.emitters.remove(event)
+        if (enabled) NotificationEvents.set(event, owner, emit) else NotificationEvents.remove(event, owner)
+    }
+
+    override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event != StingApplicationLifecycleEvent.RUNTIME_DISPOSING) return
+        NotificationEvents.clear(owner)
+        NotificationsPermissionActivity.cancel(owner)
     }
 
     override fun permissionStatus(permission: String): StingPermissionStatus {
@@ -72,7 +79,7 @@ class NotificationsModule(private val context: Context) : StingNativeModule {
     override fun requestPermission(permission: String, completion: StingPermissionCompletion) {
         if (permission != "notifications") { completion(Result.failure(StingNativeModuleError("E_PERMISSION_NOT_FOUND", "Notifications does not implement permission $permission"))); return }
         if (Build.VERSION.SDK_INT < 33 || permissionStatus(permission) == StingPermissionStatus.GRANTED) { completion(Result.success(StingPermissionStatus.GRANTED)); return }
-        NotificationsPermissionActivity.request(context) { completion(Result.success(permissionStatus(permission))) }
+        NotificationsPermissionActivity.request(context, owner) { completion(Result.success(permissionStatus(permission))) }
     }
 
     companion object {
@@ -85,7 +92,15 @@ class NotificationsModule(private val context: Context) : StingNativeModule {
     }
 }
 
-private object NotificationEvents { val emitters = ConcurrentHashMap<String, StingNativeModuleEventEmitter>() }
+private data class OwnedEmitter(val owner: String, val emit: StingNativeModuleEventEmitter)
+
+private object NotificationEvents {
+    private val emitters = ConcurrentHashMap<String, OwnedEmitter>()
+    fun set(event: String, owner: String, emit: StingNativeModuleEventEmitter) { emitters[event] = OwnedEmitter(owner, emit) }
+    fun remove(event: String, owner: String) { emitters[event]?.takeIf { it.owner == owner }?.let { emitters.remove(event, it) } }
+    fun clear(owner: String) { emitters.entries.filter { it.value.owner == owner }.forEach { emitters.remove(it.key, it.value) } }
+    fun emit(event: String, payload: Map<String, Any?>) { emitters[event]?.emit?.invoke(payload) }
+}
 
 class NotificationAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -98,23 +113,41 @@ class NotificationAlarmReceiver : BroadcastReceiver() {
         notification.setContentTitle(title).setContentText(body).setSmallIcon(android.R.drawable.ic_dialog_info).setContentIntent(opened).setAutoCancel(true)
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(id.hashCode(), notification.build())
         context.getSharedPreferences("sting.notifications", Context.MODE_PRIVATE).edit().remove(id).apply()
-        NotificationEvents.emitters["received"]?.invoke(mapOf("id" to id, "title" to title, "body" to body))
+        NotificationEvents.emit("received", mapOf("id" to id, "title" to title, "body" to body))
     }
 }
 
 class NotificationOpenedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getStringExtra("id") ?: return
-        NotificationEvents.emitters["opened"]?.invoke(mapOf("id" to id, "title" to (intent.getStringExtra("title") ?: ""), "body" to (intent.getStringExtra("body") ?: "")))
+        NotificationEvents.emit("opened", mapOf("id" to id, "title" to (intent.getStringExtra("title") ?: ""), "body" to (intent.getStringExtra("body") ?: "")))
     }
 }
 
 class NotificationsPermissionActivity : Activity() {
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); if (savedInstanceState == null && Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_CODE) else if (Build.VERSION.SDK_INT < 33) { callback.getAndSet(null)?.invoke(); finish() } }
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQUEST_CODE) { callback.getAndSet(null)?.invoke(); finish() } }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); if (savedInstanceState == null && Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_CODE) else if (Build.VERSION.SDK_INT < 33) { completeAll(); finish() } }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) { super.onRequestPermissionsResult(requestCode, permissions, grantResults); if (requestCode == REQUEST_CODE) { completeAll(); finish() } }
     companion object {
         private const val REQUEST_CODE = 9045
-        private val callback = AtomicReference<(() -> Unit)?>(null)
-        fun request(context: Context, completion: () -> Unit) { if (!callback.compareAndSet(null, completion)) { completion(); return }; context.startActivity(Intent(context, NotificationsPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
+        private val lock = Any()
+        private val callbacks = linkedMapOf<String, () -> Unit>()
+        private var active = false
+        fun request(context: Context, owner: String, completion: () -> Unit) {
+            val shouldLaunch = synchronized(lock) {
+                callbacks[owner] = completion
+                if (active) false else { active = true; true }
+            }
+            if (shouldLaunch) context.startActivity(Intent(context, NotificationsPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        }
+        fun cancel(owner: String) { synchronized(lock) { callbacks.remove(owner) } }
+        private fun completeAll() {
+            val pending = synchronized(lock) {
+                active = false
+                val values = callbacks.values.toList()
+                callbacks.clear()
+                values
+            }
+            pending.forEach { it() }
+        }
     }
 }

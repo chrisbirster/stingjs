@@ -43,6 +43,12 @@ public final class CameraModule: StingNativeModule {
         AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in completion(.success((try? self?.permissionStatus(for: permission)) ?? .denied)) }
     }
 
+    public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
+        guard event == .runtimeDisposing else { return }
+        activePreview?.dispose()
+        activePreview = nil
+    }
+
     fileprivate func activate(_ preview: CameraPreviewNativeView) { activePreview = preview }
     fileprivate func deactivate(_ preview: CameraPreviewNativeView) { if activePreview === preview { activePreview = nil } }
 }
@@ -78,7 +84,15 @@ private final class CameraPreviewNativeView: NSObject, StingNativeView, AVCaptur
 
     func didAttach() { attached = true; module?.activate(self); configureAndStart() }
     func didDetach() { attached = false; module?.deactivate(self); session.stopRunning() }
-    func dispose() { didDetach(); captureCompletion = nil }
+    func dispose() {
+        didDetach()
+        let completion = captureCompletion
+        captureCompletion = nil
+        completion?(.failure(StingNativeModuleError(code: "E_CAMERA_DISPOSED", message: "Camera preview was disposed.")))
+        session.inputs.forEach(session.removeInput)
+        session.outputs.forEach(session.removeOutput)
+        container.previewLayer.session = nil
+    }
 
     func capture(completion: @escaping StingNativeModuleCompletion) {
         guard attached, session.isRunning else { completion(.failure(StingNativeModuleError(code: "E_CAMERA_NOT_READY", message: "Camera preview is not ready."))); return }

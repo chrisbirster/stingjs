@@ -18,12 +18,13 @@ import run.stingjs.runtime.StingNativeModuleEventEmitter
 import run.stingjs.runtime.StingNativeModuleResult
 import run.stingjs.runtime.StingPermissionCompletion
 import run.stingjs.runtime.StingPermissionStatus
-import java.util.concurrent.atomic.AtomicReference
+import java.util.UUID
 
 class LocationModule(private val context: Context) : StingNativeModule, LocationListener {
     override val name = "Location"
     override val version = "0.1.0"
     private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    private val permissionOwner = UUID.randomUUID().toString()
     private var emitter: StingNativeModuleEventEmitter? = null
     private var pendingPosition: StingNativeModuleCompletion? = null
     private var observing = false
@@ -83,13 +84,25 @@ class LocationModule(private val context: Context) : StingNativeModule, Location
         if (permission != "foreground") { completion(Result.failure(StingNativeModuleError("E_PERMISSION_NOT_FOUND", "Location does not implement permission $permission"))); return }
         val current = permissionStatus(permission)
         if (current == StingPermissionStatus.GRANTED || current == StingPermissionStatus.LIMITED) { completion(Result.success(current)); return }
-        LocationPermissionActivity.request(context) { completion(Result.success(permissionStatus(permission))) }
+        LocationPermissionActivity.request(context, permissionOwner) { completion(Result.success(permissionStatus(permission))) }
     }
 
     override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
         when (event) {
-            StingApplicationLifecycleEvent.BACKGROUND, StingApplicationLifecycleEvent.RUNTIME_DISPOSING -> manager.removeUpdates(this)
+            StingApplicationLifecycleEvent.BACKGROUND -> manager.removeUpdates(this)
             StingApplicationLifecycleEvent.ACTIVE -> if (observing && hasForegroundPermission()) startUpdates()
+            StingApplicationLifecycleEvent.RUNTIME_DISPOSING -> {
+                manager.removeUpdates(this)
+                observing = false
+                emitter = null
+                LocationPermissionActivity.cancel(permissionOwner)
+                pendingPosition?.invoke(
+                    StingNativeModuleResult.Failure(
+                        StingNativeModuleError("E_RUNTIME_DISPOSED", "Sting runtime is already disposing"),
+                    ),
+                )
+                pendingPosition = null
+            }
             else -> Unit
         }
     }
@@ -127,14 +140,36 @@ class LocationPermissionActivity : Activity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE) { callback.getAndSet(null)?.invoke(); finish() }
+        if (requestCode == REQUEST_CODE) { completeAll(); finish() }
     }
     companion object {
         private const val REQUEST_CODE = 9041
-        private val callback = AtomicReference<(() -> Unit)?>(null)
-        fun request(context: Context, completion: () -> Unit) {
-            if (!callback.compareAndSet(null, completion)) { completion(); return }
-            context.startActivity(Intent(context, LocationPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        private val lock = Any()
+        private val callbacks = linkedMapOf<String, () -> Unit>()
+        private var active = false
+
+        fun request(context: Context, owner: String, completion: () -> Unit) {
+            val shouldLaunch = synchronized(lock) {
+                callbacks[owner] = completion
+                if (active) false else { active = true; true }
+            }
+            if (shouldLaunch) {
+                context.startActivity(Intent(context, LocationPermissionActivity::class.java).apply { if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+            }
+        }
+
+        fun cancel(owner: String) {
+            synchronized(lock) { callbacks.remove(owner) }
+        }
+
+        private fun completeAll() {
+            val values = synchronized(lock) {
+                active = false
+                val pending = callbacks.values.toList()
+                callbacks.clear()
+                pending
+            }
+            values.forEach { it() }
         }
     }
 }

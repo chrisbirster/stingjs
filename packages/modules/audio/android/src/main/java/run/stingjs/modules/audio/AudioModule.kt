@@ -30,7 +30,11 @@ class AudioModule(private val context: Context) : StingNativeModule {
     }
     override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
         if (event == StingApplicationLifecycleEvent.BACKGROUND || event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) players.forEach { it.pauseForLifecycle() }
-        if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) { players.forEach { it.dispose() }; players.clear() }
+        if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) {
+            players.forEach { it.dispose() }
+            players.clear()
+            emitter = null
+        }
     }
 }
 

@@ -71,10 +71,9 @@ public final class SensorsModule: StingNativeModule {
             let interval = accelerometerInterval
             lock.unlock()
             motion.accelerometerUpdateInterval = interval
-            motion.startAccelerometerUpdates(to: queue) { data, error in
-                if let error {
-                    // A runtime sensor failure ends this observation; the next subscription can retry.
-                    self.motion.stopAccelerometerUpdates()
+            motion.startAccelerometerUpdates(to: queue) { [weak self] data, error in
+                if error != nil {
+                    self?.motion.stopAccelerometerUpdates()
                     return
                 }
                 guard let data else { return }
@@ -99,9 +98,9 @@ public final class SensorsModule: StingNativeModule {
         let interval = gyroscopeInterval
         lock.unlock()
         motion.gyroUpdateInterval = interval
-        motion.startGyroUpdates(to: queue) { data, error in
-            if let error {
-                self.motion.stopGyroUpdates()
+        motion.startGyroUpdates(to: queue) { [weak self] data, error in
+            if error != nil {
+                self?.motion.stopGyroUpdates()
                 return
             }
             guard let data else { return }
@@ -112,6 +111,13 @@ public final class SensorsModule: StingNativeModule {
                 "timestamp": data.timestamp,
             ])
         }
+    }
+
+    public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
+        guard event == .runtimeDisposing else { return }
+        motion.stopAccelerometerUpdates()
+        motion.stopGyroUpdates()
+        queue.cancelAllOperations()
     }
 
     private func sensorType(_ arguments: [Any], index: Int) throws -> String {
