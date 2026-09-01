@@ -8,11 +8,25 @@ public final class StingModuleRegistry {
         let value: any StingNativeObject
     }
 
+    private struct PermissionRequestKey: Hashable {
+        let module: String
+        let permission: String
+    }
+
+    private struct PendingPermissionRequest {
+        let id: UInt64
+        var waiters: [StingNativeModuleCompletion]
+    }
+
     private var modules: [String: any StingNativeModule] = [:]
     private var moduleOrder: [String] = []
     private let objectLock = NSLock()
     private var objects: [Int: NativeObjectEntry] = [:]
     private var nextObjectHandle = 1
+    private let permissionLock = NSLock()
+    private var pendingPermissionRequests: [PermissionRequestKey: PendingPermissionRequest] = [:]
+    private var nextPermissionRequestID: UInt64 = 1
+    private var permissionRequestsDisposed = false
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var runtimeDisposingDelivered = false
 
@@ -24,6 +38,7 @@ public final class StingModuleRegistry {
     }
 
     deinit {
+        disposePendingPermissionRequests()
         stopLifecycleObservation()
     }
 
@@ -93,14 +108,12 @@ public final class StingModuleRegistry {
         if method == Self.permissionRequestMethod {
             do {
                 let permission = try requirePermissionArgument(arguments)
-                module.requestPermission(permission) { result in
-                    switch result {
-                    case .success(let status):
-                        completion(.success(status.rawValue))
-                    case .failure(let error):
-                        completion(.failure(error))
-                    }
-                }
+                requestPermission(
+                    moduleName: name,
+                    module: module,
+                    permission: permission,
+                    completion: completion
+                )
             } catch {
                 completion(.failure(error))
             }
@@ -147,6 +160,7 @@ public final class StingModuleRegistry {
             guard !runtimeDisposingDelivered else { return }
             runtimeDisposingDelivered = true
             stopLifecycleObservation()
+            disposePendingPermissionRequests()
         } else if runtimeDisposingDelivered {
             return
         }
@@ -204,6 +218,93 @@ public final class StingModuleRegistry {
         for entry in active {
             entry.value.dispose()
         }
+    }
+
+    private func requestPermission(
+        moduleName: String,
+        module: any StingNativeModule,
+        permission: String,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        let key = PermissionRequestKey(module: moduleName, permission: permission)
+
+        permissionLock.lock()
+        if permissionRequestsDisposed {
+            permissionLock.unlock()
+            completion(.failure(runtimeDisposedError()))
+            return
+        }
+
+        if var pending = pendingPermissionRequests[key] {
+            pending.waiters.append(completion)
+            pendingPermissionRequests[key] = pending
+            permissionLock.unlock()
+            return
+        }
+
+        let requestID = nextPermissionRequestID
+        nextPermissionRequestID &+= 1
+        if nextPermissionRequestID == 0 {
+            nextPermissionRequestID = 1
+        }
+        pendingPermissionRequests[key] = PendingPermissionRequest(
+            id: requestID,
+            waiters: [completion]
+        )
+        permissionLock.unlock()
+
+        module.requestPermission(permission) { [weak self] result in
+            self?.completePermissionRequest(key: key, requestID: requestID, result: result)
+        }
+    }
+
+    private func completePermissionRequest(
+        key: PermissionRequestKey,
+        requestID: UInt64,
+        result: Result<StingPermissionStatus, Error>
+    ) {
+        permissionLock.lock()
+        guard !permissionRequestsDisposed,
+              let pending = pendingPermissionRequests[key],
+              pending.id == requestID else {
+            permissionLock.unlock()
+            return
+        }
+        pendingPermissionRequests.removeValue(forKey: key)
+        let waiters = pending.waiters
+        permissionLock.unlock()
+
+        for waiter in waiters {
+            switch result {
+            case .success(let status):
+                waiter(.success(status.rawValue))
+            case .failure(let error):
+                waiter(.failure(error))
+            }
+        }
+    }
+
+    private func disposePendingPermissionRequests() {
+        permissionLock.lock()
+        guard !permissionRequestsDisposed else {
+            permissionLock.unlock()
+            return
+        }
+        permissionRequestsDisposed = true
+        let waiters = pendingPermissionRequests.values.flatMap(\.waiters)
+        pendingPermissionRequests.removeAll(keepingCapacity: false)
+        permissionLock.unlock()
+
+        for waiter in waiters {
+            waiter(.failure(runtimeDisposedError()))
+        }
+    }
+
+    private func runtimeDisposedError() -> StingNativeModuleError {
+        StingNativeModuleError(
+            code: "E_RUNTIME_DISPOSED",
+            message: "Sting runtime is already disposing"
+        )
     }
 
     private func startLifecycleObservation() {

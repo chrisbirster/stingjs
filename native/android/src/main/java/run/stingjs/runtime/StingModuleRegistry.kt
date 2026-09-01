@@ -8,10 +8,24 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         val value: StingNativeObject,
     )
 
+    private data class PermissionRequestKey(
+        val module: String,
+        val permission: String,
+    )
+
+    private data class PendingPermissionRequest(
+        val id: Long,
+        val waiters: MutableList<StingNativeModuleCompletion>,
+    )
+
     private val modules = linkedMapOf<String, StingNativeModule>()
     private val objectLock = Any()
     private val objects = linkedMapOf<Int, NativeObjectEntry>()
     private var nextObjectHandle = 1
+    private val permissionLock = Any()
+    private val pendingPermissionRequests = linkedMapOf<PermissionRequestKey, PendingPermissionRequest>()
+    private var nextPermissionRequestId = 1L
+    private var permissionRequestsDisposed = false
     private var runtimeDisposingDelivered = false
 
     init {
@@ -89,16 +103,7 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
                 completion(StingNativeModuleResult.Failure(error))
                 return
             }
-            module.requestPermission(permission) { result ->
-                result.fold(
-                    onSuccess = { status ->
-                        completion(StingNativeModuleResult.Success(status.wireValue))
-                    },
-                    onFailure = { error ->
-                        completion(StingNativeModuleResult.Failure(error))
-                    },
-                )
-            }
+            requestPermission(name, module, permission, completion)
             return
         }
 
@@ -134,6 +139,7 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) {
             if (runtimeDisposingDelivered) return
             runtimeDisposingDelivered = true
+            disposePendingPermissionRequests()
         } else if (runtimeDisposingDelivered) {
             return
         }
@@ -210,6 +216,85 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
             }
         }
     }
+
+    private fun requestPermission(
+        moduleName: String,
+        module: StingNativeModule,
+        permission: String,
+        completion: StingNativeModuleCompletion,
+    ) {
+        val key = PermissionRequestKey(moduleName, permission)
+        var requestId = 0L
+        var disposed = false
+
+        synchronized(permissionLock) {
+            if (permissionRequestsDisposed) {
+                disposed = true
+            } else {
+                val pending = pendingPermissionRequests[key]
+                if (pending != null) {
+                    pending.waiters += completion
+                    return
+                }
+
+                requestId = nextPermissionRequestId
+                nextPermissionRequestId += 1
+                if (nextPermissionRequestId <= 0) nextPermissionRequestId = 1
+                pendingPermissionRequests[key] = PendingPermissionRequest(
+                    id = requestId,
+                    waiters = mutableListOf(completion),
+                )
+            }
+        }
+
+        if (disposed) {
+            completion(StingNativeModuleResult.Failure(runtimeDisposedError()))
+            return
+        }
+
+        module.requestPermission(permission) { result ->
+            completePermissionRequest(key, requestId, result)
+        }
+    }
+
+    private fun completePermissionRequest(
+        key: PermissionRequestKey,
+        requestId: Long,
+        result: Result<StingPermissionStatus>,
+    ) {
+        val waiters = synchronized(permissionLock) {
+            if (permissionRequestsDisposed) return
+            val pending = pendingPermissionRequests[key] ?: return
+            if (pending.id != requestId) return
+            pendingPermissionRequests.remove(key)
+            pending.waiters.toList()
+        }
+
+        val mapped = result.fold(
+            onSuccess = { StingNativeModuleResult.Success(it.wireValue) },
+            onFailure = { StingNativeModuleResult.Failure(it) },
+        )
+        waiters.forEach { it(mapped) }
+    }
+
+    private fun disposePendingPermissionRequests() {
+        val waiters = synchronized(permissionLock) {
+            if (permissionRequestsDisposed) return
+            permissionRequestsDisposed = true
+            val active = pendingPermissionRequests.values.flatMap { it.waiters }
+            pendingPermissionRequests.clear()
+            active
+        }
+
+        waiters.forEach {
+            it(StingNativeModuleResult.Failure(runtimeDisposedError()))
+        }
+    }
+
+    private fun runtimeDisposedError() = StingNativeModuleError(
+        code = "E_RUNTIME_DISPOSED",
+        message = "Sting runtime is already disposing",
+    )
 
     private fun requireModule(name: String): StingNativeModule =
         modules[name] ?: throw StingNativeModuleError(
