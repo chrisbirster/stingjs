@@ -23,7 +23,11 @@ public final class AudioModule: StingNativeModule {
     }
     public func applicationLifecycleDidChange(_ event: StingApplicationLifecycleEvent) {
         if event == .background || event == .runtimeDisposing { players.compactMap(\.value).forEach { $0.pauseForLifecycle() } }
-        if event == .runtimeDisposing { players.compactMap(\.value).forEach { $0.dispose() }; players.removeAll() }
+        if event == .runtimeDisposing {
+            players.compactMap(\.value).forEach { $0.dispose() }
+            players.removeAll()
+            eventEmitter = nil
+        }
     }
 }
 
