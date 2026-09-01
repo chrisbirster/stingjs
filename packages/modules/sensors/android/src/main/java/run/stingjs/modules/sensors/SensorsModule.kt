@@ -7,6 +7,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingNativeModule
 import run.stingjs.runtime.StingNativeModuleError
 import run.stingjs.runtime.StingNativeModuleEventEmitter
@@ -61,6 +62,17 @@ class SensorsModule(context: Context) : StingNativeModule {
         val registered = manager.registerListener(observer, sensor, interval, handler)
         if (!registered) throw unavailable(type)
         synchronized(lock) { observers[type] = observer }
+    }
+
+    override fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event != StingApplicationLifecycleEvent.RUNTIME_DISPOSING) return
+        val active = synchronized(lock) {
+            val values = observers.values.toList()
+            observers.clear()
+            values
+        }
+        active.forEach(manager::unregisterListener)
+        handler.removeCallbacksAndMessages(null)
     }
 
     private fun restartIfObserved(type: String) {
