@@ -23,10 +23,13 @@ jobs:
         run: npm install --global npm@12.0.2
       - name: Install Sting workspace dependencies
         run: npm install
+      - name: Install CLI dependencies
+        run: npm install --prefix tooling/cli
       - name: Build Hello World and benchmark bundles
         run: |
           npm run build --workspace @stingjs/example-hello-world
           npm run build --workspace @stingjs/benchmark-native
+          npm run build --prefix tooling/cli
       - name: Install Android SDK and pinned NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Install pinned Zig 0.16.0
@@ -95,6 +98,14 @@ jobs:
 
           mkdir -p "$generated/dist"
           cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+          node scripts/prepare-first-party-module-consumer.mjs "$generated"
+          node tooling/cli/dist/cli.js modules sync --project-root "$generated"
+
+          test "$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.modules.length))' "$generated/.sting/generated/sting-modules.config.json")" = 15
+          grep -F 'android.permission.CAMERA' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.camera.CameraPermissionActivity' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.contacts.ContactsPickerActivity' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.notifications.NotificationAlarmReceiver' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
 
           if grep -R -n -E '\.\./\.\./\.\./(native|packages|runtime)/' "$generated/android" --exclude='*.aar'; then
             echo 'generated Android project must not reference Sting monorepo source paths' >&2
@@ -156,10 +167,14 @@ jobs:
         run: npm install --global npm@12.0.2
       - name: Install dependencies
         run: npm install
+      - name: Install CLI dependencies
+        run: npm install --prefix tooling/cli
       - name: Build complete iOS application
         run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
       - name: Build JavaScript fixture
-        run: npm run build --workspace @stingjs/example-hello-world
+        run: |
+          npm run build --workspace @stingjs/example-hello-world
+          npm run build --prefix tooling/cli
       - name: Prove packed create-sting iOS output builds without Zig
         shell: bash
         run: |
@@ -195,6 +210,13 @@ jobs:
 
           mkdir -p "$generated/dist"
           cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+          node scripts/prepare-first-party-module-consumer.mjs "$generated"
+          node tooling/cli/dist/cli.js modules sync --project-root "$generated"
+
+          test "$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.modules.length))' "$generated/.sting/generated/sting-modules.config.json")" = 15
+          grep -F '<key>NSCameraUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
+          grep -F '<key>NSContactsUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
+          grep -F '<key>NSLocationWhenInUseUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
 
           test -f "$generated/ios/StingQuickJSRuntime/Package.swift"
           test -d "$generated/ios/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework"

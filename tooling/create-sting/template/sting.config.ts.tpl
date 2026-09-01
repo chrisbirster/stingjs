@@ -1,6 +1,6 @@
-import { defineConfig } from '@stingjs/cli/config';
+import type { StingConfig } from '@stingjs/cli/config';
 
-export default defineConfig({
+export default {
   name: '__PROJECT_DISPLAY_NAME__',
   bundle: 'dist/sting-app.js',
   ios: {
@@ -14,4 +14,4 @@ export default defineConfig({
     package: '__ANDROID_PACKAGE__',
     variant: 'debug',
   },
-});
+} satisfies StingConfig;

@@ -229,6 +229,20 @@ function copyTemplateDirectory(
   }
 }
 
+function configureGeneratedInfoPlist(targetDir: string): void {
+  const projectPath = join(targetDir, 'ios', 'StingApp.xcodeproj', 'project.pbxproj');
+  const project = readFileSync(projectPath, 'utf8');
+  const generatedSetting = [
+    'GENERATE_INFOPLIST_FILE = NO;',
+    '\t\t\t\tINFOPLIST_FILE = "$(SRCROOT)/../.sting/generated/ios/Info.plist";',
+  ].join('\n\t\t\t\t');
+  const updated = project.replaceAll('GENERATE_INFOPLIST_FILE = YES;', generatedSetting);
+  if (updated === project) {
+    throw new Error('create-sting iOS template is missing the generated Info.plist build setting');
+  }
+  writeFileSync(projectPath, updated, 'utf8');
+}
+
 export function createStingProject(options: CreateStingProjectOptions): CreatedStingProject {
   const targetDir = resolve(options.targetDir);
   const projectName = validateProjectName(options.projectName ?? defaultProjectName(targetDir));
@@ -253,6 +267,7 @@ export function createStingProject(options: CreateStingProjectOptions): CreatedS
     ANDROID_PACKAGE_PATH: packagePath(androidPackage),
     IOS_BUNDLE_IDENTIFIER: iosBundleIdentifier,
   });
+  configureGeneratedInfoPlist(targetDir);
 
   const libs = join(targetDir, 'android', 'app', 'libs');
   mkdirSync(libs, { recursive: true });

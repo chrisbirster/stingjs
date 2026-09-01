@@ -9,6 +9,7 @@
   },
   "android": {
     "module": "run.stingjs.modules.imagepicker.ImagePickerModule",
+    "factory": "context",
     "permissions": []
   },
   "capabilities": ["async-functions"]

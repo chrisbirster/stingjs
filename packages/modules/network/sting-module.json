@@ -9,6 +9,7 @@
   },
   "android": {
     "module": "run.stingjs.modules.network.NetworkModule",
+    "factory": "context",
     "permissions": ["android.permission.ACCESS_NETWORK_STATE"]
   },
   "capabilities": ["async-functions", "events"]

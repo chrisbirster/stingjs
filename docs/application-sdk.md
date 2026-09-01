@@ -8,88 +8,112 @@ Sting first-party modules use the same `@stingjs/modules-core` contract availabl
 
 ```ts
 import { SecureStore } from '@stingjs/secure-store';
-
 await SecureStore.setItem('session', token);
 const token = await SecureStore.getItem('session');
-await SecureStore.deleteItem('session');
 ```
 
-An optional `namespace` separates logical stores. iOS uses Keychain generic-password items with `AfterFirstUnlockThisDeviceOnly` accessibility. Android keeps an AES-GCM master key in Android Keystore and persists only encrypted payloads in app-private preferences. APIs are asynchronous so storage/crypto work does not become a JS-runtime hot path.
-
-SecureStore is intended for credentials, tokens, and similarly small values. It is not a replacement for Filesystem or a database.
+iOS uses Keychain generic-password storage. Android uses an Android Keystore AES-GCM key and encrypted app-private preferences.
 
 ## Network
 
-`@stingjs/network` exposes normalized connectivity state:
-
-```ts
-import { Network } from '@stingjs/network';
-
-const state = await Network.getState();
-const subscription = Network.addNetworkStateListener(next => {
-  console.log(next.type, next.connected);
-});
-
-subscription.remove();
-```
-
-A state contains `connected`, `internetReachable`, `type` (`none`, `wifi`, `cellular`, `ethernet`, or `other`), and `expensive`. iOS is backed by `NWPathMonitor`; Android is backed by `ConnectivityManager` and requires only the normal `ACCESS_NETWORK_STATE` manifest permission. Network observations use the shared native-module event bridge and are removed when the JS subscription is removed.
-
-`internetReachable` represents the platform connectivity validation/path result; it is not an active HTTP probe.
+`@stingjs/network` exposes a portable connectivity snapshot and change subscription. iOS uses `NWPathMonitor`; Android uses `ConnectivityManager`.
 
 ## Sharing
 
-`@stingjs/sharing` hands text and/or an absolute URL to the platform share UI:
-
-```ts
-import { Sharing } from '@stingjs/sharing';
-
-await Sharing.share({
-  text: 'Built with StingJS',
-  url: 'https://stingjs.com',
-  subject: 'Native SolidJS',
-});
-```
-
-iOS uses `UIActivityViewController` and resolves after the native share controller finishes. Android launches the system chooser and resolves once the request has been handed to the chooser. Cancellation is not an application error.
+`@stingjs/sharing` hands portable text/URL content to the native system share UI.
 
 ## Sensors
 
-`@stingjs/sensors` exposes accelerometer and gyroscope observations without platform sensor objects:
-
-```ts
-import { Sensors } from '@stingjs/sensors';
-
-Sensors.setUpdateInterval('accelerometer', 16.67);
-const acceleration = Sensors.addAccelerometerListener(reading => {
-  console.log(reading.x, reading.y, reading.z);
-});
-
-const rotation = Sensors.addGyroscopeListener(reading => {
-  console.log(reading.x, reading.y, reading.z);
-});
-
-acceleration.remove();
-rotation.remove();
-```
-
-Accelerometer axes are normalized to multiples of Earth gravity (`g`) on both platforms. Gyroscope axes are radians per second. `timestamp` is a monotonic platform sensor timestamp expressed in seconds and is suitable for ordering/deltas, not wall-clock display. `hasSensor()` can be used before subscribing. iOS uses CoreMotion; Android uses `SensorManager`. These initial sensor types do not require runtime authorization.
+`@stingjs/sensors` exposes accelerometer and gyroscope readings through the shared event bridge.
 
 ## ImagePicker
 
-`@stingjs/image-picker` uses the platform's user-mediated image picker and does not request broad photo-library/storage access:
+`@stingjs/image-picker` uses the privacy-preserving system image picker and copies the selected image to app cache before returning portable `file://` metadata.
+
+## Location
+
+`@stingjs/location` is the first first-party consumer of the shared runtime authorization contract.
 
 ```ts
-import { ImagePicker } from '@stingjs/image-picker';
+import { Location } from '@stingjs/location';
 
-const result = await ImagePicker.pickImage();
-if (!result.canceled) {
-  console.log(result.asset.uri, result.asset.width, result.asset.height);
+if (Location.getPermissionStatus() === 'undetermined') {
+  await Location.requestPermission();
 }
+const current = await Location.getCurrentPosition();
+const subscription = Location.watchPosition(position => console.log(position.coords));
+subscription.remove();
 ```
 
-iOS uses `PHPickerViewController`. Android uses Photo Picker on API 33+ and `ACTION_OPEN_DOCUMENT` on older supported Android versions. The selected item is copied into Sting's app cache and returned as a portable `file://` asset with best-effort file name, MIME type, width, and height. Cancellation is a normal `{ canceled: true, asset: null }` result. Applications that need the file long-term should copy it to durable application storage because cache entries may be reclaimed by the OS.
+The initial 1.0 surface is foreground location. iOS uses Core Location and Android uses platform `LocationManager`. Coordinates, accuracy, heading, speed, altitude and timestamps are normalized portable values; platform location objects never cross the module boundary.
+
+## Contacts
+
+`@stingjs/contacts` provides shared authorization, bounded contact queries, and a system contact picker.
+
+```ts
+import { Contacts } from '@stingjs/contacts';
+await Contacts.requestPermission();
+const contacts = await Contacts.getContacts({ limit: 100 });
+const selected = await Contacts.pickContact();
+```
+
+Only normalized identifiers, names, phone numbers and email addresses are returned. Picker cancellation resolves as `null`.
+
+## Camera
+
+`@stingjs/camera` combines shared authorization with the existing native-module-view renderer contract.
+
+```tsx
+import { Camera, CameraView } from '@stingjs/camera';
+
+await Camera.requestPermission();
+<CameraView facing="back" />;
+const photo = await Camera.capturePhoto();
+```
+
+`CameraView` remains an ordinary Sting/Solid host node. Native preview resources pause on detach and are released on disposal. Captured JPEG data is copied into app-owned cache storage and returned as portable file metadata.
+
+## Notifications
+
+`@stingjs/notifications` provides notification authorization, local scheduling, cancellation/listing, and portable `received`/`opened` events.
+
+```ts
+import { Notifications } from '@stingjs/notifications';
+await Notifications.requestPermission();
+const id = await Notifications.schedule({ title: 'Ready', body: 'Your task is ready.' });
+```
+
+The initial portable 1.0 contract intentionally does not invent a vendor push-provider abstraction. Remote provider registration can build on the same module later without changing local notification semantics.
+
+## Audio
+
+`@stingjs/audio` exposes playback through shared native object handles.
+
+```ts
+import { Audio } from '@stingjs/audio';
+const player = Audio.createPlayer();
+await player.load('file:///path/to/song.mp3');
+await player.play();
+player.dispose();
+```
+
+Players expose load/play/pause/seek/stop/status operations and state events. iOS uses `AVPlayer`; Android uses `MediaPlayer`. Background/runtime-disposal transitions use the shared lifecycle contract and release native player ownership deterministically.
+
+## BackgroundTask
+
+`@stingjs/background-task` registers named work that a Sting host can deliver through the shared Train A background hook.
+
+```ts
+import { BackgroundTask } from '@stingjs/background-task';
+await BackgroundTask.register('refresh');
+const subscription = BackgroundTask.addRunListener(({ name, payload }) => {
+  // perform bounded work and update application state
+});
+```
+
+Registration does **not** promise exact OS execution timing. iOS and Android place different restrictions on background work; a platform host or future scheduler integration routes supported delivery into the same named `handleBackgroundEvent` contract. This keeps the public API stable without creating a second background runtime.
 
 ## Architecture boundary
 
-Modules that need runtime authorization (Location, Camera, Notifications, Contacts, and related APIs) must use the shared Train A permission contract rather than implementing package-specific permission bridges. Audio/background work must use the shared lifecycle/background hooks. Camera must use the shared native-module-view contract. This keeps first-party and third-party modules on the same runtime architecture.
+Location, Camera, Notifications and Contacts use the shared runtime authorization operations. Camera uses the existing native-module-view path. Audio uses shared native-object lifetime and lifecycle delivery. BackgroundTask uses the shared background-delivery hook. All first-party packages use `sting-module.json` for autolinking/static permission configuration, the same path available to third-party modules.
