@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { access, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +71,32 @@ function run(command, args, options = {}) {
   });
 }
 
+function npmPackEntry(raw, packageName) {
+  let result;
+  try {
+    result = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `npm pack returned invalid JSON for ${packageName}: ${raw.trim() || '<empty stdout>'}`,
+      { cause: error },
+    );
+  }
+
+  const entries = Array.isArray(result)
+    ? result
+    : result && typeof result === 'object'
+      ? Object.values(result)
+      : [];
+
+  if (entries.length !== 1 || !entries[0]?.filename) {
+    throw new Error(
+      `npm pack did not return one tarball for ${packageName}: ${raw.trim() || '<empty stdout>'}`,
+    );
+  }
+
+  return entries[0];
+}
+
 const projectRoot = resolve(process.argv[2] ?? '');
 if (!process.argv[2]) {
   console.error('usage: prepare-first-party-module-consumer.mjs <project-root>');
@@ -88,23 +114,23 @@ const tarballs = [];
 const packedPackages = [];
 
 try {
-  for (const relativeRoot of releasePackageRoots) {
+  for (const [index, relativeRoot] of releasePackageRoots.entries()) {
     const source = join(repoRoot, relativeRoot);
     const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
     assertPortableManifest(manifest, `${manifest.name} source manifest`);
 
     run('npm', ['run', 'build', '--if-present'], { cwd: source });
+
+    const packagePackDir = join(packDir, String(index));
+    await mkdir(packagePackDir);
     const raw = run(
       'npm',
-      ['pack', '--pack-destination', packDir, '--json'],
+      ['pack', '--pack-destination', packagePackDir, '--json'],
       { cwd: source, capture: true },
     );
-    const result = JSON.parse(raw);
-    if (!Array.isArray(result) || result.length !== 1 || !result[0]?.filename) {
-      throw new Error(`npm pack did not return one tarball for ${manifest.name}`);
-    }
+    const result = npmPackEntry(raw, manifest.name);
 
-    const tarball = join(packDir, result[0].filename);
+    const tarball = join(packagePackDir, result.filename);
     tarballs.push(tarball);
     packedPackages.push({ name: manifest.name, version: manifest.version, relativeRoot });
 
