@@ -4,8 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
+    "skipLibCheck": true,
     "jsx": "preserve",
-    "jsxImportSource": "solid-js",
+    "jsxImportSource": "@stingjs/solid",
     "allowImportingTsExtensions": false,
     "noEmit": true,
     "types": ["vite/client"]
