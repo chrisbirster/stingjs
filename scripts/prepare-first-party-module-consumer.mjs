@@ -171,7 +171,7 @@ try {
   run('npm', ['run', 'typecheck'], { cwd: projectRoot });
   run('npm', ['run', 'build'], { cwd: projectRoot });
 
-  if (!(await exists(join(projectRoot, 'dist', 'sting-app.js'))) {
+  if (!(await exists(join(projectRoot, 'dist', 'sting-app.js')))) {
     throw new Error('generated application build did not produce dist/sting-app.js');
   }
 
