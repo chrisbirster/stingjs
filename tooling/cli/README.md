@@ -1,6 +1,6 @@
 # `@stingjs/cli`
 
-Developer tooling for StingJS. The npm package is intentionally `private: true` until the `stingjs` npm organization/scope is confirmed, but the installed executable is `sting`.
+Developer tooling for StingJS. The installed executable is `sting`, and the package is intended to publish publicly under the `@stingjs` npm scope.
 
 ## Commands
 
@@ -169,6 +169,6 @@ Use `sting start --watch` when a lower-level caller explicitly wants the managed
 
 ## Publishing scope
 
-Official packages should use the `@stingjs/*` scope. The unscoped npm package `sting` already belongs to an unrelated project, while this repository already uses names such as `@stingjs/core` and `@stingjs/solid`.
+Official packages use the `@stingjs/*` scope. The unscoped npm package `sting` belongs to an unrelated project, while this repository already uses names such as `@stingjs/core` and `@stingjs/solid`.
 
-Before making this package publishable, confirm or create the `stingjs` organization on npm and remove `private: true` as part of a reviewed release change.
+The package manifest is publishable and uses public access. The release workflow should publish it only after the `stingjs` npm scope is configured with the repository's trusted publisher. No long-lived npm token should be required by the release workflow.
