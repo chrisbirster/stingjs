@@ -12,8 +12,11 @@
   "dependencies": {
     "@stingjs/modules-core": "0.1.0"
   },
-  "publishConfig": {
-    "access": "public"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisbirster/stingjs.git",
+    "directory": "packages/modules/filesystem"
   },
+  "publishConfig": { "access": "public" },
   "license": "MIT"
 }

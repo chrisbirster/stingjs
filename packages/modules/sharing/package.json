@@ -2,18 +2,10 @@
   "name": "@stingjs/sharing",
   "version": "0.1.0",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
-  },
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@stingjs/modules-core": "0.1.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run" },
+  "dependencies": { "@stingjs/modules-core": "0.1.0" },
+  "repository": { "type": "git", "url": "git+https://github.com/chrisbirster/stingjs.git", "directory": "packages/modules/sharing" },
+  "publishConfig": { "access": "public" },
   "license": "MIT"
 }

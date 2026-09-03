@@ -5,12 +5,9 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "exports": { ".": { "types": "./src/index.d.ts", "default": "./src/index.js" } },
-  "scripts": {
-    "test": "vitest run src/index.test.ts",
-    "typecheck": "tsc -p tsconfig.json",
-    "build": "tsc -p tsconfig.json"
-  },
+  "scripts": { "test": "vitest run src/index.test.ts", "typecheck": "tsc -p tsconfig.json", "build": "tsc -p tsconfig.json" },
   "dependencies": { "@stingjs/modules-core": "0.1.0" },
+  "repository": { "type": "git", "url": "git+https://github.com/chrisbirster/stingjs.git", "directory": "packages/modules/contacts" },
   "publishConfig": { "access": "public" },
   "license": "MIT"
 }
