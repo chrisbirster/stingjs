@@ -40,22 +40,18 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p 'require("./package.json").version')"
+          if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "Releases and prereleases must run from promoted main; got ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
           if [[ "$RELEASE_TAG" != "v${version}" ]]; then
             echo "Tag must exactly match committed package version: v${version}; got ${RELEASE_TAG}" >&2
             exit 1
           fi
           if [[ "$version" == *-* ]]; then
-            if [[ "$GITHUB_REF_NAME" != "dev" ]]; then
-              echo "Prereleases must run from dev; got ${GITHUB_REF_NAME}" >&2
-              exit 1
-            fi
             echo "final_release=false" >> "$GITHUB_OUTPUT"
             echo "npm_tag=next" >> "$GITHUB_OUTPUT"
           else
-            if [[ "$GITHUB_REF_NAME" != "main" ]]; then
-              echo "Stable releases must run from main; got ${GITHUB_REF_NAME}" >&2
-              exit 1
-            fi
             echo "final_release=true" >> "$GITHUB_OUTPUT"
             echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
           fi
