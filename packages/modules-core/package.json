@@ -12,6 +12,11 @@
   "dependencies": {
     "@stingjs/core": "0.1.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisbirster/stingjs.git",
+    "directory": "packages/modules-core"
+  },
   "publishConfig": {
     "access": "public"
   },
