@@ -1,12 +1,12 @@
 # StingJS release process
 
-StingJS releases move `feature -> dev -> main`. `dev` is the integration branch; `main` is the stable release branch. The stable workflow filename is `.github/workflows/release.yml` because npm trusted-publisher configuration binds to the workflow filename.
+StingJS releases move `feature -> dev -> main`. `dev` is the integration branch; `main` is the exact release branch for both prereleases and stable releases. The stable workflow filename is `.github/workflows/release.yml` because npm trusted-publisher configuration binds to the workflow filename.
 
 ## Prepare a version
 
-All public packages use the same version. Before a release, update the root version and every public package version/internal Sting dependency together, update `CHANGELOG.md`, run the full PR Gate, and merge the release-preparation PR into `dev`.
+All public packages use the same version. Before a release, update the root version and every public package version/internal Sting dependency together, update `CHANGELOG.md`, run the full PR Gate, and merge the release-preparation PR into `dev`. Then promote that exact release candidate from `dev` to `main` through the Promotion Gate.
 
-Prerelease versions use SemVer such as `1.0.0-rc.1`. The release workflow accepts prereleases from `dev`. A stable version such as `1.0.0` is accepted only from `main` and must pass the final physical-device evidence gate.
+Prerelease versions use SemVer such as `1.0.0-rc.1`. The release workflow accepts prereleases only from promoted `main`. A stable version such as `1.0.0` is also released only from `main` and must additionally pass the final physical-device evidence gate. This keeps the manual release workflow available from the default branch and ensures every published artifact maps to an exact promoted commit.
 
 ## npm trusted publishing
 
@@ -24,7 +24,7 @@ The repository's `scripts/check-public-packages.mjs` prevents package version, v
 
 ## Release workflow
 
-Run **Release** manually on the exact release commit and provide a tag equal to `v` plus the committed root package version. Leave **Publish npm packages** disabled when exercising packaging only.
+Run **Release** manually from `main` on the exact promoted release commit and provide a tag equal to `v` plus the committed root package version. Leave **Publish npm packages** disabled when exercising packaging only.
 
 The workflow:
 
