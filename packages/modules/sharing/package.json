@@ -1,7 +1,6 @@
 {
   "name": "@stingjs/sharing",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,5 +11,9 @@
   },
   "dependencies": {
     "@stingjs/modules-core": "0.1.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
 }
