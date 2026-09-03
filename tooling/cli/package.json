@@ -1,7 +1,7 @@
 {
   "name": "@stingjs/cli",
   "version": "0.1.0",
-  "private": true,
+  "description": "Developer tooling for StingJS applications.",
   "type": "module",
   "bin": {
     "sting": "./dist/cli.js"
@@ -12,6 +12,10 @@
       "import": "./dist/config.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -27,6 +31,9 @@
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT"
 }
