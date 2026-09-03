@@ -49,6 +49,14 @@ jobs:
           xcrun simctl install "$DEVICE_ID" /tmp/sting-go-ios-derived/Build/Products/Debug-iphonesimulator/StingGo.app
           xcrun simctl launch "$DEVICE_ID" run.stingjs.go
           xcrun simctl openurl "$DEVICE_ID" 'sting://go?url=http%3A%2F%2F127.0.0.1%3A8081%2Fmanifest'
+      - name: Package Sting Go iOS Simulator developer client
+        run: bash scripts/package-sting-go.sh ios /tmp/sting-go-artifacts
+      - name: Verify packaged Sting Go iOS metadata
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/sting-go-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | wc -l | tr -d ' ')" = "1"
+          unzip -l "$(find /tmp/sting-go-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | head -n1)" | grep -F 'StingGo.app/' >/dev/null
+          node -e 'const m=require("/tmp/sting-go-artifacts/sting-go-ios-simulator.json"); if(m.product!=="sting-go"||m.platform!=="ios-simulator"||m.releaseKind!=="developer-client"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
       - name: Build StingRuntime for iOS Simulator
         working-directory: native/ios
         run: xcodebuild -scheme StingRuntime -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
