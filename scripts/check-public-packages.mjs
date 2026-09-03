@@ -4,50 +4,27 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const repositoryUrl = 'git+https://github.com/chrisbirster/stingjs.git';
 
 const moduleFolders = [
-  'haptics',
-  'clipboard',
-  'device',
-  'filesystem',
-  'secure-store',
-  'network',
-  'sharing',
-  'sensors',
-  'image-picker',
-  'location',
-  'contacts',
-  'camera',
-  'notifications',
-  'audio',
-  'background-task',
+  'haptics', 'clipboard', 'device', 'filesystem', 'secure-store', 'network',
+  'sharing', 'sensors', 'image-picker', 'location', 'contacts', 'camera',
+  'notifications', 'audio', 'background-task',
 ];
-
 const packageRoots = [
-  'packages/core',
-  'packages/native',
-  'packages/solid',
-  'packages/stylex',
+  'packages/core', 'packages/native', 'packages/solid', 'packages/stylex',
   'packages/modules-core',
   ...moduleFolders.map((folder) => `packages/modules/${folder}`),
-  'tooling/cli',
-  'tooling/create-sting',
+  'tooling/cli', 'tooling/create-sting',
 ];
-
-const dependencyFields = [
-  'dependencies',
-  'devDependencies',
-  'peerDependencies',
-  'optionalDependencies',
-];
+const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 
 function fail(message) {
   throw new Error(`public package check: ${message}`);
 }
 
 async function readManifest(relativeRoot) {
-  const path = join(root, relativeRoot, 'package.json');
-  return JSON.parse(await readFile(path, 'utf8'));
+  return JSON.parse(await readFile(join(root, relativeRoot, 'package.json'), 'utf8'));
 }
 
 const rootManifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
@@ -61,17 +38,18 @@ for (const relativeRoot of packageRoots) {
 }
 
 for (const [name, { relativeRoot, manifest }] of manifests) {
-  if (manifest.private === true) {
-    fail(`${name} is still private`);
-  }
+  if (manifest.private === true) fail(`${name} is still private`);
   if (manifest.version !== releaseVersion) {
     fail(`${name} version ${manifest.version} does not match root version ${releaseVersion}`);
   }
-  if (manifest.publishConfig?.access !== 'public') {
-    fail(`${name} must declare publishConfig.access=public`);
+  if (manifest.publishConfig?.access !== 'public') fail(`${name} must declare publishConfig.access=public`);
+  if (manifest.license !== 'MIT') fail(`${name} must declare license=MIT`);
+  if (manifest.repository?.type !== 'git') fail(`${name} must declare repository.type=git`);
+  if (manifest.repository?.url !== repositoryUrl) {
+    fail(`${name} repository.url must be ${repositoryUrl}`);
   }
-  if (manifest.license !== 'MIT') {
-    fail(`${name} must declare license=MIT`);
+  if (manifest.repository?.directory !== relativeRoot) {
+    fail(`${name} repository.directory must be ${relativeRoot}`);
   }
 
   for (const field of dependencyFields) {
@@ -96,7 +74,4 @@ for (const [name, { relativeRoot, manifest }] of manifests) {
 
 if (!manifests.has('@stingjs/cli')) fail('missing @stingjs/cli');
 if (!manifests.has('create-sting')) fail('missing create-sting');
-
-process.stdout.write(
-  `public package check passed: version=${releaseVersion} packages=${manifests.size}\n`,
-);
+process.stdout.write(`public package check passed: version=${releaseVersion} packages=${manifests.size}\n`);
