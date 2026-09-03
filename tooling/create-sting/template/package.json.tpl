@@ -18,6 +18,7 @@
   "devDependencies": {
     "@solidjs/vite-plugin": "3.0.0-next.29",
     "@stingjs/cli": "0.1.0",
+    "@types/node": "^22.0.0",
     "typescript": "5.9.2",
     "vite": "8.2.2",
     "vitest": "4.1.0"

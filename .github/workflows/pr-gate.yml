@@ -72,6 +72,11 @@ jobs:
                   ios=true
                   modules=true
                   ;;
+                scripts/prepare-first-party-module-consumer.mjs|scripts/package-create-sting.sh)
+                  js_ts=true
+                  tooling=true
+                  e2e=true
+                  ;;
               esac
 
               case "$file" in
