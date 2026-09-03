@@ -1,37 +1,28 @@
 #!/usr/bin/env node
 import { readFile, readdir } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { validateResult } from '../benchmarks/results/tool.mjs';
 
-const root = resolve(new URL('..', import.meta.url).pathname);
-const expectedVersion = '0.1.0';
+const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const requiredScenarioMetric = [
   ['sparse-10k-row-update', 'native-event-to-native-mutation-latency'],
   ['dense-10k-100-row-update', 'native-event-to-native-mutation-latency'],
 ];
 
 function fail(message) {
-  throw new Error(`v0.1 release gate: ${message}`);
+  throw new Error(`final release gate: ${message}`);
 }
-
 async function readText(path) {
-  try {
-    return await readFile(path, 'utf8');
-  } catch (error) {
-    fail(`required file missing: ${path} (${error.message})`);
-  }
+  try { return await readFile(path, 'utf8'); }
+  catch (error) { fail(`required file missing: ${path} (${error.message})`); }
 }
-
 async function collectJsonFiles(directory) {
   const files = [];
   async function visit(path) {
     let entries;
-    try {
-      entries = await readdir(path, { withFileTypes: true });
-    } catch (error) {
-      if (error.code === 'ENOENT') return;
-      throw error;
-    }
+    try { entries = await readdir(path, { withFileTypes: true }); }
+    catch (error) { if (error.code === 'ENOENT') return; throw error; }
     for (const entry of entries) {
       const child = join(path, entry.name);
       if (entry.isDirectory()) await visit(child);
@@ -43,20 +34,21 @@ async function collectJsonFiles(directory) {
 }
 
 const pkg = JSON.parse(await readText(join(root, 'package.json')));
-if (pkg.version !== expectedVersion) {
-  fail(`package.json version must be ${expectedVersion}, found ${pkg.version}`);
+if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) {
+  fail(`stable release requires a stable SemVer package version, found ${pkg.version}`);
 }
 
 const changelog = await readText(join(root, 'CHANGELOG.md'));
-if (!changelog.includes('## 0.1.0')) {
-  fail('CHANGELOG.md must contain a 0.1.0 release section');
+const heading = changelog.split(/\r?\n/).find((line) => line.startsWith(`## ${pkg.version}`));
+if (!heading) fail(`CHANGELOG.md must contain a ${pkg.version} release section`);
+if (/unreleased/i.test(heading)) fail(`CHANGELOG ${pkg.version} section is still marked unreleased`);
+
+for (const path of ['docs/versioning.md', 'docs/upgrading.md', 'docs/releasing.md']) {
+  await readText(join(root, path));
 }
 
-const decisionPath = join(root, 'docs/decisions/0004-production-javascript-engine.md');
-const decision = await readText(decisionPath);
-if (!/^- Status:\s*accepted\s*$/im.test(decision)) {
-  fail('production JavaScript engine ADR must be accepted before release');
-}
+const decision = await readText(join(root, 'docs/decisions/0004-production-javascript-engine.md'));
+if (!/^- Status:\s*accepted\s*$/im.test(decision)) fail('production JavaScript engine ADR must be accepted');
 if (!/^- Engine:\s*official QuickJS `2026-06-04`\s*$/im.test(decision)) {
   fail('production JavaScript engine ADR must name official QuickJS 2026-06-04');
 }
@@ -65,26 +57,17 @@ const evidenceFiles = await collectJsonFiles(join(root, 'benchmarks/results/raw'
 if (evidenceFiles.length === 0) {
   fail('no checked-in physical-device evidence exists under benchmarks/results/raw');
 }
-
 const evidence = [];
 for (const file of evidenceFiles) {
   const result = JSON.parse(await readText(file));
   validateResult(result, file);
   const { platform, environment, build } = result.metadata;
-  if (environment !== 'physical-device' || build !== 'release') {
-    fail(`${file} is not release physical-device evidence`);
-  }
-  if (platform !== 'android') {
-    fail(`${file} is checked-in v0.1 decision evidence but platform is not android`);
-  }
+  if (environment !== 'physical-device' || build !== 'release') fail(`${file} is not release physical-device evidence`);
+  if (platform !== 'android') fail(`${file} is release evidence but platform is not android`);
   evidence.push({ file, result });
 }
 
-const requiredSystems = [
-  ['sting', 'quickjs'],
-  ['react-native', 'hermes'],
-];
-
+const requiredSystems = [['sting', 'quickjs'], ['react-native', 'hermes']];
 for (const [system, engine] of requiredSystems) {
   for (const [scenario, metric] of requiredScenarioMetric) {
     const match = evidence.find(({ result }) =>
@@ -93,9 +76,7 @@ for (const [system, engine] of requiredSystems) {
       result.measurement.scenario === scenario &&
       result.measurement.metric === metric,
     );
-    if (!match) {
-      fail(`missing physical Android evidence: ${system}:${engine}:${scenario}:${metric}`);
-    }
+    if (!match) fail(`missing physical Android evidence: ${system}:${engine}:${scenario}:${metric}`);
   }
 }
 
@@ -116,6 +97,4 @@ if (cohortKeys.size !== 1) {
   fail('QuickJS and RN/Hermes evidence must share one Android device/OS/refresh-rate/benchmark-commit cohort');
 }
 
-process.stdout.write(
-  `v0.1 release gate passed: engine=quickjs physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`,
-);
+process.stdout.write(`final release gate passed: version=${pkg.version} physicalAndroidEvidenceFiles=${evidenceFiles.length}\n`);

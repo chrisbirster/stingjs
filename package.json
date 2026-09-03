@@ -5,15 +5,9 @@
   "type": "module",
   "packageManager": "npm@12.0.2",
   "workspaces": [
-    "packages/core",
-    "packages/solid",
-    "packages/native",
-    "packages/stylex",
-    "packages/modules-core",
-    "packages/modules/*",
-    "examples/*",
-    "benchmarks/sting-benchmark",
-    "benchmarks/solid2-conformance"
+    "packages/core", "packages/solid", "packages/native", "packages/stylex",
+    "packages/modules-core", "packages/modules/*", "examples/*",
+    "benchmarks/sting-benchmark", "benchmarks/solid2-conformance"
   ],
   "scripts": {
     "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
@@ -23,18 +17,14 @@
     "build": "npm run build --workspaces --if-present",
     "modules:config": "node scripts/sting-module-config.mjs",
     "modules:validate": "node scripts/validate-sting-modules.mjs",
-    "release:check:v0.1": "node scripts/check-v0.1-release.mjs",
-    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && npm run modules:validate",
+    "release:check:packages": "node scripts/check-public-packages.mjs",
+    "release:check:final": "node scripts/check-final-release.mjs",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && npm run modules:validate && npm run release:check:packages",
     "test:ios-quickjs-runtime": "bash scripts/test-ios-quickjs-runtime.sh",
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
-  "devDependencies": {
-    "typescript": "5.9.2",
-    "vitest": "4.1.0"
-  },
-  "engines": {
-    "node": ">=22.12.0"
-  },
+  "devDependencies": { "typescript": "5.9.2", "vitest": "4.1.0" },
+  "engines": { "node": ">=22.12.0" },
   "license": "MIT"
 }

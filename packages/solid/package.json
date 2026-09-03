@@ -1,7 +1,6 @@
 {
   "name": "@stingjs/solid",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -27,5 +26,14 @@
   },
   "devDependencies": {
     "solid-js": "2.0.0-rc.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisbirster/stingjs.git",
+    "directory": "packages/solid"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
 }

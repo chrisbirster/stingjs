@@ -1,7 +1,6 @@
 {
   "name": "@stingjs/filesystem",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,5 +11,12 @@
   },
   "dependencies": {
     "@stingjs/modules-core": "0.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisbirster/stingjs.git",
+    "directory": "packages/modules/filesystem"
+  },
+  "publishConfig": { "access": "public" },
+  "license": "MIT"
 }

@@ -1,11 +1,13 @@
 {
   "name": "@stingjs/background-task",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "exports": { ".": { "types": "./src/index.d.ts", "default": "./src/index.js" } },
   "scripts": { "test": "vitest run src/index.test.ts", "typecheck": "tsc -p tsconfig.json", "build": "tsc -p tsconfig.json" },
-  "dependencies": { "@stingjs/modules-core": "0.1.0" }
+  "dependencies": { "@stingjs/modules-core": "0.1.0" },
+  "repository": { "type": "git", "url": "git+https://github.com/chrisbirster/stingjs.git", "directory": "packages/modules/background-task" },
+  "publishConfig": { "access": "public" },
+  "license": "MIT"
 }
