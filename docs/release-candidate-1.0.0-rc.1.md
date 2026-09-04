@@ -42,40 +42,40 @@ This packaging-only run must produce the complete release bundle:
 - no `workspace:`, `file:`, `link:`, absolute-path, or monorepo-relative dependency in any public package;
 - no ordinary generated-app requirement for Zig or a Sting source checkout.
 
-## 3. Publish only the bootstrap version manually
+## 3. Bootstrap package existence and trust
 
-Using the authenticated maintainer npm account with account-level 2FA, publish the 22 bootstrap tarballs in `npm-publish-order.txt` with the non-default `bootstrap` dist-tag:
-
-```bash
-npm publish <tarball> --access public --tag bootstrap
-```
-
-Do **not** use `latest`, `next`, or `1.0.0-rc.1` for this manual step. The purpose of `1.0.0-bootstrap.0` is only to create each package surface so trusted publishing can be configured.
-
-## 4. Attach trusted publishing to all 22 packages
-
-After every package exists, configure each package for the exact GitHub workflow:
-
-```text
-GitHub owner: chrisbirster
-Repository: stingjs
-Workflow: release.yml
-Allowed action: npm publish
-```
-
-The npm CLI form is:
+Collect the release bundle files into one local directory (for example `release-artifacts/`) including `npm-publish-order.txt` and all 22 npm tarballs. First validate without mutating npm:
 
 ```bash
-npm trust github <package> \
-  --repo chrisbirster/stingjs \
-  --file release.yml \
-  --allow-publish \
-  --yes
+npm run release:npm:bootstrap -- \
+  release-artifacts \
+  --version 1.0.0-bootstrap.0
 ```
 
-Verify every package with `npm trust list <package>`. Normal StingJS releases must not require `NPM_TOKEN` or another long-lived npm write secret.
+The helper refuses real RC/stable versions, requires exactly 22 unique StingJS packages, validates public/repository metadata, and verifies that every tarball is the same `*-bootstrap.*` version.
 
-## 5. Cut the real `1.0.0-rc.1` cohort
+Then use the authenticated maintainer npm account with account-level 2FA to perform the one-time package creation and trusted-publisher setup:
+
+```bash
+npm run release:npm:bootstrap -- \
+  release-artifacts \
+  --version 1.0.0-bootstrap.0 \
+  --publish \
+  --trust
+```
+
+The helper:
+
+- publishes only under the non-default `bootstrap` dist-tag;
+- skips an exact bootstrap version that is already present, making interrupted publication resumable;
+- configures GitHub owner `chrisbirster`, repository `stingjs`, workflow `release.yml`, with `npm publish` permission;
+- verifies trusted-publisher state after each package;
+- refuses to overwrite an existing mismatched trusted publisher;
+- waits two seconds between trust writes to reduce npm rate-limit risk.
+
+Do **not** use `latest`, `next`, or `1.0.0-rc.1` for this manual step. The purpose of `1.0.0-bootstrap.0` is only to create each package surface so trusted publishing can be configured. Normal StingJS releases must not require `NPM_TOKEN` or another long-lived npm write secret.
+
+## 4. Cut the real `1.0.0-rc.1` cohort
 
 Return to current `dev` after the bootstrap setup is complete and prepare the real RC atomically:
 
@@ -90,7 +90,7 @@ npm run build
 
 Update `CHANGELOG.md` from `unreleased` to the release date. The PR Gate for that exact head must be green before merge. Promote the exact merged candidate from `dev` to `main` through the Promotion Gate; do not recreate, cherry-pick, amend, or manually repack it after the gate.
 
-## 6. Publish the real RC through OIDC
+## 5. Publish the real RC through OIDC
 
 From the exact promoted `main` candidate, run `.github/workflows/release.yml` once with:
 
@@ -103,7 +103,7 @@ The workflow must publish the complete 22-package cohort through npm trusted pub
 
 The real `1.0.0-rc.1` version must never be manually pre-published; npm versions are immutable and doing so would prevent the OIDC release from publishing that version.
 
-## 7. Validate the independent consumer
+## 6. Validate the independent consumer
 
 Complete #134 in `chrisbirster/stingjs-gauntlet`. It must use registry packages only and must not use a Sting source checkout, tarball path, `file:`, `link:`, or workspace dependency.
 
@@ -122,12 +122,12 @@ npx sting run android
 
 Record the exact RC version, consumer commit, OS/toolchain, and build/run results. Also prove the released Sting Go client can connect through the documented QR/deep-link/reload flow.
 
-## 8. Finish the stable-only physical evidence gate
+## 7. Finish the stable-only physical evidence gate
 
 Complete #5 with same-device physical Android release evidence comparing Sting/official QuickJS against the React Native/Hermes control. Simulator or emulator results do not satisfy this gate.
 
 If the evidence exposes a severe correctness or runtime bottleneck, fix only the measured blocker and cut another RC. Do not optimize from speculation.
 
-## 9. Promote stable 1.0
+## 8. Promote stable 1.0
 
 When #5, #134, #135, and #70 are complete, prepare `1.0.0` with the same atomic version command, rerun exact-head PR and Promotion Gates, and dispatch `release.yml` from the exact promoted `main` commit with npm publishing enabled. Stable publication uses npm dist-tag `latest` and must pass `release:check:final`.
