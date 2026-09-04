@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { access, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -19,10 +19,14 @@ const packageRoots = [
 const manifestPaths = ['package.json', ...packageRoots.map((packageRoot) => `${packageRoot}/package.json`)];
 const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
-const target = process.argv[2];
+const args = process.argv.slice(2);
+const checkOnly = args.includes('--check');
+const explicitTarget = args.find((arg) => !arg.startsWith('--'));
+const currentRootManifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+const target = explicitTarget ?? (checkOnly ? currentRootManifest.version : undefined);
 
 if (!target || !semverPattern.test(target)) {
-  console.error('usage: npm run release:version -- <semver>');
+  console.error('usage: npm run release:version -- <semver> [--check]');
   process.exit(2);
 }
 
@@ -70,6 +74,11 @@ for (const record of records.slice(1)) {
       }
     }
   }
+}
+
+if (checkOnly) {
+  process.stdout.write(`release version check passed: target=${target} packages=${publicNames.size}\n`);
+  process.exit(0);
 }
 
 const transaction = records.map((record) => ({
