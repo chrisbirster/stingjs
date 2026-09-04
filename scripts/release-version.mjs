@@ -17,6 +17,7 @@ const publicPackageRoots = [
   'tooling/cli', 'tooling/create-sting',
 ];
 const publicManifestPaths = publicPackageRoots.map((packageRoot) => `${packageRoot}/package.json`);
+const moduleDescriptorPaths = moduleFolders.map((folder) => `packages/modules/${folder}/sting-module.json`);
 const templateManifestPath = 'tooling/create-sting/template/package.json.tpl';
 const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -75,6 +76,10 @@ for (const relativePath of publicManifestPaths) {
   publicRecords.push(record);
   publicNames.add(record.manifest.name);
 }
+const moduleDescriptorRecords = [];
+for (const relativePath of moduleDescriptorPaths) {
+  moduleDescriptorRecords.push(await loadJsonRecord(relativePath));
+}
 const templateRecord = await loadJsonRecord(templateManifestPath);
 
 if (publicNames.size !== 22) {
@@ -83,8 +88,14 @@ if (publicNames.size !== 22) {
 if (!publicNames.has('@stingjs/cli') || !publicNames.has('create-sting')) {
   throw new Error('release version: public package set is incomplete');
 }
+if (moduleDescriptorRecords.length !== moduleFolders.length) {
+  throw new Error(
+    `release version: expected ${moduleFolders.length} module descriptors, found ${moduleDescriptorRecords.length}`,
+  );
+}
 
 const publicManifestPathSet = new Set(publicManifestPaths);
+const publicRecordByPath = new Map(publicRecords.map((record) => [record.relativePath, record]));
 const workspaceManifestPaths = await expandWorkspaceManifestPaths(currentRootManifest.workspaces);
 const consumerManifestPaths = workspaceManifestPaths.filter(
   (relativePath) => !publicManifestPathSet.has(relativePath),
@@ -108,6 +119,28 @@ function validateDependencySpecs(record, expectedVersion, { requirePublishable =
   }
 }
 
+function validateModuleDescriptors(expectedVersion) {
+  for (let index = 0; index < moduleFolders.length; index += 1) {
+    const folder = moduleFolders[index];
+    const descriptor = moduleDescriptorRecords[index];
+    const packagePath = `packages/modules/${folder}/package.json`;
+    const packageRecord = publicRecordByPath.get(packagePath);
+    if (!packageRecord) {
+      throw new Error(`${descriptor.relativePath}: missing public package record ${packagePath}`);
+    }
+    if (descriptor.manifest.package !== packageRecord.manifest.name) {
+      throw new Error(
+        `${descriptor.relativePath}: package ${descriptor.manifest.package} does not match ${packageRecord.manifest.name}`,
+      );
+    }
+    if (descriptor.manifest.version !== expectedVersion) {
+      throw new Error(
+        `${descriptor.relativePath}: version ${descriptor.manifest.version} does not equal ${expectedVersion}`,
+      );
+    }
+  }
+}
+
 function validatePackageRecords(expectedVersion) {
   if (rootRecord.manifest.version !== expectedVersion) {
     throw new Error(`${rootRecord.relativePath}: version ${rootRecord.manifest.version} does not equal ${expectedVersion}`);
@@ -125,6 +158,7 @@ function validatePackageRecords(expectedVersion) {
     validateDependencySpecs(record, expectedVersion);
   }
   validateDependencySpecs(templateRecord, expectedVersion, { requirePublishable: true });
+  validateModuleDescriptors(expectedVersion);
 }
 
 function updatePublicDependencySpecs(record, expectedVersion) {
@@ -138,7 +172,7 @@ function updatePublicDependencySpecs(record, expectedVersion) {
 if (checkOnly) {
   validatePackageRecords(target);
   process.stdout.write(
-    `release version check passed: target=${target} packages=${publicNames.size} consumers=${consumerRecords.length} template=1\n`,
+    `release version check passed: target=${target} packages=${publicNames.size} consumers=${consumerRecords.length} modules=${moduleDescriptorRecords.length} template=1\n`,
   );
   process.exit(0);
 }
@@ -151,11 +185,18 @@ for (const record of publicRecords) {
   updatePublicDependencySpecs(record, target);
 }
 for (const record of consumerRecords) updatePublicDependencySpecs(record, target);
+for (const record of moduleDescriptorRecords) record.manifest.version = target;
 updatePublicDependencySpecs(templateRecord, target);
 
 validatePackageRecords(target);
 
-const transaction = [rootRecord, ...publicRecords, ...consumerRecords, templateRecord].map((record) => ({
+const transaction = [
+  rootRecord,
+  ...publicRecords,
+  ...consumerRecords,
+  ...moduleDescriptorRecords,
+  templateRecord,
+].map((record) => ({
   ...record,
   next: `${JSON.stringify(record.manifest, null, 2)}\n`,
   temp: `${record.absolutePath}.release-version-${process.pid}.tmp`,
@@ -185,6 +226,14 @@ try {
     throw new Error(`post-write public package invariant failed:\n${publicCheck.stdout}${publicCheck.stderr}`);
   }
 
+  const moduleCheck = spawnSync(process.execPath, [join(root, 'scripts/validate-sting-modules.mjs')], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  if (moduleCheck.status !== 0) {
+    throw new Error(`post-write module descriptor invariant failed:\n${moduleCheck.stdout}${moduleCheck.stderr}`);
+  }
+
   const versionCheck = spawnSync(process.execPath, [join(root, 'scripts/release-version.mjs'), target, '--check'], {
     cwd: root,
     encoding: 'utf8',
@@ -195,7 +244,7 @@ try {
 
   for (const record of transaction) await rm(record.backup, { force: true });
   process.stdout.write(
-    `release version updated atomically: ${target} packages=${publicNames.size} consumers=${consumerRecords.length} template=1\n`,
+    `release version updated atomically: ${target} packages=${publicNames.size} consumers=${consumerRecords.length} modules=${moduleDescriptorRecords.length} template=1\n`,
   );
 } catch (error) {
   for (const record of [...transaction].reverse()) {

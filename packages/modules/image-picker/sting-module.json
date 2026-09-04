@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "ImagePicker",
   "package": "@stingjs/image-picker",
-  "version": "0.1.0",
+  "version": "1.0.0-bootstrap.0",
   "ios": {
     "module": "ImagePickerModule",
     "permissions": []
