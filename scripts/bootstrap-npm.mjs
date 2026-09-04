@@ -4,14 +4,7 @@ import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const args = process.argv.slice(2);
-const help = args.includes('--help') || args.includes('-h');
-const publish = args.includes('--publish');
-const trust = args.includes('--trust');
-const positional = args.filter((arg) => !arg.startsWith('--') && !arg.startsWith('-'));
-const versionIndex = args.indexOf('--version');
-const explicitVersion = versionIndex >= 0 ? args[versionIndex + 1] : undefined;
-
-if (help) {
+if (args.includes('--help') || args.includes('-h')) {
   process.stdout.write(`usage: npm run release:npm:bootstrap -- [artifact-dir] --version <bootstrap-semver> [--publish] [--trust]\n\n` +
     `Without --publish/--trust, validates the release bundle only.\n` +
     `--publish publishes only a *-bootstrap.* version under the bootstrap dist-tag.\n` +
@@ -20,11 +13,38 @@ if (help) {
   process.exit(0);
 }
 
-if (versionIndex >= 0 && (!explicitVersion || explicitVersion.startsWith('-'))) {
-  throw new Error('--version requires a value');
+let artifactDirArgument;
+let explicitVersion;
+let publish = false;
+let trust = false;
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index];
+  if (arg === '--publish') {
+    publish = true;
+    continue;
+  }
+  if (arg === '--trust') {
+    trust = true;
+    continue;
+  }
+  if (arg === '--version') {
+    const value = args[index + 1];
+    if (!value || value.startsWith('-')) throw new Error('--version requires a value');
+    explicitVersion = value;
+    index += 1;
+    continue;
+  }
+  if (arg.startsWith('--version=')) {
+    explicitVersion = arg.slice('--version='.length);
+    if (!explicitVersion) throw new Error('--version requires a value');
+    continue;
+  }
+  if (arg.startsWith('-')) throw new Error(`unknown option ${arg}`);
+  if (artifactDirArgument) throw new Error(`unexpected positional argument ${arg}`);
+  artifactDirArgument = arg;
 }
 
-const artifactDir = resolve(positional[0] ?? 'release-artifacts');
+const artifactDir = resolve(artifactDirArgument ?? 'release-artifacts');
 const orderPath = join(artifactDir, 'npm-publish-order.txt');
 const orderText = await readFile(orderPath, 'utf8');
 const tarballs = orderText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -135,6 +155,33 @@ function registryHasExactVersion(name, expectedVersion) {
   throw new Error(`bootstrap: npm view failed for ${name}@${expectedVersion}\n${output}`);
 }
 
+function hasExpectedTrust(name) {
+  const result = run('npm', ['trust', 'list', name, '--json'], { allowFailure: true });
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+  if (result.status !== 0) {
+    if (/E404|404 Not Found|no trusted|not configured/i.test(output)) return false;
+    throw new Error(`bootstrap: npm trust list failed for ${name}\n${output}`);
+  }
+  const raw = (result.stdout ?? '').trim();
+  if (!raw || raw === '[]' || raw === '{}' || raw === 'null') return false;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`bootstrap: invalid npm trust list JSON for ${name}: ${error.message}\n${raw}`);
+  }
+  const normalized = JSON.stringify(parsed).toLowerCase();
+  const github = normalized.includes('github');
+  const repository = normalized.includes('chrisbirster/stingjs') ||
+    (normalized.includes('"owner":"chrisbirster"') && normalized.includes('"repository":"stingjs"'));
+  const workflow = normalized.includes('release.yml');
+  const allowPublish = normalized.includes('publish');
+  if (github && repository && workflow && allowPublish) return true;
+
+  throw new Error(`bootstrap: ${name} already has a trusted publisher that does not match chrisbirster/stingjs release.yml with publish permission; refusing to overwrite it\n${raw}`);
+}
+
 if (publish) {
   for (const pkg of packages) {
     const { name } = pkg.manifest;
@@ -158,6 +205,11 @@ if (trust) {
 
   for (let index = 0; index < packages.length; index += 1) {
     const name = packages[index].manifest.name;
+    if (hasExpectedTrust(name)) {
+      process.stdout.write(`trusted publisher already correct; skipping ${name}\n`);
+      continue;
+    }
+
     process.stdout.write(`configuring trusted publisher for ${name}\n`);
     run('npm', [
       'trust', 'github', name,
@@ -167,7 +219,9 @@ if (trust) {
       '--yes',
     ], { inherit: true });
 
-    run('npm', ['trust', 'list', name], { inherit: true });
+    if (!hasExpectedTrust(name)) {
+      throw new Error(`bootstrap: trusted publisher verification failed for ${name}`);
+    }
     if (index + 1 < packages.length) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 2000));
     }
