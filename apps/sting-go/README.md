@@ -103,6 +103,40 @@ The development server is local-network tooling. Simulator/device loopback and L
 - Simulator build/install/launch + deep-link smoke;
 - physical iPhone validation when hardware is available.
 
+## Developer-client release artifacts
+
+Sting Go is a development tool, so v1 distinguishes reproducible developer-client artifacts from signed store distribution.
+
+Package the Android developer client on a machine or CI lane with Java 17, Android SDK/NDK, Gradle 9.5, and Zig 0.16.0:
+
+```bash
+bash scripts/package-sting-go.sh android release-artifacts/sting-go
+```
+
+The command builds the Android release variant, verifies the accepted official QuickJS runtime is present for ARM64 and x86_64, and emits:
+
+```text
+sting-go-v<version>-android-dev.apk
+sting-go-android.json
+```
+
+The APK is a developer-client artifact using the repository's current development signing configuration. It is not represented as a Play Store production signing artifact.
+
+Package the iOS Simulator developer client on macOS/Xcode with:
+
+```bash
+bash scripts/package-sting-go.sh ios release-artifacts/sting-go
+```
+
+The command builds the normal UIKit/official-QuickJS client with code signing disabled and emits:
+
+```text
+sting-go-v<version>-ios-simulator.zip
+sting-go-ios-simulator.json
+```
+
+Each metadata file records the Sting version and SHA-256 checksum. A physical-iPhone/App Store artifact remains a signing/distribution concern and is not fabricated by hosted simulator CI.
+
 ## Physical Android validation
 
 Hosted Android-emulator CI validates the normal Sting Go application and instrumentation suite, but it is not physical-device evidence. The repository also provides a hardware-only harness:
