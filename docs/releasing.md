@@ -28,10 +28,26 @@ For the initial registry bootstrap:
 1. Prepare a synchronized non-product prerelease cohort such as `1.0.0-bootstrap.0` with `npm run release:version -- 1.0.0-bootstrap.0`.
 2. Pass the exact-head PR Gate and Promotion Gate and promote that exact bootstrap commit to `main`.
 3. Run `release.yml` with `tag = v1.0.0-bootstrap.0` and `publish_npm = false` to build the complete 22-package release bundle without publishing it.
-4. From the generated `npm-publish-order.txt`, manually publish each bootstrap tarball with the authenticated maintainer account and account-level 2FA using `npm publish <tarball> --access public --tag bootstrap`.
-5. Configure each existing package's Trusted Publisher for GitHub owner `chrisbirster`, repository `stingjs`, workflow filename `release.yml`, allowing `npm publish`.
-6. Verify each package with `npm trust list <package>`.
-7. Do not keep a traditional automation write token; normal releases must publish only through OIDC.
+4. Collect `npm-publish-order.txt` and all 22 npm tarballs from that release bundle into one local directory.
+5. Validate the bundle without changing npm:
+
+```bash
+npm run release:npm:bootstrap -- \
+  release-artifacts \
+  --version 1.0.0-bootstrap.0
+```
+
+6. Publish the bootstrap cohort and attach trust with the authenticated maintainer account + 2FA:
+
+```bash
+npm run release:npm:bootstrap -- \
+  release-artifacts \
+  --version 1.0.0-bootstrap.0 \
+  --publish \
+  --trust
+```
+
+The helper refuses rc/stable versions, requires exactly 22 public StingJS packages with the canonical repository metadata, publishes only under the `bootstrap` dist-tag, makes interrupted bootstrap publication resumable, refuses to overwrite a mismatched trusted publisher, verifies trust after each package, and waits two seconds between trust writes.
 
 After trust is configured, prepare the real `1.0.0-rc.1` cohort on `dev`, pass the exact-head gates, promote it unchanged to `main`, and run `release.yml` with npm publication enabled. That is the **first publication of `1.0.0-rc.1`**, and it must happen through OIDC under `next`.
 
@@ -39,7 +55,7 @@ The registry bootstrap/OIDC proof is tracked by #135. The repository's `scripts/
 
 ## Trusted-publisher configuration
 
-For every public package:
+The guarded helper configures each public package with the equivalent of:
 
 ```bash
 npm trust github <package> \
@@ -49,7 +65,7 @@ npm trust github <package> \
   --yes
 ```
 
-npm requires account-level 2FA for trust configuration. For bulk configuration, npm recommends a short delay between requests to avoid rate limiting. Verify the result with:
+npm requires account-level 2FA for trust configuration. For bulk configuration, npm recommends a short delay between requests to avoid rate limiting. Verify individual package state with:
 
 ```bash
 npm trust list <package>
@@ -70,7 +86,7 @@ The workflow:
 - optionally publishes the 22-package npm train in dependency order using OIDC;
 - creates a GitHub prerelease or stable release from the exact commit.
 
-For the one-time bootstrap cohort, leave **Publish npm packages** disabled and manually publish only that bootstrap version under the `bootstrap` dist-tag. For the real RC and stable releases, enable npm publication so the release workflow performs the publish through OIDC.
+For the one-time bootstrap cohort, leave **Publish npm packages** disabled and use the guarded local bootstrap helper on the resulting tarballs. For the real RC and stable releases, enable npm publication so the release workflow performs the publish through OIDC.
 
 ## 1.0 RC promotion
 
