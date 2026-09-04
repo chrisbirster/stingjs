@@ -16,6 +16,8 @@
 - Measure JSON proof transport versus typed Zig ABI hot paths and adopt typed primitive hot paths with structured JSON fallback.
 - Preserve same-device physical Android performance evidence, independent external RC consumption, and npm registry bootstrap/OIDC validation as explicit release gates rather than inferring them from simulator or monorepo CI.
 
-The first RC is promoted from an exact green `dev` commit to `main` and released as `v1.0.0-rc.1` under npm's `next` dist-tag. Stable `v1.0.0` remains gated by #5, #134, #135, and the master #70 release tracker.
+Before this RC is published, npm package existence is bootstrapped with a separate non-product prerelease such as `1.0.0-bootstrap.0` under the `bootstrap` dist-tag. The real `1.0.0-rc.1` version is reserved for its first publication through GitHub Actions OIDC under npm's `next` dist-tag.
+
+Stable `v1.0.0` remains gated by #5, #134, #135, and the master #70 release tracker.
 
 Historical browser-engine work remains available on `archive/game-engine-v0.1`.
