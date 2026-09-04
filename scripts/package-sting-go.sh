@@ -62,8 +62,6 @@ case "$PLATFORM" in
     source_apk="$REPO_ROOT/apps/sting-go/android/app/build/outputs/apk/release/app-release.apk"
     test -f "$source_apk"
 
-    # Sting Go must carry the accepted official QuickJS production runtime for
-    # both physical ARM64 devices and the x86_64 emulator validation lane.
     unzip -l "$source_apk" | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so' >/dev/null
     unzip -l "$source_apk" | grep -F 'lib/x86_64/libsting_quickjs_android.so' >/dev/null
 
@@ -75,30 +73,56 @@ case "$PLATFORM" in
 
   ios)
     if [[ "$(uname -s)" != "Darwin" ]]; then
-      echo "error: iOS Sting Go developer-client packaging requires macOS/Xcode" >&2
-      exit 1
-    fi
-    if ! command -v xcodebuild >/dev/null 2>&1; then
-      echo "error: xcodebuild is required to package the iOS Sting Go developer client" >&2
+      echo "error: iOS Sting Go developer-client packaging requires macOS" >&2
       exit 1
     fi
 
-    derived_data="${STING_GO_IOS_DERIVED_DATA:-$ARTIFACT_DIR/derived-data}"
-    rm -rf "$derived_data"
-    xcodebuild \
-      -project "$REPO_ROOT/apps/sting-go/ios/StingGo.xcodeproj" \
-      -scheme StingGo \
-      -configuration Debug \
-      -sdk iphonesimulator \
-      -destination 'generic/platform=iOS Simulator' \
-      -derivedDataPath "$derived_data" \
-      CODE_SIGNING_ALLOWED=NO \
-      CODE_SIGNING_REQUIRED=NO \
-      CODE_SIGN_IDENTITY= \
-      build
+    source_app="${STING_GO_IOS_APP:-}"
+    if [[ -n "$source_app" ]]; then
+      if [[ "$source_app" != /* ]]; then
+        source_app="$REPO_ROOT/$source_app"
+      fi
+      if [[ ! -d "$source_app" ]]; then
+        echo "error: STING_GO_IOS_APP does not point to a built StingGo.app: $source_app" >&2
+        exit 1
+      fi
+    else
+      if ! command -v xcodebuild >/dev/null 2>&1; then
+        echo "error: xcodebuild is required to build the iOS Sting Go developer client" >&2
+        exit 1
+      fi
 
-    source_app="$derived_data/Build/Products/Debug-iphonesimulator/StingGo.app"
+      derived_data="${STING_GO_IOS_DERIVED_DATA:-$ARTIFACT_DIR/derived-data}"
+      rm -rf "$derived_data"
+      rm -rf \
+        "$REPO_ROOT/apps/sting-go/ios/Support/.build" \
+        "$REPO_ROOT/native/ios/.build" \
+        "$REPO_ROOT/native/ios/QuickJSRuntime/.build" \
+        "$REPO_ROOT/packages/modules/haptics/.build" \
+        "$REPO_ROOT/packages/modules/clipboard/.build"
+
+      xcodebuild \
+        -project "$REPO_ROOT/apps/sting-go/ios/StingGo.xcodeproj" \
+        -scheme StingGo \
+        -configuration Debug \
+        -sdk iphonesimulator \
+        -destination 'generic/platform=iOS Simulator' \
+        -derivedDataPath "$derived_data" \
+        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGN_IDENTITY= \
+        clean build
+
+      source_app="$derived_data/Build/Products/Debug-iphonesimulator/StingGo.app"
+    fi
+
     test -d "$source_app"
+    test -f "$source_app/Info.plist"
+    bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$source_app/Info.plist")"
+    if [[ "$bundle_id" != "run.stingjs.go" ]]; then
+      echo "error: unexpected Sting Go bundle identifier '$bundle_id' in $source_app" >&2
+      exit 1
+    fi
 
     artifact="$ARTIFACT_DIR/sting-go-v${VERSION}-ios-simulator.zip"
     rm -f "$artifact"
