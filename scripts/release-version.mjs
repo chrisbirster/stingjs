@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { access, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -10,13 +10,13 @@ const moduleFolders = [
   'sharing', 'sensors', 'image-picker', 'location', 'contacts', 'camera',
   'notifications', 'audio', 'background-task',
 ];
-const packageRoots = [
+const publicPackageRoots = [
   'packages/core', 'packages/native', 'packages/solid', 'packages/stylex',
   'packages/modules-core',
   ...moduleFolders.map((folder) => `packages/modules/${folder}`),
   'tooling/cli', 'tooling/create-sting',
 ];
-const manifestPaths = ['package.json', ...packageRoots.map((packageRoot) => `${packageRoot}/package.json`)];
+const publicManifestPaths = publicPackageRoots.map((packageRoot) => `${packageRoot}/package.json`);
 const templateManifestPath = 'tooling/create-sting/template/package.json.tpl';
 const dependencyFields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -37,12 +37,43 @@ async function loadJsonRecord(relativePath) {
   return { relativePath, absolutePath, original, manifest: JSON.parse(original) };
 }
 
-const records = [];
+async function expandWorkspaceManifestPaths(workspaces) {
+  if (!Array.isArray(workspaces)) {
+    throw new Error('release version: root workspaces must be an array');
+  }
+
+  const paths = [];
+  for (const workspace of workspaces) {
+    if (typeof workspace !== 'string' || workspace.length === 0) {
+      throw new Error(`release version: unsupported workspace entry ${String(workspace)}`);
+    }
+
+    if (!workspace.includes('*')) {
+      paths.push(`${workspace}/package.json`);
+      continue;
+    }
+
+    if (!workspace.endsWith('/*') || workspace.slice(0, -2).includes('*')) {
+      throw new Error(`release version: unsupported workspace glob ${workspace}`);
+    }
+
+    const parent = workspace.slice(0, -2);
+    const entries = await readdir(join(root, parent), { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) paths.push(`${parent}/${entry.name}/package.json`);
+    }
+  }
+
+  return [...new Set(paths)].sort();
+}
+
+const rootRecord = await loadJsonRecord('package.json');
+const publicRecords = [];
 const publicNames = new Set();
-for (const relativePath of manifestPaths) {
+for (const relativePath of publicManifestPaths) {
   const record = await loadJsonRecord(relativePath);
-  records.push(record);
-  if (relativePath !== 'package.json') publicNames.add(record.manifest.name);
+  publicRecords.push(record);
+  publicNames.add(record.manifest.name);
 }
 const templateRecord = await loadJsonRecord(templateManifestPath);
 
@@ -53,11 +84,21 @@ if (!publicNames.has('@stingjs/cli') || !publicNames.has('create-sting')) {
   throw new Error('release version: public package set is incomplete');
 }
 
-function validateDependencySpecs(record, expectedVersion) {
+const publicManifestPathSet = new Set(publicManifestPaths);
+const workspaceManifestPaths = await expandWorkspaceManifestPaths(currentRootManifest.workspaces);
+const consumerManifestPaths = workspaceManifestPaths.filter(
+  (relativePath) => !publicManifestPathSet.has(relativePath),
+);
+const consumerRecords = [];
+for (const relativePath of consumerManifestPaths) {
+  consumerRecords.push(await loadJsonRecord(relativePath));
+}
+
+function validateDependencySpecs(record, expectedVersion, { requirePublishable = false } = {}) {
   for (const field of dependencyFields) {
     for (const [dependencyName, spec] of Object.entries(record.manifest[field] ?? {})) {
       if (typeof spec !== 'string') continue;
-      if (/^(workspace:|file:|link:)/.test(spec)) {
+      if (requirePublishable && /^(workspace:|file:|link:)/.test(spec)) {
         throw new Error(`${record.relativePath}: non-publishable ${dependencyName}=${spec}`);
       }
       if (publicNames.has(dependencyName) && spec !== expectedVersion) {
@@ -68,39 +109,53 @@ function validateDependencySpecs(record, expectedVersion) {
 }
 
 function validatePackageRecords(expectedVersion) {
-  for (const record of records) {
+  if (rootRecord.manifest.version !== expectedVersion) {
+    throw new Error(`${rootRecord.relativePath}: version ${rootRecord.manifest.version} does not equal ${expectedVersion}`);
+  }
+  validateDependencySpecs(rootRecord, expectedVersion);
+
+  for (const record of publicRecords) {
     if (record.manifest.version !== expectedVersion) {
       throw new Error(`${record.relativePath}: version ${record.manifest.version} does not equal ${expectedVersion}`);
     }
-    if (record.relativePath !== 'package.json') validateDependencySpecs(record, expectedVersion);
+    validateDependencySpecs(record, expectedVersion, { requirePublishable: true });
   }
-  validateDependencySpecs(templateRecord, expectedVersion);
+
+  for (const record of consumerRecords) {
+    validateDependencySpecs(record, expectedVersion);
+  }
+  validateDependencySpecs(templateRecord, expectedVersion, { requirePublishable: true });
+}
+
+function updatePublicDependencySpecs(record, expectedVersion) {
+  for (const field of dependencyFields) {
+    for (const dependencyName of Object.keys(record.manifest[field] ?? {})) {
+      if (publicNames.has(dependencyName)) record.manifest[field][dependencyName] = expectedVersion;
+    }
+  }
 }
 
 if (checkOnly) {
   validatePackageRecords(target);
-  process.stdout.write(`release version check passed: target=${target} packages=${publicNames.size} template=1\n`);
+  process.stdout.write(
+    `release version check passed: target=${target} packages=${publicNames.size} consumers=${consumerRecords.length} template=1\n`,
+  );
   process.exit(0);
 }
 
-for (const record of records) {
+rootRecord.manifest.version = target;
+updatePublicDependencySpecs(rootRecord, target);
+
+for (const record of publicRecords) {
   record.manifest.version = target;
-  if (record.relativePath === 'package.json') continue;
-  for (const field of dependencyFields) {
-    for (const dependencyName of Object.keys(record.manifest[field] ?? {})) {
-      if (publicNames.has(dependencyName)) record.manifest[field][dependencyName] = target;
-    }
-  }
+  updatePublicDependencySpecs(record, target);
 }
-for (const field of dependencyFields) {
-  for (const dependencyName of Object.keys(templateRecord.manifest[field] ?? {})) {
-    if (publicNames.has(dependencyName)) templateRecord.manifest[field][dependencyName] = target;
-  }
-}
+for (const record of consumerRecords) updatePublicDependencySpecs(record, target);
+updatePublicDependencySpecs(templateRecord, target);
 
 validatePackageRecords(target);
 
-const transaction = [...records, templateRecord].map((record) => ({
+const transaction = [rootRecord, ...publicRecords, ...consumerRecords, templateRecord].map((record) => ({
   ...record,
   next: `${JSON.stringify(record.manifest, null, 2)}\n`,
   temp: `${record.absolutePath}.release-version-${process.pid}.tmp`,
@@ -139,7 +194,9 @@ try {
   }
 
   for (const record of transaction) await rm(record.backup, { force: true });
-  process.stdout.write(`release version updated atomically: ${target} packages=${publicNames.size} template=1\n`);
+  process.stdout.write(
+    `release version updated atomically: ${target} packages=${publicNames.size} consumers=${consumerRecords.length} template=1\n`,
+  );
 } catch (error) {
   for (const record of [...transaction].reverse()) {
     try {
