@@ -49,6 +49,16 @@
             "path": { "const": "/health" },
             "contentType": { "const": "application/json" }
           }
+        },
+        "report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "method", "contentType"],
+          "properties": {
+            "path": { "const": "/report" },
+            "method": { "const": "POST" },
+            "contentType": { "const": "application/json" }
+          }
         }
       }
     },
