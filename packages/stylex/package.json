@@ -1,6 +1,6 @@
 {
   "name": "@stingjs/stylex",
-  "version": "0.1.0",
+  "version": "1.0.0-bootstrap.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@stingjs/native": "0.1.0"
+    "@stingjs/native": "1.0.0-bootstrap.0"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

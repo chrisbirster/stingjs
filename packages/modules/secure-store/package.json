@@ -1,11 +1,24 @@
 {
   "name": "@stingjs/secure-store",
-  "version": "0.1.0",
+  "version": "1.0.0-bootstrap.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run" },
-  "dependencies": { "@stingjs/modules-core": "0.1.0" },
-  "repository": { "type": "git", "url": "git+https://github.com/chrisbirster/stingjs.git", "directory": "packages/modules/secure-store" },
-  "publishConfig": { "access": "public" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@stingjs/modules-core": "1.0.0-bootstrap.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrisbirster/stingjs.git",
+    "directory": "packages/modules/secure-store"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

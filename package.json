@@ -1,13 +1,19 @@
 {
   "name": "stingjs",
-  "version": "0.1.0",
+  "version": "1.0.0-bootstrap.0",
   "private": true,
   "type": "module",
   "packageManager": "npm@12.0.2",
   "workspaces": [
-    "packages/core", "packages/solid", "packages/native", "packages/stylex",
-    "packages/modules-core", "packages/modules/*", "examples/*",
-    "benchmarks/sting-benchmark", "benchmarks/solid2-conformance"
+    "packages/core",
+    "packages/solid",
+    "packages/native",
+    "packages/stylex",
+    "packages/modules-core",
+    "packages/modules/*",
+    "examples/*",
+    "benchmarks/sting-benchmark",
+    "benchmarks/solid2-conformance"
   ],
   "scripts": {
     "benchmark:import-evidence": "node benchmarks/results/candidate-evidence-cli.mjs",
@@ -27,7 +33,12 @@
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
-  "devDependencies": { "typescript": "5.9.2", "vitest": "4.1.0" },
-  "engines": { "node": ">=22.12.0" },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vitest": "4.1.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "license": "MIT"
 }
