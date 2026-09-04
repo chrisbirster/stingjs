@@ -33,6 +33,8 @@ npx sting run android
 
 Release candidates use the `next` npm dist-tag, for example `npm create sting@next my-app`. Until the first public package bootstrap is completed, repository contributors should use the source checkout and CI paths documented in `docs/releasing.md`; local source/tarball dependencies are not the supported public product path.
 
+The one-time npm trusted-publisher bootstrap uses a separate non-product prerelease under the `bootstrap` dist-tag. It is not a product release and does not consume the `1.0.0-rc.1` version; the real RC is reserved for its first OIDC publication under `next`.
+
 Ordinary generated application builds consume distributable native host artifacts and do **not** require a Sting source checkout or Zig.
 
 ## How it runs
