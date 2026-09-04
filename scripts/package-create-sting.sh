@@ -88,4 +88,17 @@ test -f "$consumer_dir/generated-app/android/gradle/wrapper/gradle-wrapper.jar"
 test -f "$consumer_dir/generated-app/ios/StingQuickJSRuntime/Package.swift"
 test -f "$consumer_dir/generated-app/ios/StingApp.xcodeproj/project.pbxproj"
 
+release_version="$(node -p 'require(process.argv[1]).version' "$REPO_ROOT/package.json")"
+node - "$consumer_dir/generated-app/package.json" "$release_version" <<'NODE'
+const fs = require('node:fs');
+const [manifestPath, expected] = process.argv.slice(2);
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+const specs = { ...(manifest.dependencies ?? {}), ...(manifest.devDependencies ?? {}) };
+for (const name of ['@stingjs/core', '@stingjs/native', '@stingjs/solid', '@stingjs/cli']) {
+  if (specs[name] !== expected) {
+    throw new Error(`generated app pins ${name}=${specs[name] ?? '<missing>'}; expected ${expected}`);
+  }
+}
+NODE
+
 printf 'packaged and smoke-tested publishable create-sting tarball:\n  %s\n' "$tarball"

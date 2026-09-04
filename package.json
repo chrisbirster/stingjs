@@ -19,7 +19,10 @@
     "modules:validate": "node scripts/validate-sting-modules.mjs",
     "release:check:packages": "node scripts/check-public-packages.mjs",
     "release:check:final": "node scripts/check-final-release.mjs",
-    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && npm run modules:validate && npm run release:check:packages",
+    "release:npm:bootstrap": "node scripts/bootstrap-npm.mjs",
+    "release:version": "node scripts/release-version.mjs",
+    "release:version:check": "node scripts/release-version.mjs --check",
+    "test": "npm run test --workspaces --if-present && node --test benchmarks/results/tool.test.mjs benchmarks/results/capture.test.mjs benchmarks/results/candidate-capture.test.mjs benchmarks/results/candidate-evidence-cli.test.mjs scripts/sting-module-config.test.mjs && node --check scripts/bootstrap-npm.mjs && node scripts/bootstrap-npm.mjs --help && npm run modules:validate && npm run release:version:check && npm run release:check:packages",
     "test:ios-quickjs-runtime": "bash scripts/test-ios-quickjs-runtime.sh",
     "test:ios-runtime": "bash scripts/test-ios-runtime.sh",
     "typecheck": "npm run typecheck --workspaces --if-present"
