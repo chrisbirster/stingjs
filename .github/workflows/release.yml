@@ -119,6 +119,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: cp examples/hello-world/android/app/build/outputs/apk/release/app-release.apk "release-artifacts/stingjs-hello-world-${RELEASE_TAG}-android.apk"
+      - name: Package Sting Go Android developer client
+        run: bash scripts/package-sting-go.sh android release-artifacts
+      - name: Verify Sting Go Android release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-android.json"); if(m.version!==require("./package.json").version||m.platform!=="android"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
       - uses: actions/upload-artifact@v4
         with:
           name: release-android
@@ -141,6 +145,27 @@ jobs:
         run: npm install --global npm@12.0.2
       - run: npm install
       - run: npm run build --workspace @stingjs/example-hello-world
+      - name: Build Sting Go iOS Simulator release artifact source
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/sting-go-release-derived \
+            apps/sting-go/ios/Support/.build \
+            native/ios/.build \
+            native/ios/QuickJSRuntime/.build \
+            packages/modules/haptics/.build \
+            packages/modules/clipboard/.build
+          xcodebuild \
+            -project apps/sting-go/ios/StingGo.xcodeproj \
+            -scheme StingGo \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/sting-go-release-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build
+          test -d /tmp/sting-go-release-derived/Build/Products/Debug-iphonesimulator/StingGo.app
       - run: npm run test:ios-runtime
       - name: Build iOS simulator host
         run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
@@ -150,10 +175,16 @@ jobs:
         run: bash scripts/test-ios-distributable-host.sh release-artifacts/ios-host
       - name: Stage iOS distributable artifact
         run: cp release-artifacts/ios-host/sting-ios-host.zip release-artifacts/sting-ios-host.zip
+      - name: Package proven Sting Go iOS Simulator developer client
+        env:
+          STING_GO_IOS_APP: /tmp/sting-go-release-derived/Build/Products/Debug-iphonesimulator/StingGo.app
+        run: bash scripts/package-sting-go.sh ios release-artifacts
+      - name: Verify Sting Go iOS release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-ios-simulator.json"); if(m.version!==require("./package.json").version||m.platform!=="ios-simulator"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
       - uses: actions/upload-artifact@v4
         with:
           name: release-ios
-          path: release-artifacts/sting-ios-host.zip
+          path: release-artifacts/
           if-no-files-found: error
 
   package:
@@ -183,6 +214,13 @@ jobs:
         with:
           name: release-ios
           path: release-artifacts
+      - name: Verify Sting Go clients are present in unified bundle
+        run: |
+          set -euo pipefail
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-android-dev.apk' -type f | wc -l | tr -d ' ')" = "1"
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | wc -l | tr -d ' ')" = "1"
+          test -f release-artifacts/sting-go-android.json
+          test -f release-artifacts/sting-go-ios-simulator.json
       - name: Pack public SDK and CLI packages
         run: bash scripts/package-public-npm.sh release-artifacts
       - name: Package publishable create-sting with production native hosts
