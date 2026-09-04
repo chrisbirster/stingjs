@@ -59,3 +59,13 @@ jobs:
         run: bash scripts/package-ios-host.sh /tmp/sting-ios-host
       - name: Prove distributable iOS host builds without Zig
         run: bash scripts/test-ios-distributable-host.sh /tmp/sting-ios-host
+      - name: Package launched Sting Go iOS Simulator developer client
+        env:
+          STING_GO_IOS_APP: /tmp/sting-go-ios-derived/Build/Products/Debug-iphonesimulator/StingGo.app
+        run: bash scripts/package-sting-go.sh ios /tmp/sting-go-artifacts
+      - name: Verify packaged Sting Go iOS metadata
+        run: |
+          set -euo pipefail
+          test "$(find /tmp/sting-go-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | wc -l | tr -d ' ')" = "1"
+          unzip -l "$(find /tmp/sting-go-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | head -n 1)" | grep -F 'StingGo.app/Info.plist'
+          node -e 'const m=require("/tmp/sting-go-artifacts/sting-go-ios-simulator.json"); if(m.product!=="sting-go"||m.platform!=="ios-simulator"||m.releaseKind!=="developer-client"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
