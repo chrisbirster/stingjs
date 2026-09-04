@@ -119,6 +119,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: cp examples/hello-world/android/app/build/outputs/apk/release/app-release.apk "release-artifacts/stingjs-hello-world-${RELEASE_TAG}-android.apk"
+      - name: Package Sting Go Android developer client
+        run: bash scripts/package-sting-go.sh android release-artifacts
+      - name: Verify Sting Go Android release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-android.json"); if(m.version!==require("./package.json").version||m.platform!=="android"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
       - uses: actions/upload-artifact@v4
         with:
           name: release-android
@@ -150,10 +154,14 @@ jobs:
         run: bash scripts/test-ios-distributable-host.sh release-artifacts/ios-host
       - name: Stage iOS distributable artifact
         run: cp release-artifacts/ios-host/sting-ios-host.zip release-artifacts/sting-ios-host.zip
+      - name: Package Sting Go iOS Simulator developer client
+        run: bash scripts/package-sting-go.sh ios release-artifacts
+      - name: Verify Sting Go iOS release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-ios-simulator.json"); if(m.version!==require("./package.json").version||m.platform!=="ios-simulator"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
       - uses: actions/upload-artifact@v4
         with:
           name: release-ios
-          path: release-artifacts/sting-ios-host.zip
+          path: release-artifacts/
           if-no-files-found: error
 
   package:
@@ -183,6 +191,13 @@ jobs:
         with:
           name: release-ios
           path: release-artifacts
+      - name: Verify Sting Go clients are present in unified bundle
+        run: |
+          set -euo pipefail
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-android-dev.apk' -type f | wc -l | tr -d ' ')" = "1"
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | wc -l | tr -d ' ')" = "1"
+          test -f release-artifacts/sting-go-android.json
+          test -f release-artifacts/sting-go-ios-simulator.json
       - name: Pack public SDK and CLI packages
         run: bash scripts/package-public-npm.sh release-artifacts
       - name: Package publishable create-sting with production native hosts
