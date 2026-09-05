@@ -1,6 +1,6 @@
 # `@stingjs/cli`
 
-Developer tooling for StingJS. The npm package is intentionally `private: true` until the `stingjs` npm organization/scope is confirmed, but the installed executable is `sting`.
+Developer tooling for StingJS. The installed executable is `sting`, and the package is intended to publish publicly under the `@stingjs` npm scope.
 
 ## Commands
 
@@ -14,6 +14,7 @@ node dist/cli.js doctor --project-root ../../examples/hello-world
 node dist/cli.js doctor --runtime
 node dist/cli.js devices
 node dist/cli.js config --project-root ../../examples/hello-world
+node dist/cli.js dev --project-root ../../examples/hello-world
 node dist/cli.js start --project-root ../../examples/hello-world
 node dist/cli.js run ios --project-root ../../examples/hello-world
 node dist/cli.js run android --project-root ../../examples/hello-world
@@ -116,28 +117,58 @@ When `sting.config.ts` provides `android.directory`, `android.package`, or `andr
 
 Both `run` commands accept `--no-bundle` to skip the CLI's explicit `npm run build` step when the native project already owns bundle generation.
 
+### `sting dev`
+
+`sting dev` is the primary Sting development loop. It composes the existing production development pieces instead of introducing a separate runtime path:
+
+1. runs the project's normal `npm run build` once;
+2. starts the managed `npm run build -- --watch` watcher;
+3. serves the built bundle and v1 Sting Go manifest;
+4. advertises the SSE reload and health endpoints;
+5. prints the Sting Go deep link and a QR code in interactive terminals;
+6. emits reload events whenever the built bundle changes.
+
+```bash
+sting dev
+sting dev --project-root ./apps/my-app
+sting dev --port 9000
+sting dev --open
+sting dev --open --device "Pixel 9"
+sting dev --no-qr
+sting dev --json
+```
+
+The command accepts the same `--project-root`, `--bundle`, `--host`, `--port`, `--qr`, `--no-qr`, and `--json` server options as `sting start`. Watch/live-reload mode is always enabled for `sting dev`; there is intentionally no separate `--watch` step to remember.
+
+Use `--open` to send the generated `sting://go?...` deep link directly to a ready Sting Go target. On macOS, the default target is a booted iOS Simulator when one exists; otherwise the CLI uses the first authorized Android device/emulator. `--device <id|name>` selects a specific ready target. The command does not silently boot a stopped simulator or install Sting Go for you: those remain explicit device/client setup steps, and failures cleanly stop the development server and watcher.
+
+When `--open --json` is used, the normal machine-readable result gains an `openedDevice` object with the selected platform, id, and name. Terminal QR output is still suppressed in JSON mode.
+
 ### `sting start`
 
-Serves a built Sting application bundle to Sting Go. The default remains `dist/sting-app.js`, while `sting.config.ts` can set another default with `bundle`. An explicit `--bundle` flag wins over config.
+`sting start` remains the lower-level server command for scripts, tests, and workflows that already own bundle generation. The default bundle remains `dist/sting-app.js`, while `sting.config.ts` can set another default with `bundle`. An explicit `--bundle` flag wins over config.
 
 The server exposes:
 
 ```text
 GET /manifest
 GET /bundle
+GET /events
 GET /health
 ```
 
-and prints a deep link of the form:
+and prints the connection deep link:
 
 ```text
 sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 ```
 
-The first server slice deliberately does not run Vite itself. Build/watch integration, QR rendering, and reload signaling remain follow-up work.
+In an interactive terminal, `sting start` also renders that exact deep link as a compact QR code that Android or iOS Sting Go can scan/open. Use `--qr` to force QR output when stdout is not a TTY, or `--no-qr` to suppress it. `--json` always remains machine-readable and never mixes terminal QR output into JSON.
+
+Use `sting start --watch` when a lower-level caller explicitly wants the managed build watcher. For normal interactive application development, prefer `sting dev`.
 
 ## Publishing scope
 
-Official packages should use the `@stingjs/*` scope. The unscoped npm package `sting` already belongs to an unrelated project, while this repository already uses names such as `@stingjs/core` and `@stingjs/solid`.
+Official packages use the `@stingjs/*` scope. The unscoped npm package `sting` belongs to an unrelated project, while this repository already uses names such as `@stingjs/core` and `@stingjs/solid`.
 
-Before making this package publishable, confirm or create the `stingjs` organization on npm and remove `private: true` as part of a reviewed release change.
+The package manifest is publishable and uses public access. The release workflow should publish it only after the `stingjs` npm scope is configured with the repository's trusted publisher. No long-lived npm token should be required by the release workflow.

@@ -78,6 +78,8 @@ class StingNativeBridge(
         perform { nodes.setEventEnabled(id, event, enabled) }
     }
 
+    fun requestBack(): Boolean = nodes.requestBack()
+
     fun callModuleSync(module: String, method: String, argsJSON: String): String {
         return try {
             JSONObject()
@@ -146,6 +148,19 @@ class StingNativeBridge(
         }
     }
 
+    fun dispatchLifecycle(event: StingApplicationLifecycleEvent) {
+        modules.dispatchLifecycle(event)
+    }
+
+    fun deliverBackgroundEvent(
+        module: String,
+        event: String,
+        payload: Any?,
+        completion: StingNativeModuleCompletion,
+    ) {
+        modules.deliverBackgroundEvent(module, event, payload, completion)
+    }
+
     fun isModuleEventActive(module: String, event: String): Boolean =
         synchronized(moduleEventLock) {
             activeModuleEvents.contains(StingModuleEventKey(module, event))
@@ -179,7 +194,10 @@ class StingNativeBridge(
     }
 
     fun disposeNativeObjects() {
-        modules.disposeAllObjects()
+        // Historical method name retained for engine adapters. Module disposal
+        // now also emits the one-shot runtimeDisposing lifecycle transition
+        // before releasing abandoned native-object handles.
+        modules.dispose()
     }
 
     private fun completeModuleAsync(

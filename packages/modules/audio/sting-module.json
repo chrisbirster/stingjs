@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "Audio",
+  "package": "@stingjs/audio",
+  "version": "1.0.0-bootstrap.0",
+  "ios": {
+    "module": "AudioModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.audio.AudioModule",
+    "factory": "context",
+    "permissions": ["android.permission.INTERNET"]
+  },
+  "capabilities": ["async-functions", "events", "native-objects", "lifecycle"]
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "Network",
+  "package": "@stingjs/network",
+  "version": "1.0.0-bootstrap.0",
+  "ios": {
+    "module": "NetworkModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.network.NetworkModule",
+    "factory": "context",
+    "permissions": ["android.permission.ACCESS_NETWORK_STATE"]
+  },
+  "capabilities": ["async-functions", "events"]
+}

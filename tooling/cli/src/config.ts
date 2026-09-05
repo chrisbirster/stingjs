@@ -8,6 +8,7 @@ export interface StingIosConfig {
   scheme?: string;
   bundleIdentifier?: string;
   configuration?: string;
+  infoPlist?: Record<string, string>;
 }
 
 export interface StingAndroidConfig {
@@ -49,6 +50,18 @@ export function findStingConfig(projectRoot: string): string | undefined {
   return undefined;
 }
 
+function validateStringRecord(value: unknown, label: string): void {
+  if (value === undefined) return;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object of string values.`);
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (key.length === 0 || typeof entry !== 'string' || entry.trim().length === 0) {
+      throw new Error(`${label} must contain non-empty string keys and values.`);
+    }
+  }
+}
+
 function validateConfig(value: unknown, sourcePath: string): StingConfig {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${basename(sourcePath)} must default-export a Sting config object.`);
@@ -67,6 +80,7 @@ function validateConfig(value: unknown, sourcePath: string): StingConfig {
   if (config.android !== undefined && (config.android === null || typeof config.android !== 'object' || Array.isArray(config.android))) {
     throw new Error(`${basename(sourcePath)}: android must be an object.`);
   }
+  validateStringRecord(config.ios?.infoPlist, `${basename(sourcePath)}: ios.infoPlist`);
 
   return config;
 }

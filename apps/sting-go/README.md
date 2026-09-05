@@ -18,17 +18,61 @@ Projects that add custom third-party native modules will eventually require a pr
 sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 ```
 
+In an interactive terminal, `sting start` also renders that exact deep link as a QR code. Android and iOS Sting Go both consume the same `sting://go` URL contract.
+
+The v1 manifest is the authoritative discovery document. It identifies the production engine and runtime version, names required standard-SDK capabilities, and publishes the bundle, reload, and health endpoints:
+
+```json
+{
+  "schemaVersion": 1,
+  "runtimeVersion": "0.1.0",
+  "engine": "quickjs",
+  "project": { "name": "my-app" },
+  "bundle": {
+    "path": "/bundle",
+    "contentType": "application/javascript"
+  },
+  "development": {
+    "reload": {
+      "path": "/events",
+      "transport": "sse",
+      "contentType": "text/event-stream"
+    },
+    "health": {
+      "path": "/health",
+      "contentType": "application/json"
+    }
+  },
+  "capabilities": ["clipboard", "haptics"]
+}
+```
+
+Endpoint paths are resolved relative to the manifest URL. Clients must not hard-code a different host or port.
+
+### v1 compatibility rule
+
+Before downloading or evaluating a bundle, Sting Go must reject the project with a native, actionable error when any of these checks fail:
+
+- `schemaVersion` is not `1`;
+- `engine` is not `quickjs`;
+- `runtimeVersion` does not exactly match the runtime compiled into that Sting Go build;
+- the manifest requests a standard-SDK capability that the client does not provide.
+
+Exact runtime matching is deliberately conservative for v1. A future schema can define a broader compatibility range without teaching v1 clients to guess.
+
 The native launcher:
 
 1. extracts the manifest URL from the deep link or manual URL entry;
 2. fetches `/manifest`;
-3. validates `schemaVersion`, `runtimeVersion`, `engine`, and requested capabilities;
-4. resolves the manifest-relative bundle path;
+3. validates the JSON against the v1 shape and compatibility rule;
+4. resolves the manifest-relative bundle and development endpoints;
 5. downloads the JavaScript bundle;
 6. creates/resets the normal Sting QuickJS runtime;
 7. attaches a fresh native root and evaluates the bundle;
 8. surfaces connection, compatibility, bundle, and runtime errors using native UI;
-9. supports reload/reconnect without reinstalling the client.
+9. connects to the advertised SSE reload endpoint and reconnects without reinstalling the client.
+
+`ready` and `reload` events carry a monotonic reload version. On reconnect, the server sends `ready` with its current version so a client can decide whether its currently loaded bundle is stale.
 
 The development server is local-network tooling. Simulator/device loopback and LAN behavior must be tested explicitly; simulator timings are never physical-device performance evidence.
 
@@ -44,7 +88,7 @@ The development server is local-network tooling. Simulator/device loopback and L
 - official QuickJS Sting runtime creation;
 - real native renderer root;
 - reload/error UI;
-- connected physical-device test.
+- connected physical-device validation harness.
 
 ### iOS
 
@@ -53,10 +97,66 @@ The development server is local-network tooling. Simulator/device loopback and L
 - `sting://go` URL scheme;
 - manifest fetch using `URLSession`;
 - bundle fetch;
-- selected Sting runtime integration;
+- official `StingQuickJSRuntime` integration;
 - real UIKit renderer root;
 - reload/error UI;
-- Simulator test first; physical iPhone validation when hardware is available.
+- Simulator build/install/launch + deep-link smoke;
+- physical iPhone validation when hardware is available.
+
+## Developer-client release artifacts
+
+Sting Go is a development tool, so v1 distinguishes reproducible developer-client artifacts from signed store distribution.
+
+Package the Android developer client on a machine or CI lane with Java 17, Android SDK/NDK, Gradle 9.5, and Zig 0.16.0:
+
+```bash
+bash scripts/package-sting-go.sh android release-artifacts/sting-go
+```
+
+The command builds the Android release variant, verifies the accepted official QuickJS runtime is present for ARM64 and x86_64, and emits:
+
+```text
+sting-go-v<version>-android-dev.apk
+sting-go-android.json
+```
+
+The APK is a developer-client artifact using the repository's current development signing configuration. It is not represented as a Play Store production signing artifact.
+
+Package the iOS Simulator developer client on macOS/Xcode with:
+
+```bash
+bash scripts/package-sting-go.sh ios release-artifacts/sting-go
+```
+
+The command builds the normal UIKit/official-QuickJS client with code signing disabled and emits:
+
+```text
+sting-go-v<version>-ios-simulator.zip
+sting-go-ios-simulator.json
+```
+
+Each metadata file records the Sting version and SHA-256 checksum. A physical-iPhone/App Store artifact remains a signing/distribution concern and is not fabricated by hosted simulator CI.
+
+## Physical Android validation
+
+Hosted Android-emulator CI validates the normal Sting Go application and instrumentation suite, but it is not physical-device evidence. The repository also provides a hardware-only harness:
+
+```bash
+bash scripts/test-sting-go-android-physical.sh
+```
+
+The harness intentionally refuses Android emulators. It requires exactly one authorized physical Android device plus the normal Sting source-build Android toolchain. It then:
+
+1. builds the hello-world Solid/Vite bundle and the Android Sting Go app;
+2. installs the app and instrumentation APK on the physical device;
+3. creates an `adb reverse` tunnel to the local `sting start` server;
+4. exercises the exported `sting://go` VIEW intent;
+5. opens the v1 manifest through the real developer client;
+6. asserts that official QuickJS evaluates the bundle and the native view tree contains `Count: 0`;
+7. asserts that the SSE reload connection reaches `Live`;
+8. writes commit/device/result metadata under `.artifacts/sting-go/android-physical/<commit>/`.
+
+The `adb reverse` path is a deterministic USB physical-device smoke. A separate LAN/QR run is still useful before release to prove the actual developer-network topology on the target phone.
 
 ## Compatibility
 

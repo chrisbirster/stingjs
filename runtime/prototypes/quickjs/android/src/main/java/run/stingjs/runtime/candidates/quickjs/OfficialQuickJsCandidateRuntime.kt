@@ -2,6 +2,7 @@ package run.stingjs.runtime.candidates.quickjs
 
 import android.os.Handler
 import android.os.Looper
+import run.stingjs.runtime.StingApplicationLifecycleEvent
 import run.stingjs.runtime.StingNativeBridge
 import run.stingjs.runtime.StingRuntimeException
 
@@ -46,12 +47,22 @@ class OfficialQuickJsCandidateRuntime(
         }
     }
 
+    fun requestBack(): Boolean {
+        requireOwnerThread("handle a native back request")
+        if (handle == 0L) return false
+        return bridge.requestBack()
+    }
+
     override fun close() {
         requireOwnerThread("destroy the runtime")
         val current = handle
         if (current == 0L) return
 
         handle = 0L
+
+        // Give modules a portable terminal lifecycle callback while all of
+        // their module views/objects are still owned and available for cleanup.
+        bridge.dispatchLifecycle(StingApplicationLifecycleEvent.RUNTIME_DISPOSING)
         bridge.detachAsyncResultSink()
         bridge.detachModuleEventSink()
         try {
