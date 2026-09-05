@@ -10,14 +10,14 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@stingjs/core": "0.1.0",
-    "@stingjs/native": "0.1.0",
-    "@stingjs/solid": "0.1.0",
+    "@stingjs/core": "1.0.0-bootstrap.0",
+    "@stingjs/native": "1.0.0-bootstrap.0",
+    "@stingjs/solid": "1.0.0-bootstrap.0",
     "solid-js": "2.0.0-rc.1"
   },
   "devDependencies": {
     "@solidjs/vite-plugin": "3.0.0-next.29",
-    "@stingjs/cli": "0.1.0",
+    "@stingjs/cli": "1.0.0-bootstrap.0",
     "@types/node": "^22.0.0",
     "typescript": "5.9.2",
     "vite": "8.2.2",
