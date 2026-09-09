@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  cli:
-    name: CLI · ${{ matrix.os }}
+  tooling:
+    name: CLI + Creator · ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,9 +20,18 @@ jobs:
       - name: Install CLI dependencies
         working-directory: tooling/cli
         run: npm install
-      - name: Typecheck
+      - name: Typecheck CLI
         working-directory: tooling/cli
         run: npm run typecheck
-      - name: Test
+      - name: Test CLI
         working-directory: tooling/cli
+        run: npm test
+      - name: Install creator dependencies
+        working-directory: tooling/create-sting
+        run: npm install
+      - name: Typecheck creator
+        working-directory: tooling/create-sting
+        run: npm run typecheck
+      - name: Test creator
+        working-directory: tooling/create-sting
         run: npm test

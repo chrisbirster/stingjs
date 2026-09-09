@@ -23,10 +23,13 @@ jobs:
         run: npm install --global npm@12.0.2
       - name: Install Sting workspace dependencies
         run: npm install
+      - name: Install CLI dependencies
+        run: npm install --prefix tooling/cli
       - name: Build Hello World and benchmark bundles
         run: |
           npm run build --workspace @stingjs/example-hello-world
           npm run build --workspace @stingjs/benchmark-native
+          npm run build --prefix tooling/cli
       - name: Install Android SDK and pinned NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
       - name: Install pinned Zig 0.16.0
@@ -55,6 +58,84 @@ jobs:
             echo 'QuickJS-NG must not be packaged in the normal Sting Android application' >&2
             exit 1
           fi
+      - name: Prove packed create-sting Android output builds without Zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_inputs=/tmp/sting-create-release-inputs
+          ios_placeholder=/tmp/sting-create-ios-placeholder
+          package_install=/tmp/sting-create-package-install
+          generated=/tmp/sting-generated-app
+          rm -rf "$release_inputs" "$ios_placeholder" "$package_install" "$generated"
+          mkdir -p "$release_inputs"
+
+          bash scripts/package-android-host.sh "$release_inputs"
+          mkdir -p \
+            "$ios_placeholder/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework" \
+            "$ios_placeholder/StingQuickJSRuntime/Sources/StingQuickJSRuntime"
+          printf '// Android E2E placeholder; iOS E2E uses the real package.\n' > "$ios_placeholder/StingQuickJSRuntime/Package.swift"
+          printf '// Android E2E placeholder; never compiled.\n' > "$ios_placeholder/StingQuickJSRuntime/Sources/StingQuickJSRuntime/Placeholder.swift"
+          printf 'Android E2E placeholder; the real XCFramework is validated by iOS E2E.\n' > "$ios_placeholder/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework/placeholder.txt"
+          (
+            cd "$ios_placeholder"
+            zip -qr "$release_inputs/sting-ios-host.zip" StingQuickJSRuntime
+          )
+
+          bash scripts/package-create-sting.sh "$release_inputs"
+          tarball="$(find "$release_inputs" -maxdepth 1 -type f -name 'create-sting-*.tgz' -print | sort | tail -n 1)"
+          test -n "$tarball"
+
+          mkdir -p "$package_install"
+          (
+            cd "$package_install"
+            npm init --yes >/dev/null
+            npm install "$tarball" --ignore-scripts >/dev/null
+            node node_modules/create-sting/dist/cli.js "$generated" \
+              --name generated-sting-e2e \
+              --android-package run.stingjs.generated \
+              --ios-bundle-identifier run.stingjs.generated
+          )
+
+          mkdir -p "$generated/dist"
+          cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+          node scripts/prepare-first-party-module-consumer.mjs "$generated"
+          node tooling/cli/dist/cli.js modules sync --project-root "$generated"
+
+          test "$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.modules.length))' "$generated/.sting/generated/sting-modules.config.json")" = 15
+          grep -F 'android.permission.CAMERA' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.camera.CameraPermissionActivity' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.contacts.ContactsPickerActivity' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+          grep -F 'run.stingjs.modules.notifications.NotificationAlarmReceiver' "$generated/android/app/src/main/AndroidManifest.xml" >/dev/null
+
+          if grep -R -n -E '\.\./\.\./\.\./(native|packages|runtime)/' "$generated/android" --exclude='*.aar'; then
+            echo 'generated Android project must not reference Sting monorepo source paths' >&2
+            exit 1
+          fi
+
+          expected_wrapper_sha=497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7
+          actual_wrapper_sha="$(node -e 'const fs=require("node:fs");const crypto=require("node:crypto");process.stdout.write(crypto.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$generated/android/gradle/wrapper/gradle-wrapper.jar")"
+          test "$actual_wrapper_sha" = "$expected_wrapper_sha"
+
+          consumer_path="$JAVA_HOME/bin:/usr/bin:/bin"
+          if env PATH="$consumer_path" sh -c 'command -v zig >/dev/null 2>&1'; then
+            echo 'Zig unexpectedly remains available in the generated app consumer PATH' >&2
+            exit 1
+          fi
+
+          (
+            cd "$generated/android"
+            env PATH="$consumer_path" ./gradlew :app:assembleDebug --no-daemon
+          )
+
+          apk="$generated/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          unzip -l "$apk" | grep -F 'assets/sting-app.js' >/dev/null
+          unzip -l "$apk" | grep -F 'lib/arm64-v8a/libsting_quickjs_android.so' >/dev/null
+          unzip -l "$apk" | grep -F 'lib/x86_64/libsting_quickjs_android.so' >/dev/null
+          if unzip -l "$apk" | grep -Fq 'libsting_quickjs_ng_android.so'; then
+            echo 'QuickJS-NG must not be packaged in create-sting output' >&2
+            exit 1
+          fi
       - name: Enable KVM for Android emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -73,14 +154,99 @@ jobs:
   ios-e2e:
     name: iOS Hello World E2E
     runs-on: macos-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
       - name: Install dependencies
         run: npm install
+      - name: Install CLI dependencies
+        run: npm install --prefix tooling/cli
       - name: Build complete iOS application
         run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build JavaScript fixture
+        run: |
+          npm run build --workspace @stingjs/example-hello-world
+          npm run build --prefix tooling/cli
+      - name: Prove packed create-sting iOS output builds without Zig
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_inputs=/tmp/sting-create-release-inputs
+          ios_producer=/tmp/sting-create-ios-host
+          package_install=/tmp/sting-create-package-install
+          generated=/tmp/sting-generated-ios-app
+          sim_derived=/tmp/sting-generated-ios-simulator
+          device_derived=/tmp/sting-generated-ios-device
+          rm -rf "$release_inputs" "$ios_producer" "$package_install" "$generated" "$sim_derived" "$device_derived"
+          mkdir -p "$release_inputs"
+
+          : > "$release_inputs/sting-runtime.aar"
+          : > "$release_inputs/sting-quickjs.aar"
+          bash scripts/package-ios-host.sh "$ios_producer"
+          cp "$ios_producer/sting-ios-host.zip" "$release_inputs/sting-ios-host.zip"
+
+          bash scripts/package-create-sting.sh "$release_inputs"
+          tarball="$(find "$release_inputs" -maxdepth 1 -type f -name 'create-sting-*.tgz' -print | sort | tail -n 1)"
+          test -n "$tarball"
+
+          mkdir -p "$package_install"
+          (
+            cd "$package_install"
+            npm init --yes >/dev/null
+            npm install "$tarball" --ignore-scripts >/dev/null
+            node node_modules/create-sting/dist/cli.js "$generated" \
+              --name generated-sting-ios-e2e \
+              --android-package run.stingjs.generated \
+              --ios-bundle-identifier run.stingjs.generated
+          )
+
+          mkdir -p "$generated/dist"
+          cp examples/hello-world/dist/sting-app.js "$generated/dist/sting-app.js"
+          node scripts/prepare-first-party-module-consumer.mjs "$generated"
+          node tooling/cli/dist/cli.js modules sync --project-root "$generated"
+
+          test "$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.modules.length))' "$generated/.sting/generated/sting-modules.config.json")" = 15
+          grep -F '<key>NSCameraUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
+          grep -F '<key>NSContactsUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
+          grep -F '<key>NSLocationWhenInUseUsageDescription</key>' "$generated/.sting/generated/ios/Info.plist" >/dev/null
+
+          test -f "$generated/ios/StingQuickJSRuntime/Package.swift"
+          test -d "$generated/ios/StingQuickJSRuntime/Artifacts/StingQuickJSBinary.xcframework"
+          if grep -R -I -n -E '(\.\./){2,}(native|packages|runtime)/' "$generated/ios" --exclude-dir=.build; then
+            echo 'generated iOS project must not reference Sting monorepo source paths' >&2
+            exit 1
+          fi
+
+          consumer_path="/usr/bin:/bin:/usr/sbin:/sbin"
+          if env PATH="$consumer_path" sh -c 'command -v zig >/dev/null 2>&1'; then
+            echo 'Zig unexpectedly remains available in the generated iOS consumer PATH' >&2
+            exit 1
+          fi
+
+          env PATH="$consumer_path" xcodebuild \
+            -project "$generated/ios/StingApp.xcodeproj" \
+            -scheme StingApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$sim_derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          env PATH="$consumer_path" xcodebuild \
+            -project "$generated/ios/StingApp.xcodeproj" \
+            -scheme StingApp \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$device_derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+          test -f "$sim_derived/Build/Products/Debug-iphonesimulator/StingApp.app/sting-app.js"

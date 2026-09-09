@@ -30,7 +30,10 @@ class RecordingBridge implements StingNativeBridge {
 
   callModuleSync(module: string, method: string, argsJSON: string): string {
     this.calls.push({ module, method, argsJSON });
-    return JSON.stringify({ ok: true, value: method === 'hasString' });
+    const value = method === '__sting_permission_status'
+      ? 'granted'
+      : method === 'hasString';
+    return JSON.stringify({ ok: true, value });
   }
 
   callModuleAsync(module: string, method: string, argsJSON: string, requestId: number): void {
@@ -83,6 +86,49 @@ describe('native module client', () => {
     )).toBe(true);
 
     await expect(pending).resolves.toEqual({ text: 'native' });
+  });
+
+  it('uses reserved sync and async operations for portable permission status/request', async () => {
+    const bridge = new RecordingBridge();
+    installNativeBridge(bridge);
+
+    const clipboard = createNativeModule('Clipboard');
+    expect(clipboard.permissionStatus(' camera ')).toBe('granted');
+    expect(bridge.calls.at(-1)).toEqual({
+      module: 'Clipboard',
+      method: '__sting_permission_status',
+      argsJSON: '["camera"]',
+    });
+
+    const pending = clipboard.requestPermission('camera');
+    expect(bridge.asyncCalls.at(-1)).toMatchObject({
+      module: 'Clipboard',
+      method: '__sting_permission_request',
+      argsJSON: '["camera"]',
+    });
+    const requestId = bridge.asyncCalls.at(-1)!.requestId;
+    expect(globalThis.__stingResolveModuleCall?.(
+      requestId,
+      JSON.stringify({ ok: true, value: 'limited' }),
+    )).toBe(true);
+    await expect(pending).resolves.toBe('limited');
+  });
+
+  it('validates permission names and rejects invalid native status values', () => {
+    const bridge = new RecordingBridge();
+    bridge.callModuleSync = (module, method, argsJSON) => {
+      bridge.calls.push({ module, method, argsJSON });
+      return JSON.stringify({ ok: true, value: 'platform-specific-status' });
+    };
+    installNativeBridge(bridge);
+
+    const clipboard = createNativeModule('Clipboard');
+    expect(() => clipboard.permissionStatus('   ')).toThrow(
+      'Native permission name must not be empty',
+    );
+    expect(() => clipboard.permissionStatus('camera')).toThrow(
+      'returned an invalid status for permission camera',
+    );
   });
 
   it('routes typed native event subscriptions and returns an idempotent removable handle', () => {

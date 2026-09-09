@@ -72,6 +72,11 @@ jobs:
                   ios=true
                   modules=true
                   ;;
+                scripts/prepare-first-party-module-consumer.mjs|scripts/package-create-sting.sh)
+                  js_ts=true
+                  tooling=true
+                  e2e=true
+                  ;;
               esac
 
               case "$file" in
@@ -95,13 +100,13 @@ jobs:
               esac
 
               case "$file" in
-                native/android/*|examples/hello-world/android/*)
+                native/android/*|examples/hello-world/android/*|apps/sting-go/android/*)
                   android=true
                   ;;
               esac
 
               case "$file" in
-                native/ios/*|examples/hello-world/ios/*)
+                native/ios/*|examples/hello-world/ios/*|apps/sting-go/ios/*)
                   ios=true
                   ;;
               esac

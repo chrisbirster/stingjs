@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "Sharing",
+  "package": "@stingjs/sharing",
+  "version": "1.0.0-bootstrap.0",
+  "ios": {
+    "module": "SharingModule",
+    "permissions": []
+  },
+  "android": {
+    "module": "run.stingjs.modules.sharing.SharingModule",
+    "factory": "context",
+    "permissions": []
+  },
+  "capabilities": ["async-functions"]
+}

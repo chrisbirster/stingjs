@@ -12,6 +12,29 @@ sealed class StingNativeModuleResult {
 typealias StingNativeModuleCompletion = (StingNativeModuleResult) -> Unit
 typealias StingNativeModuleEventEmitter = (Any?) -> Unit
 typealias StingNativeViewEventEmitter = (Any?) -> Unit
+typealias StingPermissionCompletion = (Result<StingPermissionStatus>) -> Unit
+
+enum class StingPermissionStatus(val wireValue: String) {
+    UNDETERMINED("undetermined"),
+    DENIED("denied"),
+    GRANTED("granted"),
+    RESTRICTED("restricted"),
+    LIMITED("limited"),
+}
+
+/**
+ * Platform-neutral lifecycle events delivered to Sting native modules.
+ *
+ * These are runtime/application semantics rather than Android Activity objects
+ * or process callbacks, so the same contract is exposed on iOS.
+ */
+enum class StingApplicationLifecycleEvent {
+    FOREGROUND,
+    ACTIVE,
+    INACTIVE,
+    BACKGROUND,
+    RUNTIME_DISPOSING,
+}
 
 interface StingNativeObject {
     fun callSync(method: String, arguments: List<Any?>): Any?
@@ -104,6 +127,47 @@ interface StingNativeModule {
         throw StingNativeModuleError(
             code = "E_VIEW_TYPE_NOT_FOUND",
             message = "$name does not implement native view type $type",
+        )
+    }
+
+    fun permissionStatus(permission: String): StingPermissionStatus {
+        throw StingNativeModuleError(
+            code = "E_PERMISSION_NOT_FOUND",
+            message = "$name does not implement permission $permission",
+        )
+    }
+
+    fun requestPermission(permission: String, completion: StingPermissionCompletion) {
+        completion(
+            Result.failure(
+                StingNativeModuleError(
+                    code = "E_PERMISSION_NOT_FOUND",
+                    message = "$name does not implement permission $permission",
+                ),
+            ),
+        )
+    }
+
+    /** Receive shared Sting application/runtime lifecycle transitions. */
+    fun onApplicationLifecycle(event: StingApplicationLifecycleEvent) {}
+
+    /**
+     * Handle background work routed explicitly to this module. Platform hosts
+     * retain ownership of Activity/Service/background-task objects; none cross
+     * this API boundary.
+     */
+    fun handleBackgroundEvent(
+        name: String,
+        payload: Any?,
+        completion: StingNativeModuleCompletion,
+    ) {
+        completion(
+            StingNativeModuleResult.Failure(
+                StingNativeModuleError(
+                    code = "E_BACKGROUND_EVENT_NOT_FOUND",
+                    message = "${this.name} does not implement background event $name",
+                ),
+            ),
         )
     }
 }

@@ -35,11 +35,14 @@ open class StingHostViewController: UIViewController {
         rootStack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(rootStack)
 
+        // The Sting root is intentionally full-bleed. Applications opt into system-safe
+        // content with the public <SafeArea> primitive instead of inheriting an invisible
+        // host-controller inset that makes edge-to-edge layouts impossible.
         NSLayoutConstraint.activate([
-            rootStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            rootStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            rootStack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            rootStack.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor)
+            rootStack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            rootStack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            rootStack.topAnchor.constraint(equalTo: view.topAnchor),
+            rootStack.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         do {

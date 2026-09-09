@@ -8,10 +8,25 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         val value: StingNativeObject,
     )
 
+    private data class PermissionRequestKey(
+        val module: String,
+        val permission: String,
+    )
+
+    private data class PendingPermissionRequest(
+        val id: Long,
+        val waiters: MutableList<StingNativeModuleCompletion>,
+    )
+
     private val modules = linkedMapOf<String, StingNativeModule>()
     private val objectLock = Any()
     private val objects = linkedMapOf<Int, NativeObjectEntry>()
     private var nextObjectHandle = 1
+    private val permissionLock = Any()
+    private val pendingPermissionRequests = linkedMapOf<PermissionRequestKey, PendingPermissionRequest>()
+    private var nextPermissionRequestId = 1L
+    private var permissionRequestsDisposed = false
+    private var runtimeDisposingDelivered = false
 
     init {
         modules.forEach(::register)
@@ -36,6 +51,11 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         val module = requireModule(name)
 
         return when (method) {
+            PERMISSION_STATUS_METHOD -> {
+                val permission = requirePermissionArgument(arguments)
+                module.permissionStatus(permission).wireValue
+            }
+
             OBJECT_CREATE_METHOD -> {
                 val type = requireStringArgument(arguments, 0, "native object type")
                 createObject(module, type, arguments.drop(1))
@@ -76,6 +96,17 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
             return
         }
 
+        if (method == PERMISSION_REQUEST_METHOD) {
+            val permission = try {
+                requirePermissionArgument(arguments)
+            } catch (error: Throwable) {
+                completion(StingNativeModuleResult.Failure(error))
+                return
+            }
+            requestPermission(name, module, permission, completion)
+            return
+        }
+
         if (method == OBJECT_CALL_ASYNC_METHOD) {
             try {
                 val handle = requireHandleArgument(arguments)
@@ -100,6 +131,73 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         module.setEventEnabled(event, enabled, emit)
     }
 
+    /**
+     * Delivers a semantic lifecycle transition to every module in registration
+     * order. Runtime disposal is terminal and emitted at most once.
+     */
+    fun dispatchLifecycle(event: StingApplicationLifecycleEvent) {
+        if (event == StingApplicationLifecycleEvent.RUNTIME_DISPOSING) {
+            if (runtimeDisposingDelivered) return
+            runtimeDisposingDelivered = true
+            disposePendingPermissionRequests()
+        } else if (runtimeDisposingDelivered) {
+            return
+        }
+
+        modules.values.forEach { it.onApplicationLifecycle(event) }
+    }
+
+    /** Route portable background work to one module without exposing Android host objects. */
+    fun deliverBackgroundEvent(
+        name: String,
+        event: String,
+        payload: Any?,
+        completion: StingNativeModuleCompletion,
+    ) {
+        if (event.isEmpty()) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_INVALID_BACKGROUND_EVENT",
+                        message = "Background event name must not be empty",
+                    ),
+                ),
+            )
+            return
+        }
+        val module = modules[name]
+        if (module == null) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_MODULE_NOT_FOUND",
+                        message = "Native module $name is not registered",
+                    ),
+                ),
+            )
+            return
+        }
+        if (runtimeDisposingDelivered) {
+            completion(
+                StingNativeModuleResult.Failure(
+                    StingNativeModuleError(
+                        code = "E_RUNTIME_DISPOSED",
+                        message = "Sting runtime is already disposing",
+                    ),
+                ),
+            )
+            return
+        }
+
+        module.handleBackgroundEvent(event, payload, completion)
+    }
+
+    /** Final module ownership cleanup for one Sting runtime. */
+    fun dispose() {
+        dispatchLifecycle(StingApplicationLifecycleEvent.RUNTIME_DISPOSING)
+        disposeAllObjects()
+    }
+
     fun disposeAllObjects() {
         val active = synchronized(objectLock) {
             val entries = objects.toList()
@@ -118,6 +216,85 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
             }
         }
     }
+
+    private fun requestPermission(
+        moduleName: String,
+        module: StingNativeModule,
+        permission: String,
+        completion: StingNativeModuleCompletion,
+    ) {
+        val key = PermissionRequestKey(moduleName, permission)
+        var requestId = 0L
+        var disposed = false
+
+        synchronized(permissionLock) {
+            if (permissionRequestsDisposed) {
+                disposed = true
+            } else {
+                val pending = pendingPermissionRequests[key]
+                if (pending != null) {
+                    pending.waiters += completion
+                    return
+                }
+
+                requestId = nextPermissionRequestId
+                nextPermissionRequestId += 1
+                if (nextPermissionRequestId <= 0) nextPermissionRequestId = 1
+                pendingPermissionRequests[key] = PendingPermissionRequest(
+                    id = requestId,
+                    waiters = mutableListOf(completion),
+                )
+            }
+        }
+
+        if (disposed) {
+            completion(StingNativeModuleResult.Failure(runtimeDisposedError()))
+            return
+        }
+
+        module.requestPermission(permission) { result ->
+            completePermissionRequest(key, requestId, result)
+        }
+    }
+
+    private fun completePermissionRequest(
+        key: PermissionRequestKey,
+        requestId: Long,
+        result: Result<StingPermissionStatus>,
+    ) {
+        val waiters = synchronized(permissionLock) {
+            if (permissionRequestsDisposed) return
+            val pending = pendingPermissionRequests[key] ?: return
+            if (pending.id != requestId) return
+            pendingPermissionRequests.remove(key)
+            pending.waiters.toList()
+        }
+
+        val mapped = result.fold(
+            onSuccess = { StingNativeModuleResult.Success(it.wireValue) },
+            onFailure = { StingNativeModuleResult.Failure(it) },
+        )
+        waiters.forEach { it(mapped) }
+    }
+
+    private fun disposePendingPermissionRequests() {
+        val waiters = synchronized(permissionLock) {
+            if (permissionRequestsDisposed) return
+            permissionRequestsDisposed = true
+            val active = pendingPermissionRequests.values.flatMap { it.waiters }
+            pendingPermissionRequests.clear()
+            active
+        }
+
+        waiters.forEach {
+            it(StingNativeModuleResult.Failure(runtimeDisposedError()))
+        }
+    }
+
+    private fun runtimeDisposedError() = StingNativeModuleError(
+        code = "E_RUNTIME_DISPOSED",
+        message = "Sting runtime is already disposing",
+    )
 
     private fun requireModule(name: String): StingNativeModule =
         modules[name] ?: throw StingNativeModuleError(
@@ -203,6 +380,17 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
         return handle
     }
 
+    private fun requirePermissionArgument(arguments: List<Any?>): String {
+        val permission = arguments.firstOrNull() as? String
+        if (permission.isNullOrBlank()) {
+            throw StingNativeModuleError(
+                code = "E_INVALID_PERMISSION",
+                message = "Native permission name must be a non-empty string",
+            )
+        }
+        return permission.trim()
+    }
+
     private fun requireStringArgument(
         arguments: List<Any?>,
         index: Int,
@@ -219,6 +407,8 @@ class StingModuleRegistry(modules: List<StingNativeModule> = emptyList()) {
     }
 
     private companion object {
+        const val PERMISSION_STATUS_METHOD = "__sting_permission_status"
+        const val PERMISSION_REQUEST_METHOD = "__sting_permission_request"
         const val OBJECT_CREATE_METHOD = "__sting_object_create"
         const val OBJECT_CALL_SYNC_METHOD = "__sting_object_call_sync"
         const val OBJECT_CALL_ASYNC_METHOD = "__sting_object_call_async"

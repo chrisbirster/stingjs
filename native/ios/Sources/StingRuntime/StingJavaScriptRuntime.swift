@@ -119,6 +119,43 @@ public final class StingJavaScriptRuntime {
         }
     }
 
+    /// Forward a native back gesture/button into the deepest active NavigationStack.
+    public func requestBack() -> Bool {
+        if Thread.isMainThread {
+            return !disposed && nodes.requestBack()
+        }
+        return DispatchQueue.main.sync { [weak self] in
+            guard let self, !self.disposed else { return false }
+            return self.nodes.requestBack()
+        }
+    }
+
+    public func dispatchLifecycle(_ event: StingApplicationLifecycleEvent) {
+        guard !disposed else { return }
+        modules.dispatchLifecycle(event)
+    }
+
+    public func deliverBackgroundEvent(
+        module: String,
+        event: String,
+        payload: Any?,
+        completion: @escaping StingNativeModuleCompletion
+    ) {
+        guard !disposed else {
+            completion(.failure(StingNativeModuleError(
+                code: "E_RUNTIME_DISPOSED",
+                message: "Sting runtime is already disposed"
+            )))
+            return
+        }
+        modules.deliverBackgroundEvent(
+            module: module,
+            event: event,
+            payload: payload,
+            completion: completion
+        )
+    }
+
     public func dispose() {
         if Thread.isMainThread {
             disposeOnRuntimeThread()
@@ -156,6 +193,10 @@ public final class StingJavaScriptRuntime {
 
         bridge?.detachAsyncResultSink()
         bridge?.detachModuleEventSink()
+
+        // Modules see their terminal lifecycle callback before renderer-owned
+        // module views and opaque native objects are retired.
+        modules.dispatchLifecycle(.runtimeDisposing)
 
         // The node registry is the final ownership boundary for module-created
         // UIKit views. It disables their event emitters, detaches any remaining

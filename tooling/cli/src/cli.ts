@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path';
+import { startBuildWatcher } from './build-watch.js';
 import { loadStingConfig } from './config.js';
+import { openStingGo } from './dev-open.js';
+import { resolveDevelopmentMode, type DevelopmentCommand } from './development.js';
 import { collectProjectDoctorContext } from './doctor.js';
+import { describeModulePlan, synchronizeModuleAutolinking } from './modules.js';
 import { collectDevices, collectDoctorChecks, type DevicePlatform, type DoctorCheck } from './platform.js';
+import { renderTerminalQr, shouldRenderTerminalQr } from './qr.js';
 import { runAndroid, runIos } from './run.js';
 import { startStingServer } from './start.js';
 import { runCi, runTests } from './verify.js';
@@ -24,7 +29,7 @@ function parseTarget(args: string[]): { target?: DevicePlatform; rest: string[] 
 }
 
 function printHelp(): void {
-  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  test     Run app typecheck/tests/build; target ios/android to add a native build\n  ci       Run doctor followed by the same deterministic test/build pipeline\n  start    Serve a built Sting bundle to Sting Go\n  run      Build, install, and launch a Sting app on iOS or Android\n`);
+  console.log(`Sting developer CLI\n\nUsage:\n  sting doctor [ios|android] [--project-root <path>] [--runtime] [--json]\n  sting devices [--json]\n  sting config [--project-root <path>] [--json]\n  sting modules sync [--project-root <path>] [--json]\n  sting test [ios|android] [--project-root <path>]\n  sting ci [ios|android] [--project-root <path>]\n  sting dev [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--open] [--device <id|name>] [--qr|--no-qr] [--json]\n  sting start [--project-root <path>] [--bundle <path>] [--host <host>] [--port <port>] [--watch] [--qr|--no-qr] [--json]\n  sting run ios [--project-root <path>] [--device <id|name>] [--configuration <name>] [--no-bundle]\n  sting run android [--project-root <path>] [--device <id|name>] [--variant <name>] [--no-bundle]\n\nCommands:\n  doctor   Validate the Sting app and required local platform toolchain; target ios/android for an explicit platform gate\n  devices  List Android devices and available iOS simulators\n  config   Load and validate sting.config.ts (or JS variants)\n  modules  Discover installed sting-module.json packages and regenerate native autolinking\n  test     Sync modules, then run app typecheck/tests/build; target ios/android to add a native build\n  ci       Sync modules, run doctor, then the same deterministic test/build pipeline\n  dev      Build, watch, serve, and live-reload through Sting Go; --open sends the deep link to a ready device\n  start    Serve a built Sting bundle to Sting Go; --watch preserves the lower-level managed watcher mode\n  run      Sync modules, build, install, and launch a Sting app on iOS or Android\n`);
 }
 
 function printChecks(checks: DoctorCheck[]): void {
@@ -127,9 +132,26 @@ async function config(args: string[]): Promise<void> {
   console.log(JSON.stringify(loaded.config, null, 2));
 }
 
+async function modules(args: string[]): Promise<void> {
+  const [subcommand, ...rest] = args;
+  if (subcommand !== 'sync') throw new Error('Usage: sting modules sync [--project-root <path>] [--json]');
+  const projectRoot = resolve(option(rest, '--project-root') ?? process.cwd());
+  const plan = await synchronizeModuleAutolinking(projectRoot);
+  if (hasFlag(rest, '--json')) {
+    console.log(JSON.stringify(plan));
+  } else {
+    console.log(describeModulePlan(plan, projectRoot));
+  }
+}
+
+async function syncModulesForProject(projectRoot?: string): Promise<void> {
+  await synchronizeModuleAutolinking(resolve(projectRoot ?? process.cwd()));
+}
+
 async function verify(command: 'test' | 'ci', args: string[]): Promise<void> {
   const parsed = parseTarget(args);
   const projectRoot = option(parsed.rest, '--project-root');
+  await syncModulesForProject(projectRoot);
   const result = command === 'test'
     ? await runTests({ projectRoot, target: parsed.target })
     : await runCi({ projectRoot, target: parsed.target });
@@ -143,8 +165,10 @@ async function run(args: string[]): Promise<void> {
     throw new Error('Usage: sting run <ios|android> [options]');
   }
 
+  const projectRoot = option(runArgs, '--project-root');
+  await syncModulesForProject(projectRoot);
   const runOptions = {
-    projectRoot: option(runArgs, '--project-root'),
+    projectRoot,
     device: option(runArgs, '--device'),
     configuration: option(runArgs, '--configuration'),
     variant: option(runArgs, '--variant'),
@@ -155,7 +179,8 @@ async function run(args: string[]): Promise<void> {
   console.log(`Application: ${result.applicationId}`);
 }
 
-async function start(args: string[]): Promise<void> {
+async function development(command: DevelopmentCommand, args: string[]): Promise<void> {
+  const mode = resolveDevelopmentMode(command, args);
   const projectRoot = resolve(option(args, '--project-root') ?? process.cwd());
   const loaded = await loadStingConfig(projectRoot);
   const portValue = option(args, '--port');
@@ -164,29 +189,70 @@ async function start(args: string[]): Promise<void> {
     throw new Error(`Invalid --port value: ${portValue}`);
   }
 
-  const started = await startStingServer({
-    projectRoot,
-    bundlePath: option(args, '--bundle') ?? loaded?.config.bundle,
-    host: option(args, '--host'),
-    port,
-  });
+  const watcher = mode.watch ? startBuildWatcher(projectRoot) : undefined;
+  let started: Awaited<ReturnType<typeof startStingServer>>;
+  try {
+    started = await startStingServer({
+      projectRoot,
+      bundlePath: option(args, '--bundle') ?? loaded?.config.bundle,
+      host: option(args, '--host'),
+      port,
+      watchBundle: mode.watch,
+    });
+  } catch (error) {
+    watcher?.close();
+    throw error;
+  }
+
+  let openedDevice: ReturnType<typeof openStingGo> | undefined;
+  if (command === 'dev' && hasFlag(args, '--open')) {
+    try {
+      openedDevice = openStingGo(started.stingGoUrl, {
+        requestedDevice: option(args, '--device'),
+      });
+    } catch (error) {
+      watcher?.close();
+      await started.close();
+      throw error;
+    }
+  }
 
   if (hasFlag(args, '--json')) {
     console.log(JSON.stringify({
       manifestUrl: started.manifestUrl,
+      reloadUrl: started.reloadUrl,
       stingGoUrl: started.stingGoUrl,
       bundlePath: started.bundlePath,
+      watching: mode.watch,
+      openedDevice: openedDevice ? {
+        platform: openedDevice.platform,
+        id: openedDevice.id,
+        name: openedDevice.name,
+      } : undefined,
       manifest: started.manifest,
     }));
   } else {
-    console.log('Sting development server');
+    console.log(mode.title);
     console.log(`Manifest: ${started.manifestUrl}`);
+    console.log(`Reload:   ${started.reloadUrl}`);
     console.log(`Sting Go: ${started.stingGoUrl}`);
     console.log(`Bundle:   ${started.bundlePath}`);
-    console.log('\nOpen the Sting Go URL on a device connected to the same network.');
+    console.log(`Watching: ${mode.watch ? 'yes' : 'no'}`);
+    if (openedDevice) {
+      console.log(`Opened:   ${openedDevice.name} (${openedDevice.id})`);
+    }
+    if (shouldRenderTerminalQr(args, process.stdout.isTTY)) {
+      console.log('\nScan with Sting Go:\n');
+      console.log(await renderTerminalQr(started.stingGoUrl));
+    }
+    console.log(`\n${mode.guidance}`);
   }
 
+  let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    watcher?.close();
     await started.close();
     process.exit(0);
   };
@@ -206,14 +272,20 @@ async function main(): Promise<void> {
     case 'config':
       await config(args);
       return;
+    case 'modules':
+      await modules(args);
+      return;
     case 'test':
       await verify('test', args);
       return;
     case 'ci':
       await verify('ci', args);
       return;
+    case 'dev':
+      await development('dev', args);
+      return;
     case 'start':
-      await start(args);
+      await development('start', args);
       return;
     case 'run':
       await run(args);

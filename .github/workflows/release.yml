@@ -1,0 +1,291 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact release tag; must equal v + package.json version
+        required: true
+        type: string
+      publish_npm:
+        description: Publish public npm packages through trusted publishing
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      final_release: ${{ steps.release-kind.outputs.final_release }}
+      npm_tag: ${{ steps.release-kind.outputs.npm_tag }}
+      version: ${{ steps.release-kind.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - run: npm install
+      - name: Classify release and require exact committed version
+        id: release-kind
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+            echo "Releases and prereleases must run from promoted main; got ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "v${version}" ]]; then
+            echo "Tag must exactly match committed package version: v${version}; got ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            echo "final_release=false" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "final_release=true" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Run repository software gate
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Enforce stable-release physical evidence gate
+        if: steps.release-kind.outputs.final_release == 'true'
+        run: npm run release:check:final
+      - name: Stage common release files
+        run: |
+          mkdir -p release-artifacts
+          cp examples/hello-world/dist/sting-app.js release-artifacts/sting-app.js
+          cp CHANGELOG.md release-artifacts/CHANGELOG.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-common
+          path: release-artifacts/
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - run: npm install
+      - run: npm run build --workspace @stingjs/example-hello-world
+      - name: Install Android SDK and pinned NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+      - name: Install pinned Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz"
+          expected="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00"
+          curl --fail --location --silent --show-error "$url" --output /tmp/zig.tar.xz
+          echo "$expected  /tmp/zig.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/zig.tar.xz -C /tmp
+          echo "/tmp/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Package distributable Android host AARs
+        run: bash scripts/package-android-host.sh release-artifacts
+      - name: Prove release AARs build in a Zig-free external consumer
+        run: bash scripts/test-android-distributable-host.sh release-artifacts
+      - name: Build Android release smoke artifact
+        working-directory: examples/hello-world/android
+        run: gradle :app:assembleRelease --no-daemon
+      - name: Stage Android example artifact
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: cp examples/hello-world/android/app/build/outputs/apk/release/app-release.apk "release-artifacts/stingjs-hello-world-${RELEASE_TAG}-android.apk"
+      - name: Package Sting Go Android developer client
+        run: bash scripts/package-sting-go.sh android release-artifacts
+      - name: Verify Sting Go Android release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-android.json"); if(m.version!==require("./package.json").version||m.platform!=="android"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: release-artifacts/
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - run: npm install
+      - run: npm run build --workspace @stingjs/example-hello-world
+      - name: Build Sting Go iOS Simulator release artifact source
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/sting-go-release-derived \
+            apps/sting-go/ios/Support/.build \
+            native/ios/.build \
+            native/ios/QuickJSRuntime/.build \
+            packages/modules/haptics/.build \
+            packages/modules/clipboard/.build
+          xcodebuild \
+            -project apps/sting-go/ios/StingGo.xcodeproj \
+            -scheme StingGo \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/sting-go-release-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            build
+          test -d /tmp/sting-go-release-derived/Build/Products/Debug-iphonesimulator/StingGo.app
+      - run: npm run test:ios-runtime
+      - name: Build iOS simulator host
+        run: xcodebuild -project examples/hello-world/ios/StingHelloWorld.xcodeproj -scheme StingHelloWorld -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Package distributable official-QuickJS iOS host
+        run: bash scripts/package-ios-host.sh release-artifacts/ios-host
+      - name: Prove release iOS host builds without Zig
+        run: bash scripts/test-ios-distributable-host.sh release-artifacts/ios-host
+      - name: Stage iOS distributable artifact
+        run: cp release-artifacts/ios-host/sting-ios-host.zip release-artifacts/sting-ios-host.zip
+      - name: Package proven Sting Go iOS Simulator developer client
+        env:
+          STING_GO_IOS_APP: /tmp/sting-go-release-derived/Build/Products/Debug-iphonesimulator/StingGo.app
+        run: bash scripts/package-sting-go.sh ios release-artifacts
+      - name: Verify Sting Go iOS release metadata
+        run: node -e 'const m=require("./release-artifacts/sting-go-ios-simulator.json"); if(m.version!==require("./package.json").version||m.platform!=="ios-simulator"||!/^[a-f0-9]{64}$/.test(m.sha256)) process.exit(1)'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-ios
+          path: release-artifacts/
+          if-no-files-found: error
+
+  package:
+    runs-on: ubuntu-latest
+    needs: [verify, android, ios]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - run: npm install
+      - run: npm run build
+      - run: npm install --prefix tooling/cli
+      - run: npm run build --prefix tooling/cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-common
+          path: release-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-android
+          path: release-artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-ios
+          path: release-artifacts
+      - name: Verify Sting Go clients are present in unified bundle
+        run: |
+          set -euo pipefail
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-android-dev.apk' -type f | wc -l | tr -d ' ')" = "1"
+          test "$(find release-artifacts -maxdepth 1 -name 'sting-go-v*-ios-simulator.zip' -type f | wc -l | tr -d ' ')" = "1"
+          test -f release-artifacts/sting-go-android.json
+          test -f release-artifacts/sting-go-ios-simulator.json
+      - name: Pack public SDK and CLI packages
+        run: bash scripts/package-public-npm.sh release-artifacts
+      - name: Package publishable create-sting with production native hosts
+        run: bash scripts/package-create-sting.sh release-artifacts
+      - name: Add create-sting to npm publication order
+        shell: bash
+        run: |
+          set -euo pipefail
+          tarball="$(find release-artifacts -maxdepth 1 -type f -name 'create-sting-*.tgz' -printf '%f\n' | sort | tail -n 1)"
+          test -n "$tarball"
+          printf '%s\n' "$tarball" >> release-artifacts/npm-publish-order.txt
+          test "$(wc -l < release-artifacts/npm-publish-order.txt | tr -d ' ')" = "22"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: release-artifacts/
+          if-no-files-found: error
+
+  publish-npm:
+    if: inputs.publish_npm == true
+    runs-on: ubuntu-latest
+    needs: [verify, package]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: Use repository npm version
+        run: npm install --global npm@12.0.2
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+          path: release-artifacts
+      - name: Publish npm package train with OIDC
+        shell: bash
+        env:
+          NPM_DIST_TAG: ${{ needs.verify.outputs.npm_tag }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tarball; do
+            test -n "$tarball"
+            echo "Publishing $tarball with dist-tag $NPM_DIST_TAG"
+            npm publish "release-artifacts/$tarball" --access public --tag "$NPM_DIST_TAG"
+          done < release-artifacts/npm-publish-order.txt
+
+  release:
+    if: ${{ always() && needs.verify.result == 'success' && needs.android.result == 'success' && needs.ios.result == 'success' && needs.package.result == 'success' && (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    needs: [verify, android, ios, package, publish-npm]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+          path: release-artifacts
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ needs.verify.outputs.final_release != 'true' }}
+          files: release-artifacts/*

@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="run.stingjs.modules.notifications.NotificationsPermissionActivity" android:excludeFromRecents="true" android:exported="false" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver android:name="run.stingjs.modules.notifications.NotificationAlarmReceiver" android:exported="false" />
+        <receiver android:name="run.stingjs.modules.notifications.NotificationOpenedReceiver" android:exported="false" />
+    </application>
+</manifest>
