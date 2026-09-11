@@ -10,6 +10,7 @@ data class StingGoManifest(
     val bundlePath: String,
     val reloadPath: String,
     val healthPath: String,
+    val reportPath: String?,
     val capabilities: Set<String>,
 ) {
     companion object {
@@ -60,6 +61,18 @@ data class StingGoManifest(
                 "Unsupported Sting Go health content type"
             }
 
+            val reportPath = development.optJSONObject("report")?.let { report ->
+                val path = report.getString("path")
+                require(path == "/report") { "Unsupported Sting Go report path $path" }
+                require(report.getString("method") == "POST") {
+                    "Unsupported Sting Go report method; v1 requires POST"
+                }
+                require(report.getString("contentType") == "application/json") {
+                    "Unsupported Sting Go report content type"
+                }
+                path
+            }
+
             val capabilitiesJson = json.getJSONArray("capabilities")
             val capabilities = buildSet {
                 for (index in 0 until capabilitiesJson.length()) {
@@ -75,6 +88,7 @@ data class StingGoManifest(
                 bundlePath = bundlePath,
                 reloadPath = reloadPath,
                 healthPath = healthPath,
+                reportPath = reportPath,
                 capabilities = capabilities,
             )
         }
