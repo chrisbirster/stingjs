@@ -145,6 +145,8 @@ jobs:
         run: npm install --global npm@12.0.2
       - run: npm install
       - run: npm run build --workspace @stingjs/example-hello-world
+      - name: Prove official QuickJS production runtime on iOS
+        run: npm run test:ios-quickjs-runtime
       - name: Test Sting Go iOS protocol and reload support
         working-directory: apps/sting-go/ios/Support
         run: swift test

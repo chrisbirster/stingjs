@@ -75,7 +75,8 @@ if [[ "${actual_sha256}" != "${QUICKJS_SHA256}" ]]; then
   exit 1
 fi
 
-if [[ ! -d "${SOURCE_DIR}" ]]; then
+if [[ ! -f "${SOURCE_DIR}/quickjs.c" ]]; then
+  rm -rf "${SOURCE_DIR}"
   tar -xJf "${ARCHIVE}" -C "${CACHE_ROOT}"
 fi
 
