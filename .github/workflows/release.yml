@@ -145,25 +145,26 @@ jobs:
         run: npm install --global npm@12.0.2
       - run: npm install
       - run: npm run build --workspace @stingjs/example-hello-world
+      - name: Test Sting Go iOS protocol and reload support
+        working-directory: apps/sting-go/ios/Support
+        run: swift test
       - name: Build Sting Go iOS Simulator release artifact source
         run: |
           set -euo pipefail
-          rm -rf /tmp/sting-go-release-derived \
-            apps/sting-go/ios/Support/.build \
-            native/ios/.build \
-            native/ios/QuickJSRuntime/.build \
-            packages/modules/haptics/.build \
-            packages/modules/clipboard/.build
+          DEVICE_ID="$(
+            xcrun simctl list devices available \
+              | grep -m1 -E 'iPhone .*[0-9A-Fa-f-]{36}' \
+              | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/'
+          )"
+          test -n "$DEVICE_ID"
+          rm -rf /tmp/sting-go-release-derived
           xcodebuild \
             -project apps/sting-go/ios/StingGo.xcodeproj \
             -scheme StingGo \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
             -derivedDataPath /tmp/sting-go-release-derived \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY= \
             build
           test -d /tmp/sting-go-release-derived/Build/Products/Debug-iphonesimulator/StingGo.app
       - run: npm run test:ios-runtime
