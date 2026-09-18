@@ -20,7 +20,7 @@ sting://go?url=http%3A%2F%2F192.168.1.10%3A8081%2Fmanifest
 
 In an interactive terminal, `sting start` also renders that exact deep link as a QR code. Android and iOS Sting Go both consume the same `sting://go` URL contract.
 
-The v1 manifest is the authoritative discovery document. It identifies the production engine and runtime version, names required standard-SDK capabilities, and publishes the bundle, reload, and health endpoints:
+The v1 manifest is the authoritative discovery document. It identifies the production engine and runtime version, names required standard-SDK capabilities, and publishes the bundle and development endpoints:
 
 ```json
 {
@@ -41,6 +41,11 @@ The v1 manifest is the authoritative discovery document. It identifies the produ
     "health": {
       "path": "/health",
       "contentType": "application/json"
+    },
+    "report": {
+      "path": "/report",
+      "method": "POST",
+      "contentType": "application/json"
     }
   },
   "capabilities": ["clipboard", "haptics"]
@@ -48,6 +53,27 @@ The v1 manifest is the authoritative discovery document. It identifies the produ
 ```
 
 Endpoint paths are resolved relative to the manifest URL. Clients must not hard-code a different host or port.
+
+`development.report` is an additive v1 field. Updated Sting Go clients use it when present, but still accept older v1 development servers that advertise only reload and health.
+
+### Development error reports
+
+Native error UI remains the source of truth on the device. When the optional report endpoint is present, Sting Go also posts a bounded best-effort diagnostic back to the local development server so `sting dev` can surface the same failure in the developer terminal.
+
+Reports use:
+
+```json
+{
+  "kind": "runtime",
+  "platform": "ios",
+  "message": "ReferenceError: missingValue is not defined",
+  "detail": "sting-app.js:12"
+}
+```
+
+Known report kinds are `connection`, `compatibility`, `bundle`, `runtime`, and `reload`. Reporting must never block or replace the native error screen, and failure to deliver a report must not destabilize the client.
+
+The development server validates report kind/platform, caps payload sizes, and does not execute or interpret report content. This is local developer diagnostics, not telemetry or a cloud crash-reporting service.
 
 ### v1 compatibility rule
 
@@ -70,7 +96,8 @@ The native launcher:
 6. creates/resets the normal Sting QuickJS runtime;
 7. attaches a fresh native root and evaluates the bundle;
 8. surfaces connection, compatibility, bundle, and runtime errors using native UI;
-9. connects to the advertised SSE reload endpoint and reconnects without reinstalling the client.
+9. posts those failures back to the advertised report endpoint when available;
+10. connects to the advertised SSE reload endpoint and reconnects without reinstalling the client.
 
 `ready` and `reload` events carry a monotonic reload version. On reconnect, the server sends `ready` with its current version so a client can decide whether its currently loaded bundle is stale.
 
@@ -88,6 +115,7 @@ The development server is local-network tooling. Simulator/device loopback and L
 - official QuickJS Sting runtime creation;
 - real native renderer root;
 - reload/error UI;
+- best-effort development error reporting;
 - connected physical-device validation harness.
 
 ### iOS
@@ -100,6 +128,7 @@ The development server is local-network tooling. Simulator/device loopback and L
 - official `StingQuickJSRuntime` integration;
 - real UIKit renderer root;
 - reload/error UI;
+- best-effort development error reporting;
 - Simulator build/install/launch + deep-link smoke;
 - physical iPhone validation when hardware is available.
 

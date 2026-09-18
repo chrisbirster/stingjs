@@ -2,7 +2,14 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 import { existsSync, readFileSync, unwatchFile, watchFile } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { basename, resolve } from 'node:path';
-import { createStingGoManifest, type StingGoManifest } from './protocol.js';
+import {
+  createStingGoManifest,
+  parseStingGoClientReport,
+  type StingGoClientReport,
+  type StingGoManifest,
+} from './protocol.js';
+
+const MAX_REPORT_BODY_BYTES = 65_536;
 
 export interface StartServerOptions {
   projectRoot?: string;
@@ -13,6 +20,7 @@ export interface StartServerOptions {
   runtimeVersion?: string;
   capabilities?: string[];
   watchBundle?: boolean;
+  onClientReport?: (report: StingGoClientReport) => void;
 }
 
 export interface StartedServer {
@@ -20,6 +28,7 @@ export interface StartedServer {
   manifest: StingGoManifest;
   manifestUrl: string;
   reloadUrl: string;
+  reportUrl: string;
   stingGoUrl: string;
   bundlePath: string;
   close(): Promise<void>;
@@ -45,6 +54,14 @@ function inferProjectName(projectRoot: string): string {
     }
   }
   return basename(projectRoot);
+}
+
+function writeJsonError(response: ServerResponse, status: number, error: string): void {
+  response.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+  });
+  response.end(JSON.stringify({ error }));
 }
 
 export async function startStingServer(options: StartServerOptions = {}): Promise<StartedServer> {
@@ -120,8 +137,46 @@ export async function startStingServer(options: StartServerOptions = {}): Promis
       return;
     }
 
-    response.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
-    response.end(JSON.stringify({ error: 'not_found' }));
+    if (requestUrl.pathname === '/report') {
+      if (request.method !== 'POST') {
+        response.setHeader('allow', 'POST');
+        writeJsonError(response, 405, 'method_not_allowed');
+        return;
+      }
+
+      const contentType = request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase();
+      if (contentType !== 'application/json') {
+        writeJsonError(response, 400, 'invalid_content_type');
+        return;
+      }
+
+      request.setEncoding('utf8');
+      let body = '';
+      let rejected = false;
+      request.on('data', (chunk: string) => {
+        if (rejected) return;
+        body += chunk;
+        if (Buffer.byteLength(body, 'utf8') > MAX_REPORT_BODY_BYTES) {
+          rejected = true;
+          writeJsonError(response, 413, 'report_too_large');
+        }
+      });
+      request.on('end', () => {
+        if (rejected) return;
+        try {
+          const report = parseStingGoClientReport(JSON.parse(body) as unknown);
+          options.onClientReport?.(report);
+          response.writeHead(204, { 'cache-control': 'no-store' });
+          response.end();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          writeJsonError(response, 400, message);
+        }
+      });
+      return;
+    }
+
+    writeJsonError(response, 404, 'not_found');
   });
 
   await new Promise<void>((resolveListening, reject) => {
@@ -143,6 +198,7 @@ export async function startStingServer(options: StartServerOptions = {}): Promis
   const origin = `http://${advertisedHost}:${address.port}`;
   const manifestUrl = `${origin}/manifest`;
   const reloadUrl = `${origin}/events`;
+  const reportUrl = `${origin}/report`;
   const stingGoUrl = `sting://go?url=${encodeURIComponent(manifestUrl)}`;
 
   return {
@@ -150,6 +206,7 @@ export async function startStingServer(options: StartServerOptions = {}): Promis
     manifest,
     manifestUrl,
     reloadUrl,
+    reportUrl,
     stingGoUrl,
     bundlePath,
     close: () => new Promise<void>((resolveClose, reject) => {

@@ -164,29 +164,41 @@ class StingGoActivity : Activity() {
         val manifestSource = fetchText(manifestUrl, "application/json")
         val manifest = StingGoManifest.parse(manifestSource)
         val unsupported = manifest.capabilities - availableCapabilities
-        require(unsupported.isEmpty()) {
-            "This Sting Go build does not include required capabilities: ${unsupported.sorted().joinToString()}"
+        if (unsupported.isNotEmpty()) {
+            val message = "This Sting Go build does not include required capabilities: ${unsupported.sorted().joinToString()}"
+            reportClientError(manifestUrl, manifest, "compatibility", message)
+            error(message)
         }
 
         val manifestBase = URL(manifestUrl)
         val bundleUrl = URL(manifestBase, manifest.bundlePath).toString()
         val healthUrl = URL(manifestBase, manifest.healthPath).toString()
 
-        repeat(4) {
-            val beforeVersion = fetchHealthVersion(healthUrl)
-            val bundleSource = fetchText(bundleUrl, "application/javascript")
-            require(bundleSource.isNotBlank()) { "Downloaded Sting bundle is empty" }
-            val afterVersion = fetchHealthVersion(healthUrl)
-            if (beforeVersion == afterVersion) {
-                return LoadedProject(
-                    manifest = manifest,
-                    bundleSource = bundleSource,
-                    reloadVersion = afterVersion,
-                )
+        try {
+            repeat(4) {
+                val beforeVersion = fetchHealthVersion(healthUrl)
+                val bundleSource = fetchText(bundleUrl, "application/javascript")
+                require(bundleSource.isNotBlank()) { "Downloaded Sting bundle is empty" }
+                val afterVersion = fetchHealthVersion(healthUrl)
+                if (beforeVersion == afterVersion) {
+                    return LoadedProject(
+                        manifest = manifest,
+                        bundleSource = bundleSource,
+                        reloadVersion = afterVersion,
+                    )
+                }
             }
-        }
 
-        error("The Sting bundle kept changing while it was being downloaded; retry after the current build finishes")
+            error("The Sting bundle kept changing while it was being downloaded; retry after the current build finishes")
+        } catch (error: Throwable) {
+            reportClientError(
+                manifestUrl,
+                manifest,
+                "bundle",
+                error.message ?: error.javaClass.simpleName,
+            )
+            throw error
+        }
     }
 
     private fun fetchHealthVersion(healthUrl: String): Long {
@@ -261,6 +273,15 @@ class StingGoActivity : Activity() {
         val quickJs = OfficialQuickJsCandidateRuntime(bridge)
         nodes = nodeRegistry
         runtime = quickJs
+        quickJs.runtimeErrorSink = { error ->
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && runtime === quickJs) {
+                    val message = error.message ?: error.javaClass.simpleName
+                    reportClientError(manifestUrl, manifest, "runtime", message)
+                    showError("JavaScript runtime error: $message")
+                }
+            }
+        }
         nodeRegistry.eventSink = quickJs::dispatchEvent
 
         runCatching { quickJs.evaluate(loadedProject.bundleSource) }
@@ -269,8 +290,10 @@ class StingGoActivity : Activity() {
                 startReloadClient(manifestUrl, manifest)
             }
             .onFailure { error ->
+                val message = error.message ?: error.javaClass.simpleName
+                reportClientError(manifestUrl, manifest, "runtime", message)
                 releaseRuntime()
-                showError("JavaScript evaluation failed: ${error.message ?: error.javaClass.simpleName}")
+                showError("JavaScript evaluation failed: $message")
             }
     }
 
@@ -307,6 +330,29 @@ class StingGoActivity : Activity() {
 
         reloadStatusView?.text = if (event.name == "reload") "Reloading…" else "Server changed…"
         loadProject(manifestUrl)
+    }
+
+    private fun reportClientError(
+        manifestUrl: String,
+        manifest: StingGoManifest,
+        kind: String,
+        message: String,
+        detail: String? = null,
+    ) {
+        val path = manifest.reportPath ?: return
+        val endpointUrl = runCatching { URL(URL(manifestUrl), path).toString() }.getOrNull() ?: return
+        runCatching {
+            ioExecutor.execute {
+                runCatching {
+                    StingGoReportClient.post(
+                        endpointUrl = endpointUrl,
+                        kind = kind,
+                        message = message,
+                        detail = detail,
+                    )
+                }
+            }
+        }
     }
 
     private fun releaseRuntime() {

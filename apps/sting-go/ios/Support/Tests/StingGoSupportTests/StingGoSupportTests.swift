@@ -11,7 +11,8 @@ final class StingGoSupportTests: XCTestCase {
       "bundle": {"path": "/bundle", "contentType": "application/javascript"},
       "development": {
         "reload": {"path": "/events", "transport": "sse", "contentType": "text/event-stream"},
-        "health": {"path": "/health", "contentType": "application/json"}
+        "health": {"path": "/health", "contentType": "application/json"},
+        "report": {"path": "/report", "method": "POST", "contentType": "application/json"}
       },
       "capabilities": ["haptics", "clipboard"]
     }
@@ -25,6 +26,8 @@ final class StingGoSupportTests: XCTestCase {
         XCTAssertEqual(manifest.bundle.path, "/bundle")
         XCTAssertEqual(manifest.development.reload.path, "/events")
         XCTAssertEqual(manifest.development.health.path, "/health")
+        XCTAssertEqual(manifest.development.report?.path, "/report")
+        XCTAssertEqual(manifest.development.report?.method, "POST")
         XCTAssertEqual(
             try manifest.endpointURL(
                 path: manifest.bundle.path,
@@ -32,6 +35,16 @@ final class StingGoSupportTests: XCTestCase {
             ).absoluteString,
             "http://192.168.1.10:8081/bundle"
         )
+    }
+
+    func testReportEndpointRemainsOptionalForOlderV1Servers() throws {
+        let source = compatibleManifest.replacingOccurrences(
+            of: ",\n        \"report\": {\"path\": \"/report\", \"method\": \"POST\", \"contentType\": \"application/json\"}",
+            with: ""
+        )
+        let manifest = try StingGoManifest.decode(Data(source.utf8))
+        XCTAssertNoThrow(try manifest.validate(clientCapabilities: ["haptics", "clipboard"]))
+        XCTAssertNil(manifest.development.report)
     }
 
     func testManifestRejectsWrongProductionEngine() throws {
@@ -52,6 +65,19 @@ final class StingGoSupportTests: XCTestCase {
                 .unsupportedCapabilities(["clipboard"])
             )
         }
+    }
+
+    func testClientReportEncodesStablePlatformAndKind() throws {
+        let report = StingGoClientReport(
+            kind: .runtime,
+            message: "ReferenceError: missingValue is not defined",
+            detail: "sting-app.js:12"
+        )
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: String]
+        XCTAssertEqual(json?["kind"], "runtime")
+        XCTAssertEqual(json?["platform"], "ios")
+        XCTAssertEqual(json?["message"], "ReferenceError: missingValue is not defined")
+        XCTAssertEqual(json?["detail"], "sting-app.js:12")
     }
 
     func testSSEParserDeliversReadyAndReloadVersions() throws {

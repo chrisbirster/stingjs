@@ -180,7 +180,17 @@ final class StingGoViewController: UIViewController {
             expectedContentType: "application/json"
         )
         let manifest = try StingGoManifest.decode(manifestData)
-        try manifest.validate(clientCapabilities: availableCapabilities)
+        do {
+            try manifest.validate(clientCapabilities: availableCapabilities)
+        } catch {
+            reportError(
+                .compatibility,
+                message: error.localizedDescription,
+                manifestURL: manifestURL,
+                manifest: manifest
+            )
+            throw error
+        }
 
         let bundleURL = try manifest.endpointURL(path: manifest.bundle.path, relativeTo: manifestURL)
         let healthURL = try manifest.endpointURL(
@@ -188,30 +198,42 @@ final class StingGoViewController: UIViewController {
             relativeTo: manifestURL
         )
 
-        for _ in 0..<4 {
-            try Task.checkCancellation()
-            let beforeVersion = try await fetchHealthVersion(healthURL)
-            let bundleData = try await fetchData(
-                bundleURL,
-                expectedContentType: manifest.bundle.contentType
-            )
-            guard let source = String(data: bundleData, encoding: .utf8), !source.isEmpty else {
-                throw ClientError(message: "Downloaded Sting bundle is empty or not UTF-8")
+        do {
+            for _ in 0..<4 {
+                try Task.checkCancellation()
+                let beforeVersion = try await fetchHealthVersion(healthURL)
+                let bundleData = try await fetchData(
+                    bundleURL,
+                    expectedContentType: manifest.bundle.contentType
+                )
+                guard let source = String(data: bundleData, encoding: .utf8), !source.isEmpty else {
+                    throw ClientError(message: "Downloaded Sting bundle is empty or not UTF-8")
+                }
+                let afterVersion = try await fetchHealthVersion(healthURL)
+                if beforeVersion == afterVersion {
+                    return LoadedProject(
+                        manifest: manifest,
+                        bundleSource: source,
+                        bundleURL: bundleURL,
+                        reloadVersion: afterVersion
+                    )
+                }
             }
-            let afterVersion = try await fetchHealthVersion(healthURL)
-            if beforeVersion == afterVersion {
-                return LoadedProject(
-                    manifest: manifest,
-                    bundleSource: source,
-                    bundleURL: bundleURL,
-                    reloadVersion: afterVersion
+
+            throw ClientError(
+                message: "The Sting bundle kept changing while it was being downloaded; retry after the current build finishes"
+            )
+        } catch {
+            if !(error is CancellationError) {
+                reportError(
+                    .bundle,
+                    message: error.localizedDescription,
+                    manifestURL: manifestURL,
+                    manifest: manifest
                 )
             }
+            throw error
         }
-
-        throw ClientError(
-            message: "The Sting bundle kept changing while it was being downloaded; retry after the current build finishes"
-        )
     }
 
     private func fetchHealthVersion(_ healthURL: URL) async throws -> Int {
@@ -316,12 +338,25 @@ final class StingGoViewController: UIViewController {
             quickJS.runtimeErrorSink = { [weak self] error in
                 Task { @MainActor [weak self] in
                     guard let self, self.runtimeToken == token else { return }
-                    self.showError("JavaScript runtime error: \(error.localizedDescription)")
+                    let message = error.localizedDescription
+                    self.reportError(
+                        .runtime,
+                        message: message,
+                        manifestURL: manifestURL,
+                        manifest: project.manifest
+                    )
+                    self.showError("JavaScript runtime error: \(message)")
                 }
             }
             try quickJS.evaluate(bundle: project.bundleSource, sourceURL: project.bundleURL)
             startReloadClient(manifestURL: manifestURL, manifest: project.manifest)
         } catch {
+            reportError(
+                .runtime,
+                message: error.localizedDescription,
+                manifestURL: manifestURL,
+                manifest: project.manifest
+            )
             releaseRuntime()
             showError("JavaScript evaluation failed: \(error.localizedDescription)")
         }
@@ -353,6 +388,12 @@ final class StingGoViewController: UIViewController {
             reloadClient = client
             client.start()
         } catch {
+            reportError(
+                .reload,
+                message: error.localizedDescription,
+                manifestURL: manifestURL,
+                manifest: manifest
+            )
             showError(error.localizedDescription)
         }
     }
@@ -375,6 +416,23 @@ final class StingGoViewController: UIViewController {
             reloadStatusLabel?.text = "Live"
         case .reconnecting:
             reloadStatusLabel?.text = "Reconnecting…"
+        }
+    }
+
+    private func reportError(
+        _ kind: StingGoReportKind,
+        message: String,
+        detail: String? = nil,
+        manifestURL: URL,
+        manifest: StingGoManifest
+    ) {
+        guard let endpoint = manifest.development.report,
+              let reportURL = try? manifest.endpointURL(path: endpoint.path, relativeTo: manifestURL) else {
+            return
+        }
+        let report = StingGoClientReport(kind: kind, message: message, detail: detail)
+        Task {
+            try? await StingGoReportClient.send(report, to: reportURL)
         }
     }
 
