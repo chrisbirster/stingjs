@@ -1,6 +1,6 @@
 {
   "name": "stingjs",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "type": "module",
   "packageManager": "npm@12.0.2",
@@ -34,11 +34,15 @@
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
+    "seroval": "1.6.3",
     "typescript": "5.9.2",
-    "vitest": "4.1.0"
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=22.12.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "seroval": "1.6.3"
+  }
 }
