@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "BackgroundTask",
   "package": "@stingjs/background-task",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "BackgroundTaskModule",
     "permissions": []
@@ -12,5 +12,9 @@
     "factory": "context",
     "permissions": []
   },
-  "capabilities": ["async-functions", "events", "lifecycle"]
+  "capabilities": [
+    "async-functions",
+    "events",
+    "lifecycle"
+  ]
 }

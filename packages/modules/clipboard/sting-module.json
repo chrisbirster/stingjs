@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Clipboard",
   "package": "@stingjs/clipboard",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "ClipboardModule",
     "factory": "default",
@@ -13,5 +13,7 @@
     "factory": "context",
     "permissions": []
   },
-  "capabilities": ["sync-functions"]
+  "capabilities": [
+    "sync-functions"
+  ]
 }
