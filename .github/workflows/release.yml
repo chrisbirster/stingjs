@@ -253,7 +253,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
       - name: Use repository npm version
         run: npm install --global npm@12.0.2
@@ -270,7 +269,7 @@ jobs:
           while IFS= read -r tarball; do
             test -n "$tarball"
             echo "Publishing $tarball with dist-tag $NPM_DIST_TAG"
-            npm publish "release-artifacts/$tarball" --access public --tag "$NPM_DIST_TAG"
+            npm publish "./release-artifacts/$tarball" --access public --tag "$NPM_DIST_TAG"
           done < release-artifacts/npm-publish-order.txt
 
   release:
