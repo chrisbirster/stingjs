@@ -144,7 +144,7 @@ if (registry !== 'https://registry.npmjs.org/') {
 process.stdout.write(`npm maintainer=${whoami} registry=${registry}\n`);
 
 function registryHasExactVersion(name, expectedVersion) {
-  const result = run('npm', ['view', `${name}@${expectedVersion}`, 'version', '--json'], { allowFailure: true });
+  const result = run('npm', ['view', `${name}@${expectedVersion}`, 'version', '--json', '--prefer-online'], { allowFailure: true });
   if (result.status === 0) {
     const raw = (result.stdout ?? '').trim();
     const observed = raw ? JSON.parse(raw) : null;
@@ -153,6 +153,42 @@ function registryHasExactVersion(name, expectedVersion) {
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   if (/E404|404 Not Found|is not in this registry/i.test(output)) return false;
   throw new Error(`bootstrap: npm view failed for ${name}@${expectedVersion}\n${output}`);
+}
+
+function distTags(name) {
+  const result = run('npm', ['dist-tag', 'ls', name], { allowFailure: true });
+  if (result.status !== 0) {
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    if (/E404|404 Not Found|is not in this registry/i.test(output)) return {};
+    throw new Error(`bootstrap: npm dist-tag ls failed for ${name}\n${output}`);
+  }
+
+  const tags = {};
+  for (const line of (result.stdout ?? '').split(/\r?\n/)) {
+    const match = line.match(/^([^:]+):\s+(.+)$/);
+    if (match) tags[match[1].trim()] = match[2].trim();
+  }
+  return tags;
+}
+
+function registryAcceptedExactVersion(name, expectedVersion) {
+  if (registryHasExactVersion(name, expectedVersion)) return true;
+  return Object.values(distTags(name)).includes(expectedVersion);
+}
+
+async function waitForRegistryVisibility(name, expectedVersion) {
+  const attempts = 120;
+  const delayMs = 15_000;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (registryHasExactVersion(name, expectedVersion)) return;
+    if (attempt < attempts) {
+      process.stdout.write(`waiting for npm scan: ${name}@${expectedVersion} (${attempt}/${attempts})\n`);
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs));
+    }
+  }
+
+  throw new Error(`bootstrap: ${name}@${expectedVersion} was accepted by npm but did not become registry-visible within 30 minutes`);
 }
 
 function hasExpectedTrust(name) {
@@ -185,22 +221,26 @@ function hasExpectedTrust(name) {
 if (publish) {
   for (const pkg of packages) {
     const { name } = pkg.manifest;
-    if (registryHasExactVersion(name, version)) {
-      process.stdout.write(`already published; skipping ${name}@${version}\n`);
+    if (registryAcceptedExactVersion(name, version)) {
+      process.stdout.write(`already accepted; skipping ${name}@${version}\n`);
       continue;
     }
     process.stdout.write(`publishing bootstrap ${name}@${version} under dist-tag bootstrap\n`);
     run('npm', ['publish', pkg.path, '--access', 'public', '--tag', 'bootstrap'], { inherit: true });
-    if (!registryHasExactVersion(name, version)) {
-      throw new Error(`bootstrap: registry did not report ${name}@${version} after publish`);
+    if (!registryAcceptedExactVersion(name, version)) {
+      throw new Error(`bootstrap: npm did not report ${name}@${version} through npm view or dist-tags after publish`);
     }
   }
 }
 
 if (trust) {
-  const missing = packages.filter(({ manifest }) => !registryHasExactVersion(manifest.name, version));
+  const missing = packages.filter(({ manifest }) => !registryAcceptedExactVersion(manifest.name, version));
   if (missing.length > 0) {
-    throw new Error(`bootstrap: cannot configure trust before bootstrap publication exists for: ${missing.map(({ manifest }) => manifest.name).join(', ')}`);
+    throw new Error(`bootstrap: cannot configure trust before bootstrap publication is accepted for: ${missing.map(({ manifest }) => manifest.name).join(', ')}`);
+  }
+
+  for (const { manifest } of packages) {
+    await waitForRegistryVisibility(manifest.name, version);
   }
 
   for (let index = 0; index < packages.length; index += 1) {
