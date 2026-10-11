@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Notifications",
   "package": "@stingjs/notifications",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "NotificationsModule",
     "permissions": []
@@ -10,7 +10,14 @@
   "android": {
     "module": "run.stingjs.modules.notifications.NotificationsModule",
     "factory": "context",
-    "permissions": ["android.permission.POST_NOTIFICATIONS"]
+    "permissions": [
+      "android.permission.POST_NOTIFICATIONS"
+    ]
   },
-  "capabilities": ["async-functions", "events", "permissions", "lifecycle"]
+  "capabilities": [
+    "async-functions",
+    "events",
+    "permissions",
+    "lifecycle"
+  ]
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "SecureStore",
   "package": "@stingjs/secure-store",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "SecureStoreModule",
     "permissions": []
@@ -12,5 +12,7 @@
     "factory": "context",
     "permissions": []
   },
-  "capabilities": ["async-functions"]
+  "capabilities": [
+    "async-functions"
+  ]
 }

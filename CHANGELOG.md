@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-rc.1 - unreleased
+## 1.0.0-rc.1 - 2026-10-10
 
 - Establish StingJS as a native application platform for SolidJS 2 with a Sting-owned renderer, event, lifecycle, navigation, styling, and native-module contract.
 - Render real UIKit and Android native views without a DOM, WebView, React Native renderer, or Expo runtime.

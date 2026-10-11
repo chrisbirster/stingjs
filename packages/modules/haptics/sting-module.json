@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Haptics",
   "package": "@stingjs/haptics",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "HapticsModule",
     "factory": "default",
@@ -11,7 +11,11 @@
   "android": {
     "module": "run.stingjs.modules.haptics.HapticsModule",
     "factory": "context",
-    "permissions": ["android.permission.VIBRATE"]
+    "permissions": [
+      "android.permission.VIBRATE"
+    ]
   },
-  "capabilities": ["sync-functions"]
+  "capabilities": [
+    "sync-functions"
+  ]
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Sensors",
   "package": "@stingjs/sensors",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "SensorsModule",
     "permissions": []
@@ -12,5 +12,8 @@
     "factory": "context",
     "permissions": []
   },
-  "capabilities": ["sync-functions", "events"]
+  "capabilities": [
+    "sync-functions",
+    "events"
+  ]
 }

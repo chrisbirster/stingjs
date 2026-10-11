@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "Filesystem",
   "package": "@stingjs/filesystem",
-  "version": "1.0.0-bootstrap.0",
+  "version": "1.0.0-rc.1",
   "ios": {
     "module": "FilesystemModule",
     "factory": "default",
@@ -13,5 +13,7 @@
     "factory": "context",
     "permissions": []
   },
-  "capabilities": ["async-functions"]
+  "capabilities": [
+    "async-functions"
+  ]
 }
